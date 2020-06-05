@@ -1,20 +1,30 @@
 In this directory, you can:
 
-1) Build the templates for the indices we have
-2) Generate commands to create the templates
-3) Generate the commands to update mappings
+1) Build the index templates for the indices we have
+2) Generate commands to load the index templates
+3) Generate the commands to create indices
+4) Generate the commands to remove everything from ES
 
-To build templates, run "make templates".  The makefile requires
-a "header" file and several base files.
+To build the index templates, run 'make'.
 
-To generate either of the commands, you must have a URL where 
+If you are interested in changing the mappings, edit the
+base files ($index.base), run 'make clean' and then 'make'.
+
+Many of the indices have some fields in common, and so the
+Makefile uses 'build.sh' to combine certain .base files to
+form many of the .json files.
+
+To generate any of the commands, you must have a URL where 
 your ES instance is available.
 
 If you are creating a new ES for CDM, you would first need to
-build the templates, then run "create_indices.sh" to generate
-the commands to create the indices,then run those commands.
+build the templates, then run 'create-indices-cmds.sh' to generate
+the commands to create the indices, then run those commands.
 
-If you need to update a mapping, you would first need to update the 
-relevant base file, then re-generate the templates with make, then
-run "update_mappings.sh" to generate the update mappings commands,
-then run those commands.
+After index templates are loaded, indices can be created with
+'create-indices-cmds.sh', which will provide the commands
+to run to generate the indices.
+
+If you wish to remove all indices and templates, running
+'create-cleanup-cmds.sh' will provide all of the commands
+to remove everything.

@@ -1,0 +1,15 @@
+{
+  "name": "cdmq",
+  "version": "1.0.0",
+  "description": "Query Utils for Common Data Model",
+  "main": "index.js",
+  "scripts": {
+    "test": "cdmq"
+  },
+  "author": "Andrew Theurer",
+  "license": "ISC",
+  "dependencies": {
+    "commander": "^2.20.0",
+    "sync-request": "^6.1.0"
+  }
+}

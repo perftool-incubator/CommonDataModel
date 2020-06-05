@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# This will echo to stdout commands you can copy/paste to create your ES indices
+# *** Make sure you load your index templates before running any of these commands ***
+
 es_url=$1
 if [ -z "$es_url" ]; then
 	echo "You must provide the URL to your Elasticsearch instance"
@@ -21,5 +24,6 @@ fi
 
 
 for i in `/bin/ls *.json | sed -e s/\.json//`; do
-	echo "curl -X POST $es_url/cdm$es_ver-$i/$i -H 'Content-Type: application/json' -d@./$i.json"
+	echo "curl -X PUT $es_url/cdm$es_ver-$i"
 done
+echo

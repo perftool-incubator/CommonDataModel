@@ -1,31 +1,29 @@
-    "run": {
-      "properties": {
-        "id": { "type": "keyword" },
-        "begin": { "type": "date" },
-        "end": { "type": "date" },
-        "harness_name": { "type": "keyword" },
-        "host": { "type": "keyword" },
-        "ignore": { "type": "boolean" },
-        "tool_names": { "type": "text", "fields": { "raw": { "type":  "keyword" } } },
-        "data_source": { "type": "keyword" },
-        "label": { "type": "keyword" },
-        "user": {
+        "run": {
           "properties": {
-            "desc": { "type": "text" },
-            "email": { "type": "keyword" },
-            "name": { "type": "keyword" },
-            "tags": { "type": "text", "fields": { "raw": { "type":  "keyword" } } }
-          }
-        },
-        "bench": {
-          "properties": {
-            "clients": { "type": "text", "fields": { "raw": { "type":  "keyword" } } },
-            "name": { "type": "keyword" },
-            "params": { "type": "text", "fields": { "raw": { "type":  "keyword" } } },
-            "servers": { "type": "text", "fields": { "raw": { "type":  "keyword" } } }
+            "id": { "type": "keyword" },
+            "begin": { "type": "date" },
+            "end": { "type": "date" },
+            "harness_name": { "type": "keyword" },
+            "host": { "type": "keyword" },
+            "ignore": { "type": "boolean" },
+            "tool_names": { "type": "text", "analyzer": "whitespace", "fields": { "raw": { "type":  "keyword" } } },
+            "data_source": { "type": "keyword" },
+            "label": { "type": "keyword" },
+            "user": {
+              "properties": {
+                "desc": { "type": "text", "analyzer": "standard" },
+                "email": { "type": "keyword" },
+                "name": { "type": "keyword" },
+                "tags": { "type": "text", "analyzer": "whitespace", "fields": { "raw": { "type":  "keyword" } } }
+              }
+            },
+            "bench": {
+              "properties": {
+                "clients": { "type": "text", "analyzer": "whitespace", "fields": { "raw": { "type":  "keyword" } } },
+                "name": { "type": "keyword" },
+                "params": { "type": "text", "analyzer": "whitespace", "fields": { "raw": { "type":  "keyword" } } },
+                "servers": { "type": "text", "analyzer": "whitespace", "fields": { "raw": { "type":  "keyword" } } }
+              }
+            }
           }
         }
-      }
-    }
-  }
-}

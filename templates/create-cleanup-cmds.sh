@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# This will echo commands on stdout that you can copy/paste to clean up your ES instance
+
 es_url=$1
 if [ -z "$es_url" ]; then
 	echo "You must provide the URL to your Elasticsearch instance"
@@ -19,7 +21,10 @@ else
 	exit 1
 fi
 
-
-for i in `/bin/ls *.json | sed -e s/\.json//`; do
-	echo "curl -X PUT $es_url/cdm$es_ver-$i/_mapping/$i -H 'Content-Type: application/json' -d@./$i.json"
+for i in `curl --stderr /dev/null -X GET "$es_url/_cat/indices?" | awk '{print $3}'`; do
+	echo curl --stderr /dev/null -X DELETE $es_url/$i
 done
+
+for i in `curl --stderr /dev/null -X GET "$es_url/_cat/templates?v" | grep cdm$es_ver | awk '{print $1}'`; do
+	echo curl --stderr /dev/null -X DELETE localhost:9201/_template/$i; done
+

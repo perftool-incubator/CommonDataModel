@@ -1,6 +1,6 @@
-    "sample": {
-      "properties": {
-        "id": { "type": "keyword" },
-        "num": { "type": "integer" }
-      }
-    },
+        "sample": {
+          "properties": {
+            "id": { "type": "keyword" },
+            "num": { "type": "integer" }
+          }
+        },

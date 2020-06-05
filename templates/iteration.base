@@ -1,8 +1,8 @@
-    "iteration": {
-      "properties": {
-        "id": { "type": "keyword" },
-        "params": { "type": "text" },
-        "primary_metric": { "type": "keyword" },
-        "primary_period": { "type": "keyword" }
-      }
-    },
+        "iteration": {
+          "properties": {
+            "id": { "type": "keyword" },
+            "params": { "type": "text", "analyzer": "whitespace" },
+            "primary_metric": { "type": "keyword" },
+            "primary_period": { "type": "keyword" }
+          }
+        },
