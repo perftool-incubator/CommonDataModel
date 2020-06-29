@@ -1,15 +1,9 @@
 
-templates	: run.json config_cpu_vulnerabilities.json config_yum_repos.json iteration.json sample.json period.json metric_desc.json metric_data.json
+templates	: run.json iteration.json sample.json period.json metric_desc.json metric_data.json
 		  ls -l *.json
 
 run.json	: run.base
 		  ./build.sh `cat ../VERSION` run
-
-config_cpu_vulnerabilities.json	: run.base config_yum_repos.base config_cpu_vulnerabilities.base
-		  ./build.sh `cat ../VERSION` config_cpu_vulnerabilities run
-
-config_yum_repos.json	: run.base config_yum_repos.base
-		  ./build.sh `cat ../VERSION` config_yum_repos run
 
 iteration.json	: run.base iteration.base
 		  ./build.sh `cat ../VERSION` iteration run
