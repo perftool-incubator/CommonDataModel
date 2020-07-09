@@ -15,5 +15,5 @@ if (program.iteration) {
 if (program.email) {
   searchTerms.push({ "term": "run.user.email", "match": "eq", "value": program.email });
 }
-console.log(JSON.stringify(cdm.getIterations(program.url, searchTerms)));
+//console.log(JSON.stringify(cdm.getIterations(program.url, searchTerms)));
 console.log(JSON.stringify(cdm.getSamples(program.url, searchTerms)));
