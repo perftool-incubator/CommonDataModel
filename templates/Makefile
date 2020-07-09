@@ -1,5 +1,5 @@
 
-templates	: run.json iteration.json sample.json period.json metric_desc.json metric_data.json
+templates	: run.json iteration.json param.json sample.json period.json metric_desc.json metric_data.json
 		  ls -l *.json
 
 run.json	: run.base
@@ -7,6 +7,9 @@ run.json	: run.base
 
 iteration.json	: run.base iteration.base
 		  ./build.sh `cat ../VERSION` iteration run
+
+param.json	: run.base iteration.base param.base
+		  ./build.sh `cat ../VERSION` param iteration run
 
 sample.json	: run.base iteration.base sample.base
 		  ./build.sh `cat ../VERSION` sample iteration run

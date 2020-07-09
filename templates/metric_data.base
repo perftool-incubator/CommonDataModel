@@ -1,9 +1,13 @@
-          "metric_data": {
-            "properties": {
-              "id": { "type": "keyword" },
-              "value": { "type": "double" },
-              "begin": { "type" : "date" },
-              "end": { "type" : "date" },
-              "duration": { "type": "long" }
-            }
-          }
+      "metric_desc": {
+        "properties": {
+          "id": { "type": "keyword" }
+        }
+      },
+      "metric_data": {
+        "properties": {
+          "value": { "type": "double" },
+          "begin": { "type" : "date" },
+          "end": { "type" : "date" },
+          "duration": { "type": "long" }
+        }
+      }

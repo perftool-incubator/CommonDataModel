@@ -1,19 +1,14 @@
-          "run": {
-            "properties": {
-              "id": { "type": "keyword" },
-              "begin": { "type": "date" },
-              "end": { "type": "date" },
-              "harness": { "type": "keyword" },
-              "benchmark": { "type": "keyword" },
-              "host": { "type": "keyword" },
-              "label": { "type": "keyword" },
-              "user": {
-                "properties": {
-                  "desc": { "type": "text", "analyzer": "standard" },
-                  "email": { "type": "keyword" },
-                  "name": { "type": "keyword" },
-                  "tags": { "type": "text", "analyzer": "whitespace", "fields": { "raw": { "type":  "keyword" } } }
-                }
-              }
-            }
+        "run": {
+          "properties": {
+            "id": { "type": "keyword" },
+            "begin": { "type": "date" },
+            "end": { "type": "date" },
+            "harness": { "type": "keyword" },
+            "benchmark": { "type": "keyword" },
+            "host": { "type": "keyword" },
+            "email": { "type": "keyword" },
+            "name": { "type": "keyword" },
+            "desc": { "type": "text", "analyzer": "standard" },
+            "tags": { "type": "text", "analyzer": "whitespace", "fields": { "raw": { "type":  "keyword" } } }
           }
+        }

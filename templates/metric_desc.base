@@ -4,7 +4,7 @@
               "class": { "type": "keyword" },
               "type": { "type": "keyword" },
               "source": { "type": "keyword" },
-              "name_format": { "type": "keyword" },
+              "name-format": { "type": "keyword" },
               "names": {
                 "properties": {
                   "id": { "type": "keyword" },
@@ -41,7 +41,8 @@
                   "direction": { "type": "keyword" },
                   "clientserver": { "type": "keyword" },
                   "protocol": { "type": "keyword" },
-                  "action": { "type": "keyword" }
+                  "action": { "type": "keyword" },
+                  "cs-id": { "type": "keyword" }
                 }
               }
             }
