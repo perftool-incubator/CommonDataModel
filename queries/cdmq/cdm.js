@@ -13,22 +13,16 @@ function esRequest(host, idx, q) {
   if (typeof(q) === "object") {
     q = JSON.stringify(q);
   }
-  // console.log("url:\n/" + url + "/");
-  // console.log("query:\n/" + q + "/");
   var resp = request('POST', url, { body: q, headers: {"Content-Type": "application/json" } });
   return resp;
 }
 
 deleteDocs = function (url, docTypes, q) {
   docTypes.forEach(element => {
-    console.log("non-delete request:\n" + JSON.stringify(q));
     var nd_resp = esRequest(url, element + "/_doc/_search", q);
     var nd_data = JSON.parse(nd_resp.getBody());
-    console.log("non-delete response:\n" + JSON.stringify(nd_data));
-    console.log("request:\n" + JSON.stringify(q));
     var resp = esRequest(url, element + "/_doc/_delete_by_query", q);
     var data = JSON.parse(resp.getBody());
-    console.log("response:\n" + JSON.stringify(data));
   });
 };
 exports.deleteDocs = deleteDocs;
@@ -153,10 +147,8 @@ exports.getPrimaryPeriodId = function (url, sampId, periName) {
                                            ] }},
       '_source': 'period.id',
             'size': 1 };
-  //console.log(JSON.stringify(q));
   var resp = esRequest(url, "period/_doc/_search", q);
   var data = JSON.parse(resp.getBody());
-  //console.log(JSON.stringify(data));
   if (data.hits.total.value > 0 && Array.isArray(data.hits.hits) && data.hits.hits[0]._source.period.id) {
     return data.hits.hits[0]._source.period.id;
   } else {
@@ -171,10 +163,8 @@ exports.getMetricSources = function (url, runId) {
                                }},
             'aggs': { 'source': { 'terms': { 'field': 'metric_desc.source'}}},
             'size': 0 };
-  //console.log(JSON.stringify(q));
   var resp = esRequest(url, "metric_desc/_doc/_search", q);
   var data = JSON.parse(resp.getBody());
-  //console.log("response\n" + JSON.stringify(data));
   if (Array.isArray(data.aggregations.source.buckets)) {
     //return data.aggregations.source.buckets;
     var sources = [];
@@ -195,10 +185,8 @@ exports.getMetricTypes = function (url, runId, source) {
                                }},
             'aggs': { 'source': { 'terms': { 'field': 'metric_desc.type'}}},
             'size': 0 };
-  //console.log(JSON.stringify(q));
   var resp = esRequest(url, "metric_desc/_doc/_search", q);
   var data = JSON.parse(resp.getBody());
-  //console.log("response\n" + JSON.stringify(data));
   if (Array.isArray(data.aggregations.source.buckets)) {
     //return data.aggregations.source.buckets;
     var types = [];
@@ -213,13 +201,15 @@ exports.getMetricTypes = function (url, runId, source) {
 
 exports.getNameFormat = function (url, periId, source, type) {
   var q = { 'query': { 'bool': { 'filter': [ 
-                                             {"term": {"period.id": periId}},
+                                             //{"term": {"period.id": periId}},
                                              {"term": {"metric_desc.source": source}},
                                              {"term": {"metric_desc.type": type}} ]
                                }},
             'aggs': { 'source': { 'terms': { 'field': 'metric_desc.name-format'}}},
             'size': 0 };
-  //console.log(JSON.stringify(q));
+  if (periId != null) {
+    q.query.bool.filter.push(JSON.parse('{"term": {"period.id": "' + periId + '"}}'));
+  }
   var resp = esRequest(url, "metric_desc/_doc/_search", q);
   var data = JSON.parse(resp.getBody());
   if (Array.isArray(data.aggregations.source.buckets) && data.aggregations.source.buckets.length == 1) {
@@ -233,7 +223,6 @@ exports.getTags = function (url, runId) {
             'size': 1 };
   var resp = esRequest(url, "run/_doc/_search", q);
   var data = JSON.parse(resp.getBody());
-  //console.log(JSON.stringify(data));
   if (data.hits.total.value > 0 && data.hits.hits[0]._source && data.hits.hits[0]._source.run && data.hits.hits[0]._source.run.tags) {
     return data.hits.hits[0]._source.run.tags;
   }
@@ -312,10 +301,16 @@ getBreakoutAggregation = function (source, type, breakout) {
   agg_str += ',"aggs": { "metric_desc.type": { "terms": { "field": "metric_desc.type"}';
   // More nested aggregations are added, one per field found in the broeakout
   var field_count = 0;
+  var regExp = /([^\=]+)\=([^\=]+)/;
+  //var matches = regExp.exec("");
+
   if (Array.isArray(breakout)) {
     breakout.forEach(field => {
-      if (/([^\=]+)\=([^\=]+)/.exec(field)) {
-        field = $1
+      //if (/([^\=]+)\=([^\=]+)/.exec(field)) {
+      var matches = regExp.exec(field);
+      if (matches) {
+        //field = $1;
+        field = matches[1];
       }
       agg_str += ',"aggs": { "metric_desc.names.' + field + '": { "terms": ' +
                   '{ "show_term_doc_count_error": true, "size": 1000,' + 
@@ -372,9 +367,9 @@ getMetricIdsFromTerms = function (url, periId, terms_string) {
             //    queries and aggregate the metric IDs.
             // 3) Simply adjust index.max_result_window to > 10,000, but test this,
             //    as the size is dependent on the Java heap size.
-  q.query.bool.filter.push(JSON.parse('{"term": {"period.id": "' + periId + '"}}'));
-  //console.log("\ngetMetricIdsFromTerms q:");
-  //console.log(JSON.stringify(q));
+  if (periId != null) {
+    q.query.bool.filter.push(JSON.parse('{"term": {"period.id": "' + periId + '"}}'));
+  }
   var resp = esRequest(url, "metric_desc/_doc/_search", q);
   var data = JSON.parse(resp.getBody());
   if (data.hits.total.value > data.size) {
@@ -396,36 +391,38 @@ getMetricGroupsFromBreakout = function (url, periId, source, type, breakout) {
   var q = { 'query': { 'bool': { 'filter': [ 
                                              {"term": {"metric_desc.source": source}},
                                              {"term": {"metric_desc.type": type}},
-                                             {"term": {"period.id": periId}}
+                                             //{"term": {"period.id": periId}}
                                             ]
                                }},
             'size': 0 };
+
+  if (periId != null) {
+    q.query.bool.filter.push(JSON.parse('{"term": {"period.id": "' + periId + '"}}'));
+  }
   q.aggs = JSON.parse(getBreakoutAggregation(source, type, breakout));
-  //console.log("\nbreakout-aggregation:");
-  //console.log(JSON.stringify(q.aggs));
+
   // If the breaout contains a match requirement (host=myhost), then we must add a term filter for it.
   // Eventually it would be nice to have something other than a match, like a regex: host=/^client/.
+  var regExp = /([^\=]+)\=([^\=]+)/;
   breakout.forEach(field => {
-    if (/([^\=]+)\=([^\=]+)/.exec(field)) {
-      field = $1;
-      value = $2;
-      q.query.bool.filter.push(JSON.parse('{"term": {"metric_desc.names."' + field + '": "' + value + '"}}'));
+    var matches = regExp.exec(field);
+    //if (/([^\=]+)\=([^\=]+)/.exec(field)) {
+    if (matches) {
+      //field = $1;
+      //value = $2;
+      field = matches[1];
+      value = matches[2];
+      q.query.bool.filter.push(JSON.parse('{"term": {"metric_desc.names.' + field + '": "' + value + '"}}'));
     }
   });
   var resp = esRequest(url, "metric_desc/_doc/_search", q);
   var data = JSON.parse(resp.getBody());
-  //console.log("\nresponse-agg:");
-  //console.log(JSON.stringify(data));
   // The response includes a result from a nested aggregation, which will be parsed to produce
   // query terms for each of the metric groups
   //var metricGroupTerms = getMetricGroupTermsFromAgg(data.aggregations, 0, "");
   var metricGroupTerms = getMetricGroupTermsFromAgg(data.aggregations);
-  //console.log("\nmetricGroupTerms:");
-  //console.log(metricGroupTerms);
   // Derive the label from each group and organize into a dict, key = label, value = the filter terms 
   var metricGroupTermsByLabel = getMetricGroupTermsByLabel(metricGroupTerms);
-  //console.log("\nmetricGroupTermsByLabel:");
-  //console.log(metricGroupTermsByLabel);
   // Now iterate over these labels and query with the label's search terms to get the metric IDs
   Object.keys(metricGroupTermsByLabel).forEach(label => {
     metricGroupIdsByLabel[label] = getMetricIdsFromTerms(url, periId, metricGroupTermsByLabel[label]);
@@ -457,8 +454,6 @@ getMetricDataFromIds = function (url, begin, end, resolution, metricIds) {
   // The resolution determines how many times we compute a value, each value for a
   // different "slice" in the original begin-to-end time domain.
   while (true) {
-    //console.log("thisBegin: " + thisBegin + "  thisEnd: " + thisEnd + "\n");
-    //console.log("building ndjson\n");
     // Calculating a single value representing an average for thisBegin - thisEnd
     // relies on an [weighted average] aggregation, plus a few other queries.  An
     // alternative method would involve querying all documents for the orignal
@@ -498,7 +493,6 @@ getMetricDataFromIds = function (url, begin, end, resolution, metricIds) {
     reqjson += '}';
     var index = JSON.parse(indexjson);
     var req = JSON.parse(reqjson);
-    //console.log("first request:\n" + JSON.stringify(index, null, 2) + "\n" + JSON.stringify(req, null, 2));
     ndjson += JSON.stringify(index) + "\n";
     ndjson += JSON.stringify(req) + "\n";
 
@@ -528,7 +522,6 @@ getMetricDataFromIds = function (url, begin, end, resolution, metricIds) {
     reqjson += '}\n';
     index = JSON.parse(indexjson);
     req = JSON.parse(reqjson);
-    //console.log("second request:\n" + JSON.stringify(index, null, 2) + "\n" + JSON.stringify(req, null, 2));
     ndjson += JSON.stringify(index) + "\n";
     ndjson += JSON.stringify(req) + "\n";
 
@@ -551,7 +544,6 @@ getMetricDataFromIds = function (url, begin, end, resolution, metricIds) {
     reqjson += '}';
     index = JSON.parse(indexjson);
     req = JSON.parse(reqjson);
-    //console.log("third request:\n" + JSON.stringify(index, null, 2) + "\n" + JSON.stringify(req, null, 2));
     ndjson += JSON.stringify(index) + "\n";
     ndjson += JSON.stringify(req) + "\n";
 
@@ -572,10 +564,8 @@ getMetricDataFromIds = function (url, begin, end, resolution, metricIds) {
     reqjson += '    }';
     reqjson += '  }';
     reqjson += '}\n';
-    //console.log("reqjson:\n" + reqjson);
     index = JSON.parse(indexjson);
     req = JSON.parse(reqjson);
-    //console.log("fourth request:\n" + JSON.stringify(index, null, 2) + "\n" + JSON.stringify(req, null, 2));
     ndjson += JSON.stringify(index) + "\n";
     ndjson += JSON.stringify(req) + "\n";
 
@@ -585,15 +575,12 @@ getMetricDataFromIds = function (url, begin, end, resolution, metricIds) {
     if (thisEnd > end) {
       thisEnd = end;
     }
-    //console.log("thisBegin: " + thisBegin + "  thisEnd: " + thisEnd + "  begin: " + begin + "  end: " + end + "\n");
     if (thisBegin > thisEnd) {
       break;
     }
   }
-  //console.log("submitting request\n" + ndjson);
   var resp = esRequest(url, "metric_data/_doc/_msearch", ndjson);
   var data = JSON.parse(resp.getBody());
-  //console.log("ndjson response:\n" + JSON.stringify(data));
   thisBegin = begin;
   thisEnd = begin + duration;
   var count = 0;
@@ -633,7 +620,7 @@ getMetricDataFromIds = function (url, begin, end, resolution, metricIds) {
       aggWeight = 0;
       aggAvgTimesWeight = 0;
     }
-    //console.log("weighted avg before processing docs partially in the time range: " + aggAvg);
+
     // Process last 2 of the 4 responses in the 'set'
     // Since these docs have a time range partially outside the time range we want,
     // we have to get a new, reduced duration and use that to agment our weighted average.
@@ -649,7 +636,6 @@ getMetricDataFromIds = function (url, begin, end, resolution, metricIds) {
     for (k = 2; k < 4; k++) {
       //for my $j (@{ $$resp_ref{'responses'}[$count + $k]{'hits'}{'hits'} }) {
       data.responses[count + k].hits.hits.forEach(element => {
-        //console.log("element: " + JSON.stringify(element) + "\n");
         //for my $key (keys %{ $$j{'_source'}{'metric_data'} }) {
         partialDocs[element._id] = {};
         Object.keys(element._source.metric_data).forEach(key => {
@@ -659,7 +645,6 @@ getMetricDataFromIds = function (url, begin, end, resolution, metricIds) {
       });
     }
     // Now we can process the partialDocs
-    //console.log("docs partially in the time range:\n");
     Object.keys(partialDocs).forEach(id => {
       var docDuration = partialDocs[id].duration;
       if (partialDocs[id].begin < thisBegin) {
@@ -671,7 +656,6 @@ getMetricDataFromIds = function (url, begin, end, resolution, metricIds) {
       var valueTimesWeight = partialDocs[id].value * docDuration;
       sumValueTimesWeight += valueTimesWeight;
       sumWeight += docDuration;
-      //console.log("_id: " + id + "  thisBegin / begin: " + thisBegin + " / " + partialDocs[id].begin + "  thisEnd / end: " + thisEnd + " / " + partialDocs[id].end + "  duration: " + docDuration + "\n");
     });
     var result = (aggAvgTimesWeight + sumValueTimesWeight) / totalWeightTimesMetrics;
     result *= numMetricIds;
@@ -708,9 +692,19 @@ exports.getMetricDataFromIds = getMetricDataFromIds;
 // from this [benchmark-iteration-sample-]period (from doc which contains the periId).
 exports.getMetricDataFromPeriod = function(url, periId, source, type, begin, end, resolution, breakout) {
   var data = { "breakouts": [], "values": {} };
+  //TODO: "breakouts" needs to be populated
   var metricGroupIdsByLabel = getMetricGroupsFromBreakout(url, periId, source, type, breakout);
-  //console.log("\nmetricGroupIdsByLabel");
-  //console.log(metricGroupIdsByLabel);
+  Object.keys(metricGroupIdsByLabel).forEach(function(label) {
+    data.values[label] = getMetricDataFromIds(url, begin, end, resolution, metricGroupIdsByLabel[label]);
+  });
+  return data;
+};
+
+// Similar to getMetricDataFromPeriod, but does not require a period ID
+exports.getMetricData = function(url, source, type, begin, end, resolution, breakout) {
+  var data = { "breakouts": [], "values": {} };
+  //TODO: "breakouts" needs to be populated
+  var metricGroupIdsByLabel = getMetricGroupsFromBreakout(url, null, source, type, breakout);
   Object.keys(metricGroupIdsByLabel).forEach(function(label) {
     data.values[label] = getMetricDataFromIds(url, begin, end, resolution, metricGroupIdsByLabel[label]);
   });
