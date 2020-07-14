@@ -42,7 +42,8 @@
                   "clientserver": { "type": "keyword" },
                   "protocol": { "type": "keyword" },
                   "action": { "type": "keyword" },
-                  "cs-id": { "type": "keyword" }
+                  "cstype": { "type": "keyword" },
+                  "csid": { "type": "keyword" }
                 }
               }
             }
