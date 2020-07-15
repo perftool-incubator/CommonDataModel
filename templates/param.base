@@ -1,0 +1,7 @@
+          "param": {
+            "properties": {
+              "id": { "type": "keyword" },
+              "arg": { "type": "keyword" },
+              "val": { "type": "keyword" }
+            }
+          },

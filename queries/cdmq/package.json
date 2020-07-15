@@ -9,7 +9,7 @@
   "author": "Andrew Theurer",
   "license": "ISC",
   "dependencies": {
-    "commander": "^2.20.0",
+    "commander": "^2.20.3",
     "sync-request": "^6.1.0"
   }
 }

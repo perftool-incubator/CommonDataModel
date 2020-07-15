@@ -19,10 +19,13 @@ function list(val) {
 program
   .version('0.1.0')
   .option('--url <host:port>', 'The host and port of the Elasticsearch instance')
-  .option('--period <period ID>', 'The UUID of the period document')
-  .option('--source <metric source>', 'A metric source, like iostat or fio')
-  .option('--type  <metric type>', 'A metric type, like iops or Gbps')
-  .option('--breakout <label1,label2,labelN>', 'break-out metric by these labels', list, [])
+  .option('--source <name>', 'The metric source, like a tool or benchmark name (sar, fio)')
+  .option('--type <name>', 'The metric type, like Gbps or IOPS')
+  .option('--begin [uint]', '[optional] Timestamp in epochtime_ms, within the period\'s begin-end time range, where the calculation of the metric will begin')
+  .option('--end [uint]', '[optional] Timestamp in epochtime_ms, within the period\'s begin-end time range, where the calculation of the metric will end.  If no --begin and no -end are provided, a begin and end timestamp will be derived based on when all metrics of this source and type have data present.  If --begin is before or --end is after these derived begin/end vaules, they will be adjusted (--begin is increased and/or --end is decreased) to fit within this range.')
+  .option('--resolution [uint]', 'The number of datapoints to produce in a data-series')
+  .option('--breakout <label1,label2,label3...>', 'List of labels to break-out the metric, like --breakout=host,id with --source=sar -type=ProcessorBusyUtil', list, [])
   .parse(process.argv);
 
-console.log(JSON.stringify(cdm.getMetricGroupsFromBreakout(program.url, program.period, program.source, program.type, program.breakout), null, 2));
+console.log(JSON.stringify(cdm.getMetricData(program.url, program.source, program.type, program.begin, program.end, program.resolution, program.breakout), null, 2));
+

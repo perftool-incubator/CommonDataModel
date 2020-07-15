@@ -5,8 +5,8 @@
 
 es_url=$1
 if [ -z "$es_url" ]; then
-	echo "You must provide the URL to your Elasticsearch instance"
-	exit 1
+	echo "# Using localhost:9200 for URL"
+	es_url="localhost:9200"
 fi
 
 if [ ! -x /usr/bin/curl ]; then
