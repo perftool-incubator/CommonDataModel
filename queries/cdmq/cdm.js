@@ -92,6 +92,29 @@ exports.getIterations = function (url, searchTerms) {
   return { ids };
 };
 
+exports.getParams = function (url, searchTerms) {
+  var q = { 'query': { 'bool': { 'filter': [] }},
+      '_source': "param",
+            'size': 1000 };
+  if (searchTerms.length === 0) {
+    return;
+  }
+  searchTerms.forEach(element => {
+    var myTerm = {};
+    myTerm[element.term] = element.value;
+    q.query.bool.filter.push({"term": myTerm});
+  });
+  var resp = esRequest(url, "param/_doc/_search", q);
+  var data = JSON.parse(resp.getBody());
+  var params = [];
+  if (Array.isArray(data.hits.hits) && data.hits.hits.length > 0) {
+    data.hits.hits.forEach(element => {
+      params.push(element._source.param);
+    });
+  }
+  return { params };
+};
+
 exports.getSamples = function (url, searchTerms) {
   var q = { 'query': { 'bool': { 'filter': [] }},
       '_source': "sample.id",
@@ -237,6 +260,23 @@ exports.getBenchmarkName = function (url, runId) {
   if (data.hits.hits[0]._source.run.benchmark) {
     return data.hits.hits[0]._source.run.benchmark;
   }
+};
+
+exports.getRunData = function (url, searchTerms) {
+  var q = { 'query': { 'bool': { 'filter': [] }},
+            'size': 1000 };
+  if (searchTerms.length === 0) {
+    return;
+  }
+  searchTerms.forEach(element => {
+    var myTerm = {};
+    myTerm[element.term] = element.value;
+    q.query.bool.filter.push({"term": myTerm});
+  });
+  console.log("query:" + JSON.stringify(q));
+  var resp = esRequest(url, "run/_doc/_search", q);
+  var data = JSON.parse(resp.getBody());
+  return data;
 };
 
 exports.getRuns = function (url, searchTerms) {
