@@ -1,6 +1,5 @@
 
 templates	: run.json iteration.json param.json sample.json period.json metric_desc.json metric_data.json
-		  ls -l *.json
 
 run.json	: run.base
 		  ./build.sh `cat ../VERSION` run
