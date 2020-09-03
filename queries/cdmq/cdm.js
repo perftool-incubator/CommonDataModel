@@ -281,7 +281,7 @@ exports.getRunData = function (url, searchTerms) {
 
 exports.getRuns = function (url, searchTerms) {
   var q = { 'query': { 'bool': { 'filter': [] }},
-            'aggs': { 'source': { 'terms': { 'field': 'run.id'}}},
+            'aggs': { 'source': { 'terms': { 'field': 'run.id', 'size': 1000}}},
       // it's possible to have multiple run docs with same ID, so use aggregation
             'size': 0 };
   //if (searchTerms.length === 0) {
