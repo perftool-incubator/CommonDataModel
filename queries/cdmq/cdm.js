@@ -163,6 +163,21 @@ exports.getPeriodRange = function (url, periId) {
   }
 };
 
+exports.getSampleStatus = function (url, sampId) {
+  var q = { 'query': { 'bool': { 'filter': [
+                                       {"term": {"sample.id": sampId}}
+                                           ] }},
+      '_source': 'sample.status',
+            'size': 1 };
+  var resp = esRequest(url, "sample/_doc/_search", q);
+  var data = JSON.parse(resp.getBody());
+  if (data.hits.total.value > 0 && Array.isArray(data.hits.hits) && data.hits.hits[0]._source.sample.status) {
+    return data.hits.hits[0]._source.sample.status;
+  } else {
+    console.log("sample status not found\n");
+  }
+};
+
 exports.getPrimaryPeriodId = function (url, sampId, periName) {
   var q = { 'query': { 'bool': { 'filter': [
                                        {"term": {"sample.id": sampId}},
