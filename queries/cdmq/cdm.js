@@ -109,10 +109,10 @@ exports.getParams = function (url, searchTerms) {
   var params = [];
   if (Array.isArray(data.hits.hits) && data.hits.hits.length > 0) {
     data.hits.hits.forEach(element => {
-      params.push(element._source.param);
+      params.push({"arg": element._source.param.arg, "val": element._source.param.val});
     });
   }
-  return { params };
+  return params;
 };
 
 exports.getSamples = function (url, searchTerms) {
@@ -158,8 +158,23 @@ exports.getPeriodRange = function (url, periId) {
             'size': 1 };
   var resp = esRequest(url, "period/_doc/_search", q);
   var data = JSON.parse(resp.getBody());
-  if (data.hits.hits[0]._source.period.begin && data.hits.hits[0]._source.period.end) {
+  if (data.hits.hits[0] && data.hits.hits[0]._source && data.hits.hits[0]._source.period.begin && data.hits.hits[0]._source.period.end) {
     return { "begin": data.hits.hits[0]._source.period.begin, "end": data.hits.hits[0]._source.period.end };
+  }
+};
+
+exports.getSampleStatus = function (url, sampId) {
+  var q = { 'query': { 'bool': { 'filter': [
+                                       {"term": {"sample.id": sampId}}
+                                           ] }},
+      '_source': 'sample.status',
+            'size': 1 };
+  var resp = esRequest(url, "sample/_doc/_search", q);
+  var data = JSON.parse(resp.getBody());
+  if (data.hits.total.value > 0 && Array.isArray(data.hits.hits) && data.hits.hits[0]._source.sample.status) {
+    return data.hits.hits[0]._source.sample.status;
+  } else {
+    console.log("sample status not found\n");
   }
 };
 
@@ -175,7 +190,7 @@ exports.getPrimaryPeriodId = function (url, sampId, periName) {
   if (data.hits.total.value > 0 && Array.isArray(data.hits.hits) && data.hits.hits[0]._source.period.id) {
     return data.hits.hits[0]._source.period.id;
   } else {
-    console.log("primary period id not found\n");
+    return null;
   }
 };
 
@@ -426,12 +441,12 @@ exports.getMetricIdsFromTerms = getMetricIdsFromTerms;
 
 // If metrics are "broken-out" by some part of the name-format, we must organize those into
 // groups, each group a collection of 1 or more metric IDs.
-getMetricGroupsFromBreakout = function (url, periId, source, type, breakout) {
+getMetricGroupsFromBreakout = function (url, runId, periId, source, type, breakout) {
   var metricGroupIdsByLabel = {};
   var q = { 'query': { 'bool': { 'filter': [ 
                                              {"term": {"metric_desc.source": source}},
                                              {"term": {"metric_desc.type": type}},
-                                             //{"term": {"period.id": periId}}
+                                             {"term": {"run.id": runId}}
                                             ]
                                }},
             'size': 0 };
@@ -724,27 +739,20 @@ exports.getMetricDataFromIds = getMetricDataFromIds;
 
 // Generates 1 or more values for 1 or more groups for a metric of a particular source
 // (tool or benchmark) and type (iops, l2-Gbps, ints/sec, etc).
-// The breakout determines if the metric is broken out into groups -if it is empty,
-// there is only 1 group.
-// The resolution determines the number of values for each group -if you just need
-// a single average for the metric group, the resolution should be 1.
-// The begin and end control the time domain, andmust be within the time domain
-// from this [benchmark-iteration-sample-]period (from doc which contains the periId).
-exports.getMetricDataFromPeriod = function(url, periId, source, type, begin, end, resolution, breakout) {
+// - The breakout determines if the metric is broken out into groups -if it is empty,
+//   there is only 1 group.
+// - The resolution determines the number of values for each group.  If you just need
+//   a single average for the metric group, the resolution should be 1.
+// - perId is optional, but should be used for benchmark metrics, as those metrics are
+//   attributed to a period
+// - The begin and end control the time domain, and must be within the time domain
+//   from this [benchmark-iteration-sample-]period (from doc which contains the periId)
+//   *if* the metric is from a benchmark.  If you want to query for corresponding
+//   tool data, use the same begin and end as the benchmark-iteration-sample-period.
+exports.getMetricDataFromPeriod = function(url, runId, periId, source, type, begin, end, resolution, breakout) {
   var data = { "breakouts": [], "values": {} };
   //TODO: "breakouts" needs to be populated
-  var metricGroupIdsByLabel = getMetricGroupsFromBreakout(url, periId, source, type, breakout);
-  Object.keys(metricGroupIdsByLabel).forEach(function(label) {
-    data.values[label] = getMetricDataFromIds(url, begin, end, resolution, metricGroupIdsByLabel[label]);
-  });
-  return data;
-};
-
-// Similar to getMetricDataFromPeriod, but does not require a period ID
-exports.getMetricData = function(url, source, type, begin, end, resolution, breakout) {
-  var data = { "breakouts": [], "values": {} };
-  //TODO: "breakouts" needs to be populated
-  var metricGroupIdsByLabel = getMetricGroupsFromBreakout(url, null, source, type, breakout);
+  var metricGroupIdsByLabel = getMetricGroupsFromBreakout(url, runId, periId, source, type, breakout);
   Object.keys(metricGroupIdsByLabel).forEach(function(label) {
     data.values[label] = getMetricDataFromIds(url, begin, end, resolution, metricGroupIdsByLabel[label]);
   });

@@ -8,6 +8,7 @@
               "names": {
                 "properties": {
                   "id": { "type": "keyword" },
+                  "num": { "type": "keyword" },
                   "class": { "type": "keyword" },
                   "type": { "type": "keyword" },
                   "host": { "type": "keyword" },
@@ -20,7 +21,10 @@
                   "group": { "type": "keyword" },
                   "tier": { "type": "keyword" },
                   "level": { "type": "keyword" },
+                  "package": { "type": "keyword" },
+                  "die": { "type": "keyword" },
                   "core": { "type": "keyword" },
+                  "thread": { "type": "keyword" },
                   "node": { "type": "keyword" },
                   "mode": { "type": "keyword" },
                   "socket": { "type": "keyword" },
