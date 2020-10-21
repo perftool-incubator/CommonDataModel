@@ -19,6 +19,7 @@ function list(val) {
 program
   .version('0.1.0')
   .option('--url <host:port>', 'The host and port of the Elasticsearch instance')
+  .option('--run <uuid>', 'The UUID from the run')
   .option('--period <uuid>', 'The UUID from the benchmark-iteration-sample-period')
   .option('--source <name>', 'The metric source, like a tool or benchmark name (sar, fio)')
   .option('--type <name>', 'The metric type, like Gbps or IOPS')
@@ -28,5 +29,5 @@ program
   .option('--breakout <label1,label2,label3...>', 'List of labels to break-out the metric, like --breakout=host,id with --source=sar -type=ProcessorBusyUtil', list, [])
   .parse(process.argv);
 
-console.log(JSON.stringify(cdm.getMetricDataFromPeriod(program.url, program.period, program.source, program.type, program.begin, program.end, program.resolution, program.breakout), null, 2));
+console.log(JSON.stringify(cdm.getMetricDataFromPeriod(program.url, program.run, program.period, program.source, program.type, program.begin, program.end, program.resolution, program.breakout), null, 2));
 
