@@ -123,15 +123,15 @@ for run_id in $run_ids; do
                 begin=`echo -e $range | $jq_cmd '.begin'`
                 end=`echo -e $range | $jq_cmd '.end'`
                 # to report a single number:
-                debug_log "  node get-metric-data-from-period $url --begin $begin --end $end --period $primary_period_id --source $benchmark --type $primary_metric --resolution 1"
+                debug_log "  node get-metric-data-from-period $url --begin $begin --end $end --run $run_id --period $primary_period_id --source $benchmark --type $primary_metric --resolution 1"
 
-                bench_value=`node get-metric-data-from-period $url --begin $begin --end $end --period $primary_period_id --source $benchmark --type $primary_metric --resolution 1 | $jq_cmd '.values.""[0].value'`
+                bench_value=`node get-metric-data-from-period $url --begin $begin --end $end --run $run_id --period $primary_period_id --source $benchmark --type $primary_metric --resolution 1 | $jq_cmd '.values.""[0].value'`
                 bench_sample_vals="$bench_sample_vals $bench_value"
                 bench_sum_value=`echo "$bench_sum_value + $bench_value" | bc`
 
                 if [ ! -z "$metric_source" -a ! -z "$metric_type" ]; then
-                    metric_value=`node get-metric-data-from-period $url --begin $begin --end $end --source $metric_source --type $metric_type --resolution 1 $breakout_opt | $jq_cmd '.values | to_entries | .[0].value[0].value'`
-                    debug_log "  node get-metric-data-from-period $url --begin $begin --end $end --source $metric_source --type $metric_type --resolution 1 $breakout_opt | $jq_cmd '.values | to_entries | .[0].value[0].value'"
+                    metric_value=`node get-metric-data-from-period $url --begin $begin --end $end --run $run_id --source $metric_source --type $metric_type --resolution 1 $breakout_opt | $jq_cmd '.values | to_entries | .[0].value[0].value'`
+                    debug_log "  node get-metric-data-from-period $url --begin $begin --end $end --run $run_id --source $metric_source --type $metric_type --resolution 1 $breakout_opt | $jq_cmd '.values | to_entries | .[0].value[0].value'"
                     metric_sample_vals="$metric_sample_vals $metric_value"
                     metric_sum_value=`echo "$metric_sum_value + $metric_value" | bc`
                 fi
