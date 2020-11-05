@@ -126,6 +126,7 @@ for run_id in $run_ids; do
                 debug_log "  node get-metric-data-from-period $url --begin $begin --end $end --run $run_id --period $primary_period_id --source $benchmark --type $primary_metric --resolution 1"
 
                 bench_value=`node get-metric-data-from-period $url --begin $begin --end $end --run $run_id --period $primary_period_id --source $benchmark --type $primary_metric --resolution 1 | $jq_cmd '.values.""[0].value'`
+                bench_value=`printf "%f" $bench_value`
                 bench_sample_vals="$bench_sample_vals $bench_value"
                 bench_sum_value=`echo "$bench_sum_value + $bench_value" | bc`
 
