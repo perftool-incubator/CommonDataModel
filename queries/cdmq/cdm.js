@@ -89,7 +89,7 @@ exports.getIterations = function (url, searchTerms) {
       ids.push(element._source.iteration.id);
     });
   }
-  return { ids };
+  return ids;
 };
 
 exports.getParams = function (url, searchTerms) {
@@ -135,7 +135,7 @@ exports.getSamples = function (url, searchTerms) {
       ids.push(element._source.sample.id);
     });
   }
-  return { ids };
+  return ids;
 };
 
 exports.getPrimaryPeriodName = function (url, iterId) {
@@ -314,7 +314,7 @@ exports.getRuns = function (url, searchTerms) {
     data.aggregations.source.buckets.forEach(element => {
       ids.push(element.key);
     });
-    return { ids };
+    return ids;
   }
 };
 
@@ -376,9 +376,12 @@ getBreakoutAggregation = function (source, type, breakout) {
       agg_str += '}}';
       field_count--;
     }
-    agg_str += '}}}}';
-    return agg_str;
+    //agg_str += '}}}}';
+    //return agg_str;
   }
+  // add:
+  agg_str += '}}}}';
+  return agg_str;
 };
 exports.getBreakoutAggregation = getBreakoutAggregation;
 
@@ -470,8 +473,10 @@ getMetricGroupsFromBreakout = function (url, runId, periId, source, type, breako
       q.query.bool.filter.push(JSON.parse('{"term": {"metric_desc.names.' + field + '": "' + value + '"}}'));
     }
   });
+  //console.log("q:\n" + JSON.stringify(q));
   var resp = esRequest(url, "metric_desc/_doc/_search", q);
   var data = JSON.parse(resp.getBody());
+  //console.log(JSON.stringify(data, null, 2));
   // The response includes a result from a nested aggregation, which will be parsed to produce
   // query terms for each of the metric groups
   //var metricGroupTerms = getMetricGroupTermsFromAgg(data.aggregations, 0, "");
@@ -485,6 +490,73 @@ getMetricGroupsFromBreakout = function (url, runId, periId, source, type, breako
   return metricGroupIdsByLabel;
 };
 exports.getMetricGroupsFromBreakout = getMetricGroupsFromBreakout;
+
+// Like above but get the metric groups for multiple periods
+getMetricGroupsFromBreakouts = function (url, periods) {
+  var metricGroupIdsByLabel = [];
+  //var indexjson = '{"index": "' + getIndexBaseName() + 'metric_data' + '" }\n';
+  var indexjson = '{}\n';
+  var index = JSON.parse(indexjson);
+  var ndjson = "";
+
+  periods.forEach(period => {
+    var result = getBreakoutAggregation(period.source, period.type, period.breakout);
+    var aggs = JSON.parse(result);
+    var q = { 'query': { 'bool': { 'filter': [ 
+                                              {"term": {"metric_desc.source": period.source}},
+                                              {"term": {"metric_desc.type": period.type}},
+                                              {"term": {"run.id": period.run}}
+                                             ]
+                                }},
+             'size': 0 };
+  
+    if (period.period != null) {
+      q.query.bool.filter.push(JSON.parse('{"term": {"period.id": "' + period.period + '"}}'));
+    }
+    // If the breaout contains a match requirement (something like "host=myhost"), then we must add a term filter for it.
+    // Eventually it would be nice to have something other than a match, like a regex: host=/^client/.
+    var regExp = /([^\=]+)\=([^\=]+)/;
+    period.breakout.forEach(field => {
+      var matches = regExp.exec(field);
+      if (matches) {
+        field = matches[1];
+        value = matches[2];
+        q.query.bool.filter.push(JSON.parse('{"term": {"metric_desc.names.' + field + '": "' + value + '"}}'));
+      }
+    });
+    q.aggs = aggs;
+    ndjson += JSON.stringify(index) + "\n";
+    ndjson += JSON.stringify(q) + "\n";
+  });
+  //console.log("ndjson:\n" + ndjson);
+  var resp = esRequest(url, "metric_desc/_doc/_msearch", ndjson);
+  var data = JSON.parse(resp.getBody());
+  //console.log(JSON.stringify(data, null , 2));
+
+  // The response includes a result from a nested aggregation, which will be parsed to produce
+  // query terms for each of the metric groups
+  //var metricGroupTerms = getMetricGroupTermsFromAgg(data.aggregations, 0, "");
+  //var metricGroupTerms = getMetricGroupTermsFromAgg(data.aggregations);
+  var metricGroupIdsByLabelSets = [];
+  for (var idx = 0; idx < data.responses.length; idx++) {
+  //data.responses.forEach(response => {
+    var metricGroupTerms = getMetricGroupTermsFromAgg(data.responses[idx].aggregations);
+    // Derive the label from each group and organize into a dict, key = label, value = the filter terms 
+    var metricGroupTermsByLabel = getMetricGroupTermsByLabel(metricGroupTerms);
+    // Now iterate over these labels and query with the label's search terms to get the metric IDs
+    Object.keys(metricGroupTermsByLabel).forEach(label => {
+      //console.log("label: " + label + " period: " + periods[idx].period + " metricGroupTerms: " + JSON.stringify(metricGroupTermsByLabel[label]));
+      metricGroupIdsByLabel[label] = getMetricIdsFromTerms(url, periods[idx].period, metricGroupTermsByLabel[label]);
+      //console.log("metricGroupIdsByLabel[%s]: %s", label, JSON.stringify(metricGroupIdsByLabel[label]));
+      metricGroupIdsByLabelSets[idx] = {};
+      metricGroupIdsByLabelSets[idx][label] = metricGroupIdsByLabel[label];
+    });
+  //});
+  }
+  //console.log("metricGroupIdsByLabelSets:\n" + JSON.stringify(metricGroupIdsByLabelSets));
+  return metricGroupIdsByLabelSets;
+};
+exports.getMetricGroupsFromBreakouts = getMetricGroupsFromBreakouts;
 
 // From a set of metric_desc ID's, return 1 or more values depending on resolution.
 // For each metric ID, there should be exactly 1 metric_desc doc and at least 1 metric_data docs.
@@ -621,8 +693,8 @@ getMetricDataFromIds = function (url, begin, end, resolution, metricIds) {
     reqjson += '}\n';
     index = JSON.parse(indexjson);
     req = JSON.parse(reqjson);
-    ndjson += JSON.stringify(index) + "\n";
-    ndjson += JSON.stringify(req) + "\n";
+    ndjson += JSON.stringify(index) + "\n"; //ensures JSON is exactly 1 line
+    ndjson += JSON.stringify(req) + "\n"; //ensures JSON is exactly 1 line
 
     // Cycle through every "slice" of the time domain, adding the requests for the entire time domain
     thisBegin = thisEnd + 1;
@@ -754,7 +826,26 @@ exports.getMetricDataFromPeriod = function(url, runId, periId, source, type, beg
   //TODO: "breakouts" needs to be populated
   var metricGroupIdsByLabel = getMetricGroupsFromBreakout(url, runId, periId, source, type, breakout);
   Object.keys(metricGroupIdsByLabel).forEach(function(label) {
+    //console.log("Metric IDs:\n" + JSON.stringify(metricGroupIdsByLabel[label]));
     data.values[label] = getMetricDataFromIds(url, begin, end, resolution, metricGroupIdsByLabel[label]);
   });
   return data;
 };
+
+exports.getMetricDataFromPeriods = function(url, periods) {
+  var dataSets = [];
+  //TODO: "breakouts" needs to be populated
+  var metricGroupIdsByLabelSets = getMetricGroupsFromBreakouts(url, periods);
+  //console.log(JSON.stringify(metricGroupIdsByLabelSets));
+  for (var idx = 0; idx < metricGroupIdsByLabelSets.length; idx++) {
+  //metricGroupIdsByLabelSets.forEach(metricGroupIdsByLabel => {
+    var data = { "breakouts": [], "values": {} };
+    Object.keys(metricGroupIdsByLabelSets[idx]).forEach(function(label) {
+      //console.log("idx: " + idx + " label: [" + label + "] begin: " + periods[idx].begin + " end: " + periods[idx].end + " resolution: " + periods[idx].resolution);
+      //console.log("Metric IDs:\n" + JSON.stringify(metricGroupIdsByLabelSets[idx][label]));
+      data.values[label] = getMetricDataFromIds(url, periods[idx].begin, periods[idx].end, periods[idx].resolution, metricGroupIdsByLabelSets[idx][label]);
+      dataSets.push(data);
+    });
+  }
+  return dataSets;
+}
