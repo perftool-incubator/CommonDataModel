@@ -50,9 +50,20 @@ runIds.forEach(runId => {
       paramList += param.arg + "=" + param.val + " ";
     });
     console.log(paramList);
+    //d = Date.now();
+    //console.log(d + " call:getPrimaryMetric");
     var primaryMetric = cdm.getPrimaryMetric(program.url, iterationId);
+    //dPrev = d;
+    //d = Date.now();
+    //console.log(d + " return:getPrimaryMetric, call:getPrimaryPeriodName +" + (d - dPrev));
     var primaryPeriodName = cdm.getPrimaryPeriodName(program.url, iterationId);
+    //dPrev = d;
+    //d = Date.now();
+    //console.log(d + " return:getPrimaryPeriodName, call:getSamples +" + (d - dPrev));
     var samples = cdm.getSamples(program.url, [{ "term": "iteration.id", "match": "eq", "value": iterationId }]);
+    //dPrev = d;
+    //d = Date.now();
+    //console.log(d + " return:getSamples +" + (d - dPrev));
     var sampleTotal = 0;
     var sampleCount = 0;
     var sampleVals = [];
@@ -60,15 +71,28 @@ runIds.forEach(runId => {
     var periods = [];
     samples.forEach(sample => {
       if (cdm.getSampleStatus(program.url, sample) == "pass") {
+        //d = Date.now();
+        //console.log(d + " call:getPrimaryPeriodId");
         var primaryPeriodId = cdm.getPrimaryPeriodId(program.url, sample, primaryPeriodName);
+        //dPrev = d;
+        //d = Date.now();
+        //console.log(d + " return:getPrimaryPeriodId, call:getNameFormat +" + (d - dPrev));
         var nameFormat = cdm.getNameFormat(program.url, primaryPeriodId, benchName, primaryMetric);
+        //dPrev = d;
+        //d = Date.now();
+        //console.log(d + " return:getNameFormat, call:getPeriodRange +" + (d - dPrev));
         var range = cdm.getPeriodRange(program.url, primaryPeriodId);
+        //dPrev = d;
+        //d = Date.now();
+        //console.log(d + " return:getPeriodRange, call:getMetricDataFromPeriod +" + (d - dPrev));
         var breakout = [];
         var period = { "run": runId, "period": primaryPeriodId, "source": benchName, "type": primaryMetric, "begin": range.begin, "end": range.end, "resolution": 1, "breakout": [] };
         periods.push(period);
-        //var metricData = cdm.getMetricDataFromPeriod(program.url, runId, primaryPeriodId, benchName, primaryMetric, range.begin, range.end, 1, breakout);
+        //dPrev = d;
+        //d = Date.now();
+        var metricData = cdm.getMetricDataFromPeriod(program.url, runId, primaryPeriodId, benchName, primaryMetric, range.begin, range.end, 1, breakout);
+        //console.log(d + " return:getMetricDataFromPeriod +" + (d - dPrev));
         //console.log(JSON.stringify(metricData));
-        /*
         var sampleVal = metricData.values[""];
         if (sampleVal && sampleVal[0] && sampleVal[0].value) {
           sampleVal = parseFloat(sampleVal[0].value);
@@ -78,11 +102,16 @@ runIds.forEach(runId => {
           sampleList += " " + sampleFixed;
           sampleCount++;
         }
-        */
       }
     });
-    var metricDataSets = cdm.getMetricDataFromPeriods(program.url, periods);
+    //d = Date.now();
+    //console.log(d + " call:getMetricDataFromPeriods");
+    //var metricDataSets = cdm.getMetricDataFromPeriods(program.url, periods);
+    //dPrev = d;
+    //d = Date.now();
+    //console.log(d + " return:getMetricDataFromPeriods +" + (d - dPrev));
     //console.log(JSON.stringify(metricDataSets));
+    /*
     metricDataSets.forEach(metricData => {
       var sampleVal = metricData.values[""];
       if (sampleVal && sampleVal[0] && sampleVal[0].value) {
@@ -94,6 +123,7 @@ runIds.forEach(runId => {
         sampleCount++;
       }
     });
+    */
     if (sampleCount > 0) {
       var mean = sampleTotal / sampleCount;
       var diff = 0;

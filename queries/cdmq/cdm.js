@@ -587,12 +587,10 @@ getMetricDataFromIds = function (url, begin, end, resolution, metricIds) {
     // begin - end time range, then [locally] computing a weighted average per
     // thisBegin - thisEnd slice. Each method has pros/cons depending on the
     // resolution and the total number of metric_data documents. 
-
+    //
     // This first request is for the weighted average, but does not include the
     // documents which are partially outside the time range we need.
-
     indexjson = '{"index": "' + getIndexBaseName() + 'metric_data' + '" }\n';
-
     reqjson  = '{';
     reqjson += '  "size": 0,';
     reqjson += '  "query": {';
@@ -622,13 +620,10 @@ getMetricDataFromIds = function (url, begin, end, resolution, metricIds) {
     var req = JSON.parse(reqjson);
     ndjson += JSON.stringify(index) + "\n";
     ndjson += JSON.stringify(req) + "\n";
-
     // This second request is for the total weight of the previous weighted average request.
     // We need this because we are going to recompute the weighted average by adding
     // a few more documents that are partially outside the time domain.
-
     indexjson = '{"index": "' + getIndexBaseName() + 'metric_data' + '" }\n';
-
     reqjson  = '{';
     reqjson += '  "size": 0,';
     reqjson += '  "query": {';
@@ -651,12 +646,9 @@ getMetricDataFromIds = function (url, begin, end, resolution, metricIds) {
     req = JSON.parse(reqjson);
     ndjson += JSON.stringify(index) + "\n";
     ndjson += JSON.stringify(req) + "\n";
-
     // This third request is for documents that had its begin during or before the time range, but
     // its end was after the time range.
-
     indexjson = '{"index": "' + getIndexBaseName() + 'metric_data' + '" }\n';
-
     reqjson  = '{';
     reqjson += '  "query": {';
     reqjson += '    "bool": {';
@@ -673,10 +665,8 @@ getMetricDataFromIds = function (url, begin, end, resolution, metricIds) {
     req = JSON.parse(reqjson);
     ndjson += JSON.stringify(index) + "\n";
     ndjson += JSON.stringify(req) + "\n";
-
     // This fourth request is for documents that had its begin before the time range, but
     //  its end was during or after the time range
-
     var indexjson = '{"index": "' + getIndexBaseName() + 'metric_data' + '" }\n';
     var reqjson = '';
     reqjson += '{';
@@ -695,7 +685,6 @@ getMetricDataFromIds = function (url, begin, end, resolution, metricIds) {
     req = JSON.parse(reqjson);
     ndjson += JSON.stringify(index) + "\n"; //ensures JSON is exactly 1 line
     ndjson += JSON.stringify(req) + "\n"; //ensures JSON is exactly 1 line
-
     // Cycle through every "slice" of the time domain, adding the requests for the entire time domain
     thisBegin = thisEnd + 1;
     thisEnd += duration + 1;
@@ -739,7 +728,7 @@ getMetricDataFromIds = function (url, begin, end, resolution, metricIds) {
       //  time range.
       //  2) The time domain we have is really small because the resolution we are using is
       //  very big.
-      //  
+      //
       //  In eithr case, we have to set the average and total_weight to 0, and then the
       //  recompuation of the weighted average [with the last two requests in this set, finding
       //  all of th docs that are partially in the time domain] will work.
@@ -747,7 +736,6 @@ getMetricDataFromIds = function (url, begin, end, resolution, metricIds) {
       aggWeight = 0;
       aggAvgTimesWeight = 0;
     }
-
     // Process last 2 of the 4 responses in the 'set'
     // Since these docs have a time range partially outside the time range we want,
     // we have to get a new, reduced duration and use that to agment our weighted average.
@@ -792,7 +780,6 @@ getMetricDataFromIds = function (url, begin, end, resolution, metricIds) {
     dataSample.end = thisEnd;
     dataSample.value = result;
     values.push(dataSample);
-
     count += 4;
     thisBegin = thisEnd + 1;
     thisEnd += duration + 1;
@@ -806,6 +793,268 @@ getMetricDataFromIds = function (url, begin, end, resolution, metricIds) {
     //}
   }
   return values;
+};
+exports.getMetricDataFromIds = getMetricDataFromIds;
+
+// Like above but queries for all sets of Metric IDs and for all labels
+getMetricDataFromIdsSets = function (url, periods, metricGroupIdsByLabelSets) {
+  var ndjson = "";
+  //console.log("metricGroupIdsByLabelSets.length = " + metricGroupIdsByLabelSets.length);
+  for (var idx = 0; idx < metricGroupIdsByLabelSets.length; idx++) {
+    //console.log("metricGroupIdsByLabelSets[" + idx + "]:\n" + JSON.stringify(metricGroupIdsByLabelSets[idx]));
+    Object.keys(metricGroupIdsByLabelSets[idx]).forEach(function(label) {
+    //(metricGroupIdsByLabelSets[idx]).forEach(label => {
+      var metricIds = metricGroupIdsByLabelSets[idx][label];
+      var begin = Number(periods[idx].begin);
+      var end = Number(periods[idx].end);
+      var resolution = Number(periods[idx].resolution);
+      var duration = Math.floor((end - begin) / resolution);
+      var thisBegin = begin;
+      var thisEnd = begin + duration;
+      // The resolution determines how many times we compute a value, each value for a
+      // different "slice" in the original begin-to-end time domain.
+      while (true) {
+        // Calculating a single value representing an average for thisBegin - thisEnd
+        // relies on an [weighted average] aggregation, plus a few other queries.  An
+        // alternative method would involve querying all documents for the orignal
+        // begin - end time range, then [locally] computing a weighted average per
+        // thisBegin - thisEnd slice. Each method has pros/cons depending on the
+        // resolution and the total number of metric_data documents. 
+        //
+        // This first request is for the weighted average, but does not include the
+        // documents which are partially outside the time range we need.
+        indexjson = '{"index": "' + getIndexBaseName() + 'metric_data' + '" }\n';
+        reqjson  = '{';
+        reqjson += '  "size": 0,';
+        reqjson += '  "query": {';
+        reqjson += '    "bool": {';
+        reqjson += '      "filter": [';
+        reqjson += '        {"range": {"metric_data.end": { "lte": "' + thisEnd + '"}}},';
+        reqjson += '        {"range": {"metric_data.begin": { "gte": "' + thisBegin + '"}}},';
+        reqjson += '        {"terms": {"metric_desc.id": ' + JSON.stringify(metricIds) + '}}';
+        reqjson += '      ]';
+        reqjson += '    }';
+        reqjson += '  },';
+        reqjson += '  "aggs": {';
+        reqjson += '    "metric_avg": {';
+        reqjson += '      "weighted_avg": {';
+        reqjson += '        "value": {';
+        reqjson += '          "field": "metric_data.value"';
+        reqjson += '        },';
+        reqjson += '        "weight": {';
+        reqjson += '          "field": "metric_data.duration"';
+        reqjson += '        }';
+        reqjson += '      }';
+        reqjson += '    }';
+        reqjson += '  }';
+        reqjson += '}';
+        var index = JSON.parse(indexjson);
+        var req = JSON.parse(reqjson);
+        ndjson += JSON.stringify(index) + "\n";
+        ndjson += JSON.stringify(req) + "\n";
+        // This second request is for the total weight of the previous weighted average request.
+        // We need this because we are going to recompute the weighted average by adding
+        // a few more documents that are partially outside the time domain.
+        indexjson = '{"index": "' + getIndexBaseName() + 'metric_data' + '" }\n';
+        reqjson  = '{';
+        reqjson += '  "size": 0,';
+        reqjson += '  "query": {';
+        reqjson += '    "bool": {';
+        reqjson += '      "filter": [';
+        reqjson += '        {"range": {"metric_data.end": { "lte": "' + thisEnd + '"}}},';
+        reqjson += '        {"range": {"metric_data.begin": { "gte": "' + thisBegin + '"}}},';
+        reqjson += '        {"terms": {"metric_desc.id": ' + JSON.stringify(metricIds) + '}}';
+        reqjson += '      ]';
+        reqjson += '    }';
+        reqjson += '  },';
+        reqjson += '  "aggs": {';
+        reqjson += '    "total_weight": {';
+        reqjson += '      "sum": {"field": "metric_data.duration"}';
+        reqjson += '    }';
+        reqjson += '  }';
+        reqjson += '}\n';
+        index = JSON.parse(indexjson);
+        req = JSON.parse(reqjson);
+        ndjson += JSON.stringify(index) + "\n";
+        ndjson += JSON.stringify(req) + "\n";
+        // This third request is for documents that had its begin during or before the time range, but
+        // its end was after the time range.
+        indexjson = '{"index": "' + getIndexBaseName() + 'metric_data' + '" }\n';
+        reqjson  = '{';
+        reqjson += '  "query": {';
+        reqjson += '    "bool": {';
+        reqjson += '      "filter": [';
+        reqjson += '        {"range": {"metric_data.end": { "gt": "' + thisEnd + '"}}},';
+        reqjson += '        {"range": {"metric_data.begin": { "lte": "' + thisEnd + '"}}},';
+        reqjson += '        {"terms": {"metric_desc.id": ' + JSON.stringify(metricIds) + '}}\n';
+        reqjson += '      ]';
+        reqjson += '    }';
+        reqjson += '  }';
+        reqjson += '}';
+        index = JSON.parse(indexjson);
+        req = JSON.parse(reqjson);
+        ndjson += JSON.stringify(index) + "\n";
+        ndjson += JSON.stringify(req) + "\n";
+        // This fourth request is for documents that had its begin before the time range, but
+        //  its end was during or after the time range
+        var indexjson = '{"index": "' + getIndexBaseName() + 'metric_data' + '" }\n';
+        var reqjson = '';
+        reqjson += '{';
+        reqjson += '  "query": {';
+        reqjson += '    "bool": {';
+        reqjson += '      "filter": [';
+        reqjson += '        {"range": {"metric_data.end": { "gte": ' + thisBegin + '}}},';
+        reqjson += '        {"range": {"metric_data.begin": { "lt": ' + thisBegin + '}}},';
+        reqjson += '        {"terms": {"metric_desc.id": ["' + metricIds + '"]}}\n';
+        reqjson += '      ]';
+        reqjson += '    }';
+        reqjson += '  }';
+        reqjson += '}\n';
+        index = JSON.parse(indexjson);
+        req = JSON.parse(reqjson);
+        ndjson += JSON.stringify(index) + "\n"; //ensures JSON is exactly 1 line
+        ndjson += JSON.stringify(req) + "\n"; //ensures JSON is exactly 1 line
+
+        // Cycle through every "slice" of the time domain, adding the requests for the entire time domain
+        thisBegin = thisEnd + 1;
+        thisEnd += duration + 1;
+        if (thisEnd > end) {
+          thisEnd = end;
+        }
+        if (thisBegin > thisEnd) {
+          break;
+        }
+      }
+    });
+  }
+
+
+  var resp = esRequest(url, "metric_data/_doc/_msearch", ndjson);
+  var data = JSON.parse(resp.getBody());
+  var elements = data.responses.length;
+
+  var valueSets = [];
+  for (var idx = 0; idx < metricGroupIdsByLabelSets.length; idx++) {
+    thisSetElements = elements / metricGroupIdsByLabelSets.length;
+    //valueSets[idx] = [];
+    var valuesByLabel = {};
+    Object.keys(metricGroupIdsByLabelSets[idx]).forEach(function(label) {
+    //metricGroupIdsByLabelSets[idx].forEach(label => {
+      valuesByLabel[label] = [];
+      thisLabelElements = thisSetElements / metricGroupIdsByLabelSets[idx][label].length;
+      var metricIds = metricGroupIdsByLabelSets[idx][label];
+      var values = [];
+      var begin = Number(periods[idx].begin);
+      var end = Number(periods[idx].end);
+      var resolution = Number(periods[idx].resolution);
+      var duration = Math.floor((end - begin) / resolution);
+      var thisBegin = begin;
+      var thisEnd = begin + duration;
+      var count = 0;
+      var subCount = 0;
+      //var elements = data.responses.length / metricGroupIdsByLabelSets.length;
+      var numMetricIds = metricIds.length;
+      while (count < thisLabelElements) {
+        var timeWindowDuration = thisEnd - thisBegin + 1;
+        var totalWeightTimesMetrics = timeWindowDuration * numMetricIds;
+        subCount++;
+        var aggAvg;
+        var aggWeight;
+        var aggAvgTimesWeight;
+        var newWeight;
+        aggAvg = data.responses[count].aggregations.metric_avg.value; //$$resp_ref{'responses'}[$count]{'aggregations'}{'metric_avg'}{'value'};
+        if (typeof aggAvg != "undefined") {
+          // We have the weighted average for documents that don't overlap the time range,
+          // but we need to combine that with the documents that are partially outside
+          // the time range.  We need to know the total weight from the documents we
+          // just finished in order to add the new documents and recompute the new weighted
+          // average.
+          aggWeight = data.responses[count+1].aggregations.total_weight.value;
+          aggAvgTimesWeight = aggAvg * aggWeight;
+        } else {
+          // It is possible that the aggregation returned no results because all of the documents
+          // were partially outside the time domain.  This can happen when
+          //  1) A  metric does not change during the entire test, and therefore only 1 document
+          //  is created with a huge duration with begin before the time range and after after the
+          //  time range.
+          //  2) The time domain we have is really small because the resolution we are using is
+          //  very big.
+          //
+          //  In eithr case, we have to set the average and total_weight to 0, and then the
+          //  recompuation of the weighted average [with the last two requests in this set, finding
+          //  all of th docs that are partially in the time domain] will work.
+          aggAvg = 0;
+          aggWeight = 0;
+          aggAvgTimesWeight = 0;
+        }
+
+        // Process last 2 of the 4 responses in the 'set'
+        // Since these docs have a time range partially outside the time range we want,
+        // we have to get a new, reduced duration and use that to agment our weighted average.
+        var sumValueTimesWeight = 0;
+        var sumWeight = 0;
+        // It is possible to have the same document returned from the last two queries in this set of 4.
+        // This can happen when the document's begin is before $this_begin *and* the document's end
+        // if after $this_end.
+        // You must not process the document twice.  Perform a consolidation by organizing by the
+        //  returned document's '_id'
+        var partialDocs = {};
+        var k;
+        for (k = 2; k < 4; k++) {
+          //for my $j (@{ $$resp_ref{'responses'}[$count + $k]{'hits'}{'hits'} }) {
+          data.responses[count + k].hits.hits.forEach(element => {
+            //for my $key (keys %{ $$j{'_source'}{'metric_data'} }) {
+            partialDocs[element._id] = {};
+            Object.keys(element._source.metric_data).forEach(key => {
+              //partial_docs[{$$j{'_id'}}{$key} = $$j{'_source'}{'metric_data'}{$key};
+              partialDocs[element._id][key] = element._source.metric_data[key];
+            });
+          });
+        }
+        // Now we can process the partialDocs
+        Object.keys(partialDocs).forEach(id => {
+          var docDuration = partialDocs[id].duration;
+          if (partialDocs[id].begin < thisBegin) {
+            docDuration -= thisBegin - partialDocs[id].begin;
+          }
+          if (partialDocs[id].end > thisEnd) {
+            docDuration -= partialDocs[id].end - thisEnd;
+          }
+          var valueTimesWeight = partialDocs[id].value * docDuration;
+          sumValueTimesWeight += valueTimesWeight;
+          sumWeight += docDuration;
+        });
+        var result = (aggAvgTimesWeight + sumValueTimesWeight) / totalWeightTimesMetrics;
+        result *= numMetricIds;
+        result = Number.parseFloat(result).toPrecision(4);
+        var dataSample = {};
+        dataSample.begin = thisBegin;
+        dataSample.end = thisEnd;
+        dataSample.value = result;
+        values.push(dataSample);
+
+        count += 4;
+        thisBegin = thisEnd + 1;
+        thisEnd += duration + 1;
+        if (thisEnd > end) {
+          thisEnd = end;
+        }
+        //thisBegin = thisEnd;
+        //thisEnd += thisEnd + duration + 1;
+        //if (thisEnd > end) {
+          //thisEnd = end;
+        //}
+      }
+      //console.log("values for set " + idx + " for label [" + label + "]:\n" + JSON.stringify(values));
+      valuesByLabel[label].push(values);
+      //console.log("valuesByLabel[" + label + "] for set " + idx + ":\n" + JSON.stringify(valuesByLabel[label]));
+    });
+    //valueSets.push(valuesByLabel);
+    valueSets[idx] = valuesByLabel;
+    //console.log("valuesSets[" + idx + "]:\n" + JSON.stringify(valueSets[idx]));
+  }
+  //console.log("valueSets:\n" + JSON.stringify(valueSets));
+  return valueSets;
 };
 exports.getMetricDataFromIds = getMetricDataFromIds;
 
@@ -833,19 +1082,7 @@ exports.getMetricDataFromPeriod = function(url, runId, periId, source, type, beg
 };
 
 exports.getMetricDataFromPeriods = function(url, periods) {
-  var dataSets = [];
-  //TODO: "breakouts" needs to be populated
   var metricGroupIdsByLabelSets = getMetricGroupsFromBreakouts(url, periods);
-  //console.log(JSON.stringify(metricGroupIdsByLabelSets));
-  for (var idx = 0; idx < metricGroupIdsByLabelSets.length; idx++) {
-  //metricGroupIdsByLabelSets.forEach(metricGroupIdsByLabel => {
-    var data = { "breakouts": [], "values": {} };
-    Object.keys(metricGroupIdsByLabelSets[idx]).forEach(function(label) {
-      //console.log("idx: " + idx + " label: [" + label + "] begin: " + periods[idx].begin + " end: " + periods[idx].end + " resolution: " + periods[idx].resolution);
-      //console.log("Metric IDs:\n" + JSON.stringify(metricGroupIdsByLabelSets[idx][label]));
-      data.values[label] = getMetricDataFromIds(url, periods[idx].begin, periods[idx].end, periods[idx].resolution, metricGroupIdsByLabelSets[idx][label]);
-      dataSets.push(data);
-    });
-  }
+  var dataSets = getMetricDataFromIdsSets(url, periods, metricGroupIdsByLabelSets);
   return dataSets;
 }

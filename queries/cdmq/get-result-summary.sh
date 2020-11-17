@@ -39,7 +39,7 @@ function get_sample() {
         debug_log "  node get-metric-data-from-period $url --begin $begin --end $end --run $run_id --period $primary_period_id --source $benchmark --type $primary_metric --resolution 1"
         bench_value=`node get-metric-data-from-period $url --begin $begin --end $end --run $run_id --period $primary_period_id --source $benchmark --type $primary_metric --resolution 1 | $jq_cmd '.values.""[0].value'`
         bench_value=`printf "%f" $bench_value`
-        echo "bench_value: $bench_value"
+        #echo "bench_value: $bench_value"
 
         if [ ! -z "$metric_source" -a ! -z "$metric_type" ]; then
             metric_value=`node get-metric-data-from-period $url --begin $begin --end $end --run $run_id --source $metric_source --type $metric_type --resolution 1 $breakout_opt | $jq_cmd '.values | to_entries | .[0].value[0].value'`
@@ -94,11 +94,11 @@ function get_iteration() {
         if [ -f sample-$sample.txt ]; then
             let num_pass_samples=$num_pass_samples+1
             bench_sample_val="`cat sample-$sample.txt`"
-            echo "bench_sample_val: $bench_sample_val"
+            #echo "bench_sample_val: $bench_sample_val"
             /bin/rm sample-$sample.txt
             bench_sample_vals="$bench_sample_vals $bench_sample_val"
             bench_sum_value=`echo "$bench_sum_value + $bench_sample_val" | bc`
-            echo "$bench_sum_value + $bench_sample_val"
+            #echo "$bench_sum_value + $bench_sample_val"
         fi
     done
     if [ $num_pass_samples -gt 0 ]; then
@@ -184,7 +184,7 @@ for run_id in $run_ids; do
     count=0
     for iteration in $iterations; do
         #echo "backgrounding interation $iteration"
-        get_iteration $iteration &
+        get_iteration $iteration
         let count=$count+1
         #if [ $count > 8 ]; then
             #wait
