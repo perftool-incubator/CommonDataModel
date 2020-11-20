@@ -1,8 +1,11 @@
 
-templates	: run.json iteration.json param.json sample.json period.json metric_desc.json metric_data.json
+templates	: run.json tag.json iteration.json param.json sample.json period.json metric_desc.json metric_data.json
 
 run.json	: run.base
 		  ./build.sh `cat ../VERSION` run
+
+tag.json	: run.base tag.base
+		  ./build.sh `cat ../VERSION` tag run
 
 iteration.json	: run.base iteration.base
 		  ./build.sh `cat ../VERSION` iteration run

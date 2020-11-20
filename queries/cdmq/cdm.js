@@ -257,13 +257,17 @@ exports.getNameFormat = function (url, periId, source, type) {
 
 exports.getTags = function (url, runId) {
   var q = { 'query': { 'bool': { 'filter': [ {"term": {"run.id": runId}} ] }},
-      '_source': "run.tags",
-            'size': 1 };
-  var resp = esRequest(url, "run/_doc/_search", q);
+      '_source': "tag", 'size': 1000};
+
+  var resp = esRequest(url, "tag/_doc/_search", q);
   var data = JSON.parse(resp.getBody());
-  if (data.hits.total.value > 0 && data.hits.hits[0]._source && data.hits.hits[0]._source.run && data.hits.hits[0]._source.run.tags) {
-    return data.hits.hits[0]._source.run.tags;
+  var tags = [];
+  if (Array.isArray(data.hits.hits) && data.hits.hits.length > 0) {
+    data.hits.hits.forEach(element => {
+      tags.push({"name": element._source.tag.name, "val": element._source.tag.val});
+    });
   }
+  return tags;
 };
 
 exports.getBenchmarkName = function (url, runId) {
