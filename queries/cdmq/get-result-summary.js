@@ -32,9 +32,13 @@ var runIds = cdm.getRuns(program.url, searchTerms);
 runIds.forEach(runId => {
   console.log("\nrun-id: " + runId);
   var tags = cdm.getTags(program.url, runId);
-  console.log("tags: " + tags);
+  tags.sort((a, b) => a.name < b.name ? -1 : 1)
+  var tagList = "    tags: ";
+  tags.forEach(tag => {
+    tagList += tag.name + "=" + tag.val + " ";
+  });
+  console.log(tagList);
   var benchName = cdm.getBenchmarkName(program.url, runId);
-  var benchTags = cdm.getTags(program.url, runId);
   var metricSources = cdm.getMetricSources(program.url, runId);
   metricSources.forEach(metricSource => {
     var metricTypes = cdm.getMetricTypes(program.url, runId, metricSource);
