@@ -27,7 +27,16 @@ fi
 # Build the template and index jsons
 make >/dev/null
 
-# Create the templates
+# Don't allow index auto-creation
+curl -X PUT localhost:9200/_cluster/settings -H 'Content-Type: application/json' -d'
+{
+  "persistent": {
+    "action.auto_create_index": "false"
+  }
+}
+'
+
+# Create the templates and indices
 for i in `/bin/ls *.json | sed -e s/\.json//`; do
     curl -X GET localhost:9200/_cat/templates 2>/dev/null | grep -q "$es_ver-$i" || \
         (echo "Template for $i not found, creating"; \
