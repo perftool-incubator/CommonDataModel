@@ -938,14 +938,13 @@ getMetricDataFromIdsSets = function (url, periods, metricGroupIdsByLabelSets) {
   var elements = data.responses.length;
 
   var valueSets = [];
+  var count = 0;
   for (var idx = 0; idx < metricGroupIdsByLabelSets.length; idx++) {
     thisSetElements = elements / metricGroupIdsByLabelSets.length;
-    //valueSets[idx] = [];
     var valuesByLabel = {};
     Object.keys(metricGroupIdsByLabelSets[idx]).forEach(function(label) {
-    //metricGroupIdsByLabelSets[idx].forEach(label => {
       valuesByLabel[label] = [];
-      thisLabelElements = thisSetElements / metricGroupIdsByLabelSets[idx][label].length;
+      thisLabelElements = metricGroupIdsByLabelSets[idx][label].length;
       var metricIds = metricGroupIdsByLabelSets[idx][label];
       var values = [];
       var begin = Number(periods[idx].begin);
@@ -954,11 +953,10 @@ getMetricDataFromIdsSets = function (url, periods, metricGroupIdsByLabelSets) {
       var duration = Math.floor((end - begin) / resolution);
       var thisBegin = begin;
       var thisEnd = begin + duration;
-      var count = 0;
       var subCount = 0;
       //var elements = data.responses.length / metricGroupIdsByLabelSets.length;
       var numMetricIds = metricIds.length;
-      while (count < thisLabelElements) {
+      while (subCount < thisLabelElements) {
         var timeWindowDuration = thisEnd - thisBegin + 1;
         var totalWeightTimesMetrics = timeWindowDuration * numMetricIds;
         subCount++;
@@ -1037,7 +1035,7 @@ getMetricDataFromIdsSets = function (url, periods, metricGroupIdsByLabelSets) {
         dataSample.value = result;
         values.push(dataSample);
 
-        count += 4;
+        count += 4; // Bumps count to the next set of responses
         thisBegin = thisEnd + 1;
         thisEnd += duration + 1;
         if (thisEnd > end) {
@@ -1049,15 +1047,10 @@ getMetricDataFromIdsSets = function (url, periods, metricGroupIdsByLabelSets) {
           //thisEnd = end;
         //}
       }
-      //console.log("values for set " + idx + " for label [" + label + "]:\n" + JSON.stringify(values));
-      valuesByLabel[label].push(values);
-      //console.log("valuesByLabel[" + label + "] for set " + idx + ":\n" + JSON.stringify(valuesByLabel[label]));
+      valuesByLabel[label] = values;
     });
-    //valueSets.push(valuesByLabel);
     valueSets[idx] = valuesByLabel;
-    //console.log("valuesSets[" + idx + "]:\n" + JSON.stringify(valueSets[idx]));
   }
-  //console.log("valueSets:\n" + JSON.stringify(valueSets));
   return valueSets;
 };
 exports.getMetricDataFromIds = getMetricDataFromIds;

@@ -12,6 +12,8 @@ program
   .option('--url <host:port>')
   .parse(process.argv);
 
+//console.log(JSON.stringify(program));
+
 var searchTerms = [];
 if (program.user) {
   searchTerms.push({ "term": "run.name", "match": "eq", "value": program.user });
@@ -33,29 +35,39 @@ runIds.forEach(runId => {
   console.log("\nrun-id: " + runId);
   var tags = cdm.getTags(program.url, runId);
   tags.sort((a, b) => a.name < b.name ? -1 : 1)
-  var tagList = "    tags: ";
+  var tagList = "  tags: ";
   tags.forEach(tag => {
     tagList += tag.name + "=" + tag.val + " ";
   });
   console.log(tagList);
   var benchName = cdm.getBenchmarkName(program.url, runId);
+  console.log("  metrics:");
   var metricSources = cdm.getMetricSources(program.url, runId);
   metricSources.forEach(metricSource => {
     var metricTypes = cdm.getMetricTypes(program.url, runId, metricSource);
-    console.log("metric-source: %s  (metric-types: %s)", metricSource, metricTypes);
+    console.log("    source: %s", metricSource);
+    var typeList = "      types: ";
+    metricTypes.forEach(type => {
+      typeList += type + " ";
+    });
+    console.log(typeList);
   });
+  console.log("  iterations:");
   var benchIterations = cdm.getIterations(program.url, [{ "term": "run.id", "match": "eq", "value": runId }]);
   benchIterations.forEach(iterationId => {
-    console.log("  iteration-id: %s", iterationId);
+    console.log("    iteration-id: %s", iterationId);
+    //d = Date.now();
+    //console.log(d + " call:getParams");
     var params = cdm.getParams(program.url, [{ "term": "iteration.id", "match": "eq", "value": iterationId }]);
     params.sort((a, b) => a.arg < b.arg ? -1 : 1)
-    var paramList = "    params: ";
+    var paramList = "      params: ";
     params.forEach(param => {
       paramList += param.arg + "=" + param.val + " ";
     });
     console.log(paramList);
+    //dPrev = d;
     //d = Date.now();
-    //console.log(d + " call:getPrimaryMetric");
+    //console.log(d + " return:getParams, call:getPrimaryMetric +" + (d - dPrev));
     var primaryMetric = cdm.getPrimaryMetric(program.url, iterationId);
     //dPrev = d;
     //d = Date.now();
@@ -88,59 +100,49 @@ runIds.forEach(runId => {
         var range = cdm.getPeriodRange(program.url, primaryPeriodId);
         //dPrev = d;
         //d = Date.now();
-        //console.log(d + " return:getPeriodRange, call:getMetricDataFromPeriod +" + (d - dPrev));
-        var breakout = [];
+        //console.log(d + " return:getPeriodRange +" + (d - dPrev));
+        var breakout = []; // By default we do not break-out a benchmark metric, so this is empty
+        // Needed for getMetricDataFromPeriods further below:
         var period = { "run": runId, "period": primaryPeriodId, "source": benchName, "type": primaryMetric, "begin": range.begin, "end": range.end, "resolution": 1, "breakout": [] };
         periods.push(period);
-        //dPrev = d;
-        //d = Date.now();
-        var metricData = cdm.getMetricDataFromPeriod(program.url, runId, primaryPeriodId, benchName, primaryMetric, range.begin, range.end, 1, breakout);
-        //console.log(d + " return:getMetricDataFromPeriod +" + (d - dPrev));
-        //console.log(JSON.stringify(metricData));
-        var sampleVal = metricData.values[""];
-        if (sampleVal && sampleVal[0] && sampleVal[0].value) {
-          sampleVal = parseFloat(sampleVal[0].value);
-          sampleVals.push(sampleVal);
-          sampleTotal += sampleVal;
-          var sampleFixed = sampleVal.toFixed(2);
-          sampleList += " " + sampleFixed;
-          sampleCount++;
-        }
       }
     });
+ 
     //d = Date.now();
     //console.log(d + " call:getMetricDataFromPeriods");
-    //var metricDataSets = cdm.getMetricDataFromPeriods(program.url, periods);
+    var metricDataSets = cdm.getMetricDataFromPeriods(program.url, periods);
     //dPrev = d;
     //d = Date.now();
     //console.log(d + " return:getMetricDataFromPeriods +" + (d - dPrev));
-    //console.log(JSON.stringify(metricDataSets));
-    /*
+    var msampleCount = 0;
+    var msampleVals = [];
+    var msampleTotal = 0;
+    var msampleList = "";
     metricDataSets.forEach(metricData => {
-      var sampleVal = metricData.values[""];
-      if (sampleVal && sampleVal[0] && sampleVal[0].value) {
-        sampleVal = parseFloat(sampleVal[0].value);
-        sampleVals.push(sampleVal);
-        sampleTotal += sampleVal;
-        var sampleFixed = sampleVal.toFixed(2);
-        sampleList += " " + sampleFixed;
-        sampleCount++;
+      //console.log(JSON.stringify(metricData));
+      var msampleVal = metricData[""];
+      if (msampleVal && msampleVal[0] && msampleVal[0].value) {
+        msampleVal = parseFloat(msampleVal[0].value);
+        msampleVals.push(msampleVal);
+        msampleTotal += msampleVal;
+        var msampleFixed = msampleVal.toFixed(2);
+        msampleList += " " + msampleFixed;
+        msampleCount++;
       }
     });
-    */
-    if (sampleCount > 0) {
-      var mean = sampleTotal / sampleCount;
+    if (msampleCount > 0) {
+      var mean = msampleTotal / msampleCount;
       var diff = 0;
-      sampleVals.forEach(val => {
+      msampleVals.forEach(val => {
         diff += (mean - val) * (mean - val);
       });
-      diff /= sampleTotal;
-      var stddev = Math.sqrt(diff);
-      var stddevpct = 100 * stddev / mean;
-      console.log("    result: (" + primaryMetric + ") samples:" + sampleList +
+      diff /= msampleTotal;
+      var mstddev = Math.sqrt(diff);
+      var mstddevpct = 100 * mstddev / mean;
+      console.log("      result: (" + primaryMetric + ") samples:" + msampleList +
                   " mean: " + parseFloat(mean).toFixed(2) + " stddev: " +
-                  parseFloat(stddev).toFixed(2) + " stddevpct: " +
-                  parseFloat(stddevpct).toFixed(2));
+                  parseFloat(mstddev).toFixed(2) + " stddevpct: " +
+                  parseFloat(mstddevpct).toFixed(2));
     }
   });
 });
