@@ -704,13 +704,13 @@ getMetricDataFromIds = function (url, begin, end, resolution, metricIds) {
   thisBegin = begin;
   thisEnd = begin + duration;
   var count = 0;
-  var subCount = 0;
+  //var subCount = 0;
   var elements = data.responses.length;
   var numMetricIds = metricIds.length;
   while (count < elements) {
     var timeWindowDuration = thisEnd - thisBegin + 1;
     var totalWeightTimesMetrics = timeWindowDuration * numMetricIds;
-    subCount++;
+    //subCount++;
     var aggAvg;
     var aggWeight;
     var aggAvgTimesWeight;
@@ -803,9 +803,7 @@ exports.getMetricDataFromIds = getMetricDataFromIds;
 // Like above but queries for all sets of Metric IDs and for all labels
 getMetricDataFromIdsSets = function (url, periods, metricGroupIdsByLabelSets) {
   var ndjson = "";
-  //console.log("metricGroupIdsByLabelSets.length = " + metricGroupIdsByLabelSets.length);
   for (var idx = 0; idx < metricGroupIdsByLabelSets.length; idx++) {
-    //console.log("metricGroupIdsByLabelSets[" + idx + "]:\n" + JSON.stringify(metricGroupIdsByLabelSets[idx]));
     Object.keys(metricGroupIdsByLabelSets[idx]).forEach(function(label) {
     //(metricGroupIdsByLabelSets[idx]).forEach(label => {
       var metricIds = metricGroupIdsByLabelSets[idx][label];
@@ -956,7 +954,7 @@ getMetricDataFromIdsSets = function (url, periods, metricGroupIdsByLabelSets) {
       var subCount = 0;
       //var elements = data.responses.length / metricGroupIdsByLabelSets.length;
       var numMetricIds = metricIds.length;
-      while (subCount < thisLabelElements) {
+      while (true) {
         var timeWindowDuration = thisEnd - thisBegin + 1;
         var totalWeightTimesMetrics = timeWindowDuration * numMetricIds;
         subCount++;
@@ -1036,10 +1034,15 @@ getMetricDataFromIdsSets = function (url, periods, metricGroupIdsByLabelSets) {
         values.push(dataSample);
 
         count += 4; // Bumps count to the next set of responses
+
+        // Cycle through every "slice" of the time domain, adding the requests for the entire time domain
         thisBegin = thisEnd + 1;
         thisEnd += duration + 1;
         if (thisEnd > end) {
           thisEnd = end;
+        }
+        if (thisBegin > thisEnd) {
+          break;
         }
         //thisBegin = thisEnd;
         //thisEnd += thisEnd + duration + 1;

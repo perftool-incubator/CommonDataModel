@@ -90,6 +90,7 @@ runIds.forEach(runId => {
         //d = Date.now();
         //console.log(d + " call:getPrimaryPeriodId");
         var primaryPeriodId = cdm.getPrimaryPeriodId(program.url, sample, primaryPeriodName);
+	console.log("period-id: %s", primaryPeriodId);
         //dPrev = d;
         //d = Date.now();
         //console.log(d + " return:getPrimaryPeriodId, call:getNameFormat +" + (d - dPrev));
@@ -98,6 +99,7 @@ runIds.forEach(runId => {
         //d = Date.now();
         //console.log(d + " return:getNameFormat, call:getPeriodRange +" + (d - dPrev));
         var range = cdm.getPeriodRange(program.url, primaryPeriodId);
+        console.log("periodRange: " + JSON.stringify(range));
         //dPrev = d;
         //d = Date.now();
         //console.log(d + " return:getPeriodRange +" + (d - dPrev));
