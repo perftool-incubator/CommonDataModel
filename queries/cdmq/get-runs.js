@@ -11,6 +11,9 @@ program
   .parse(process.argv);
 
 var searchTerms = [];
+if (!program.url) {
+  program.url = "localhost:9200";
+}
 if (program.user) {
   searchTerms.push({ "term": "run.name", "match": "eq", "value": program.user });
 }
