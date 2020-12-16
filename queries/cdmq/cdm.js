@@ -199,7 +199,7 @@ exports.getMetricSources = function (url, runId) {
                                              {"term": {"run.id": runId}}
                                            ]
                                }},
-            'aggs': { 'source': { 'terms': { 'field': 'metric_desc.source'}}},
+            'aggs': { 'source': { 'terms': { 'field': 'metric_desc.source', "size": 10000 }}},
             'size': 0 };
   var resp = esRequest(url, "metric_desc/_doc/_search", q);
   var data = JSON.parse(resp.getBody());
@@ -221,7 +221,7 @@ exports.getMetricTypes = function (url, runId, source) {
                                              {"term": {"metric_desc.source": source}}
                                            ]
                                }},
-            'aggs': { 'source': { 'terms': { 'field': 'metric_desc.type'}}},
+            'aggs': { 'source': { 'terms': { 'field': 'metric_desc.type', "size": 10000 }}},
             'size': 0 };
   var resp = esRequest(url, "metric_desc/_doc/_search", q);
   var data = JSON.parse(resp.getBody());
