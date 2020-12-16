@@ -47,8 +47,7 @@
                   "protocol": { "type": "keyword" },
                   "action": { "type": "keyword" },
                   "cstype": { "type": "keyword" },
-                  "csid": { "type": "keyword" },
-                  "time_window": { "type": "keyword" }
+                  "csid": { "type": "keyword" }
                 }
               }
             }
