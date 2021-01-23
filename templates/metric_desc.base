@@ -49,6 +49,13 @@
                   "cstype": { "type": "keyword" },
                   "csid": { "type": "keyword" }
                 }
+              },
+              "value-format": { "type": "keyword" },
+              "values": {
+                "properties": {
+                  "pass": { "type": "keyword" },
+                  "fail": { "type": "keyword" }
+                }
               }
             }
           },
