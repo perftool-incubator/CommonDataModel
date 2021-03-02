@@ -27,15 +27,18 @@ fi
 # Build the template and index jsons
 make >/dev/null
 
+echo "Adding cluster settings"
 # Don't allow index auto-creation
 curl -X PUT localhost:9200/_cluster/settings -H 'Content-Type: application/json' -d'
 {
   "persistent": {
-    "action.auto_create_index": "false"
+    "action.auto_create_index": "false",
+    "indices.query.bool.max_clause_count": 1000000
   }
 }
 '
 
+echo "Creating templates and indices"
 # Create the templates and indices
 for i in `/bin/ls *.json | sed -e s/\.json//`; do
     curl -X GET localhost:9200/_cat/templates 2>/dev/null | grep -q "$es_ver-$i" || \
