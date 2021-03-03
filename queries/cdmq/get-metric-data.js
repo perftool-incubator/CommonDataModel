@@ -29,5 +29,5 @@ program
   .option('--breakout <label1,label2,label3...>', 'List of labels to break-out the metric, like --breakout=host,id with --source=sar -type=ProcessorBusyUtil', list, [])
   .parse(process.argv);
 
-console.log(JSON.stringify(cdm.getMetricDataFromPeriod(program.url, program.run, program.period, program.source, program.type, program.begin, program.end, program.resolution, program.breakout), null, 2));
+console.log(JSON.stringify(cdm.getMetricData(program.url, program.run, program.period, program.source, program.type, program.begin, program.end, program.resolution, program.breakout), null, 2));
 

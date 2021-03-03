@@ -474,15 +474,15 @@ getMetricGroupsFromBreakout = function (url, runId, periId, source, type, breako
 };
 exports.getMetricGroupsFromBreakout = getMetricGroupsFromBreakout;
 
-// Like above but get the metric groups for multiple periods
-getMetricGroupsFromBreakouts = function (url, periods) {
+// Like above but get the metric groups for multiple sets
+getMetricGroupsFromBreakouts = function (url, sets) {
   var metricGroupIdsByLabel = [];
   //var indexjson = '{"index": "' + getIndexBaseName() + 'metric_data' + '" }\n';
   var indexjson = '{}\n';
   var index = JSON.parse(indexjson);
   var ndjson = "";
 
-  periods.forEach(period => {
+  sets.forEach(period => {
     var result = getBreakoutAggregation(period.source, period.type, period.breakout);
     var aggs = JSON.parse(result);
     var q = { 'query': { 'bool': { 'filter': [ 
@@ -526,7 +526,7 @@ getMetricGroupsFromBreakouts = function (url, periods) {
     var metricGroupTermsByLabel = getMetricGroupTermsByLabel(metricGroupTerms);
     // Now iterate over these labels and query with the label's search terms to get the metric IDs
     Object.keys(metricGroupTermsByLabel).forEach(label => {
-      metricGroupIdsByLabel[label] = getMetricIdsFromTerms(url, periods[idx].period, metricGroupTermsByLabel[label]);
+      metricGroupIdsByLabel[label] = getMetricIdsFromTerms(url, sets[idx].period, metricGroupTermsByLabel[label]);
       metricGroupIdsByLabelSets[idx] = {};
       metricGroupIdsByLabelSets[idx][label] = metricGroupIdsByLabel[label];
     });
@@ -768,15 +768,15 @@ getMetricDataFromIds = function (url, begin, end, resolution, metricIds) {
 exports.getMetricDataFromIds = getMetricDataFromIds;
 
 // Like above but queries for all sets of Metric IDs and for all labels
-getMetricDataFromIdsSets = function (url, periods, metricGroupIdsByLabelSets) {
+getMetricDataFromIdsSets = function (url, sets, metricGroupIdsByLabelSets) {
   var ndjson = "";
   for (var idx = 0; idx < metricGroupIdsByLabelSets.length; idx++) {
     Object.keys(metricGroupIdsByLabelSets[idx]).forEach(function(label) {
     //(metricGroupIdsByLabelSets[idx]).forEach(label => {
       var metricIds = metricGroupIdsByLabelSets[idx][label];
-      var begin = Number(periods[idx].begin);
-      var end = Number(periods[idx].end);
-      var resolution = Number(periods[idx].resolution);
+      var begin = Number(sets[idx].begin);
+      var end = Number(sets[idx].end);
+      var resolution = Number(sets[idx].resolution);
       var duration = Math.floor((end - begin) / resolution);
       var thisBegin = begin;
       var thisEnd = begin + duration;
@@ -912,9 +912,9 @@ getMetricDataFromIdsSets = function (url, periods, metricGroupIdsByLabelSets) {
       thisLabelElements = metricGroupIdsByLabelSets[idx][label].length;
       var metricIds = metricGroupIdsByLabelSets[idx][label];
       var values = [];
-      var begin = Number(periods[idx].begin);
-      var end = Number(periods[idx].end);
-      var resolution = Number(periods[idx].resolution);
+      var begin = Number(sets[idx].begin);
+      var end = Number(sets[idx].end);
+      var resolution = Number(sets[idx].resolution);
       var duration = Math.floor((end - begin) / resolution);
       var thisBegin = begin;
       var thisEnd = begin + duration;
@@ -1037,9 +1037,10 @@ exports.getMetricDataFromIds = getMetricDataFromIds;
 //   from this [benchmark-iteration-sample-]period (from doc which contains the periId)
 //   *if* the metric is from a benchmark.  If you want to query for corresponding
 //   tool data, use the same begin and end as the benchmark-iteration-sample-period.
-exports.getMetricDataFromPeriod = function(url, runId, periId, source, type, begin, end, resolution, breakout) {
+exports.getMetricData = function(url, runId, periId, source, type, begin, end, resolution, breakout) {
   var data = { "name": source, "type": type, "label": "", "values": {},
                "breakouts": getMetricNames(url, runId, null, source, type) };
+  //TODO: if begin and end are not provided, but periId is, get begin and end from that period
   var usedBreakouts = [];
   var regExp = /([^\=]+)\=([^\=]+)/;
   breakout.forEach(field => {
@@ -1049,11 +1050,11 @@ exports.getMetricDataFromPeriod = function(url, runId, periId, source, type, beg
       value = matches[2];
     }
     data.label += "-" + "<" + field + ">";
+    //TODO: validate is user's breakouts are available by checking against data.breakouts
     usedBreakouts.push(field);
   });
   data.label = data.label.replace('-', '');
   data.breakouts = data.breakouts.filter(n => !usedBreakouts.includes(n));
-  //TODO: "breakouts" needs to be populated
   var metricGroupIdsByLabel = getMetricGroupsFromBreakout(url, runId, periId, source, type, breakout);
   Object.keys(metricGroupIdsByLabel).forEach(function(label) {
     data.values[label] = getMetricDataFromIds(url, begin, end, resolution, metricGroupIdsByLabel[label]);
@@ -1061,8 +1062,8 @@ exports.getMetricDataFromPeriod = function(url, runId, periId, source, type, beg
   return data;
 };
 
-exports.getMetricDataFromPeriods = function(url, periods) {
-  var metricGroupIdsByLabelSets = getMetricGroupsFromBreakouts(url, periods);
-  var dataSets = getMetricDataFromIdsSets(url, periods, metricGroupIdsByLabelSets);
+exports.getMetricDataSets = function(url, sets) {
+  var metricGroupIdsByLabelSets = getMetricGroupsFromBreakouts(url, sets);
+  var dataSets = getMetricDataFromIdsSets(url, sets, metricGroupIdsByLabelSets);
   return dataSets;
 }
