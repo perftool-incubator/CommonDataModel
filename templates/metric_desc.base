@@ -4,7 +4,7 @@
               "class": { "type": "keyword" },
               "type": { "type": "keyword" },
               "source": { "type": "keyword" },
-              "name-format": { "type": "keyword" },
+              "names-list": { "type": "keyword" },
               "names": {
                 "properties": {
                   "id": { "type": "keyword" },
@@ -46,6 +46,9 @@
                   "clientserver": { "type": "keyword" },
                   "protocol": { "type": "keyword" },
                   "action": { "type": "keyword" },
+                  "cpu": { "type": "keyword" },
+                  "irq": { "type": "keyword" },
+                  "desc": { "type": "keyword" },
                   "cstype": { "type": "keyword" },
                   "csid": { "type": "keyword" }
                 }

@@ -97,18 +97,18 @@ runIds.forEach(runId => {
         //d = Date.now();
         //console.log(d + " return:getPeriodRange +" + (d - dPrev));
         var breakout = []; // By default we do not break-out a benchmark metric, so this is empty
-        // Needed for getMetricDataFromPeriods further below:
+        // Needed for getMetricDataSets further below:
         var period = { "run": runId, "period": primaryPeriodId, "source": benchName, "type": primaryMetric, "begin": range.begin, "end": range.end, "resolution": 1, "breakout": [] };
         periods.push(period);
       }
     });
  
     //d = Date.now();
-    //console.log(d + " call:getMetricDataFromPeriods");
-    var metricDataSets = cdm.getMetricDataFromPeriods(program.url, periods);
+    //console.log(d + " call:getMetricDataSets");
+    var metricDataSets = cdm.getMetricDataSets(program.url, periods);
     //dPrev = d;
     //d = Date.now();
-    //console.log(d + " return:getMetricDataFromPeriods +" + (d - dPrev));
+    //console.log(d + " return:getMetricDataSets +" + (d - dPrev));
     var msampleCount = 0;
     var msampleVals = [];
     var msampleTotal = 0;
