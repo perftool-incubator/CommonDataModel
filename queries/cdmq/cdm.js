@@ -181,7 +181,7 @@ exports.getPrimaryPeriodId = function (url, sampId, periName) {
 
 exports.getMetricSources = function (url, runId) {
   var q = { 'query': { 'bool': { 'filter': [ {"term": {"run.id": runId}} ] }},
-            'aggs': { 'source': { 'terms': { 'field': 'metric_desc.source'}}},
+            'aggs': { 'source': { 'terms': { 'field': 'metric_desc.source', "size": 10000 }}},
             'size': 0 };
   var resp = esRequest(url, "metric_desc/_doc/_search", q);
   var data = JSON.parse(resp.getBody());
@@ -196,7 +196,7 @@ exports.getMetricSources = function (url, runId) {
 
 exports.getMetricTypes = function (url, runId, source) {
   var q = { 'query': { 'bool': { 'filter': [ {"term": {"run.id": runId}}, {"term": {"metric_desc.source": source}} ] }},
-            'aggs': { 'source': { 'terms': { 'field': 'metric_desc.type'}}},
+            'aggs': { 'source': { 'terms': { 'field': 'metric_desc.type', "size": 10000 }}},
             'size': 0 };
   var resp = esRequest(url, "metric_desc/_doc/_search", q);
   var data = JSON.parse(resp.getBody());
