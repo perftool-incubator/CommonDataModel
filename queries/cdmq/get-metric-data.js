@@ -27,7 +27,8 @@ program
   .option('--end [uint]', '[optional] Timestamp in epochtime_ms, within the period\'s begin-end time range, where the calculation of the metric will end.  If no --begin and no -end are provided, a begin and end timestamp will be derived based on when all metrics of this source and type have data present.  If --begin is before or --end is after these derived begin/end vaules, they will be adjusted (--begin is increased and/or --end is decreased) to fit within this range.')
   .option('--resolution [uint]', 'The number of datapoints to produce in a data-series')
   .option('--breakout <label1,label2,label3...>', 'List of labels to break-out the metric, like --breakout=host,id with --source=sar -type=ProcessorBusyUtil', list, [])
+  .option('--filter <gt|ge|lt|le:value>', 'Filter out (do not output) metrics which do not pass the conditional.  gt=greather-than, ge=greater-than-or-equal, lt=less-than, le=less-than-or-equal')
   .parse(process.argv);
 
-console.log(JSON.stringify(cdm.getMetricData(program.url, program.run, program.period, program.source, program.type, program.begin, program.end, program.resolution, program.breakout), null, 2));
+console.log(JSON.stringify(cdm.getMetricData(program.url, program.run, program.period, program.source, program.type, program.begin, program.end, program.resolution, program.breakout,program.filter), null, 2));
 

@@ -1037,7 +1037,7 @@ exports.getMetricDataFromIds = getMetricDataFromIds;
 //   from this [benchmark-iteration-sample-]period (from doc which contains the periId)
 //   *if* the metric is from a benchmark.  If you want to query for corresponding
 //   tool data, use the same begin and end as the benchmark-iteration-sample-period.
-exports.getMetricData = function(url, runId, periId, source, type, begin, end, resolution, breakout) {
+exports.getMetricData = function(url, runId, periId, source, type, begin, end, resolution, breakout, filter) {
   var data = { "name": source, "type": type, "label": "", "values": {},
                "breakouts": getMetricNames(url, runId, null, source, type) };
   //TODO: if begin and end are not provided, but periId is, get begin and end from that period
@@ -1059,6 +1059,23 @@ exports.getMetricData = function(url, runId, periId, source, type, begin, end, r
   Object.keys(metricGroupIdsByLabel).forEach(function(label) {
     data.values[label] = getMetricDataFromIds(url, begin, end, resolution, metricGroupIdsByLabel[label]);
   });
+  var reg = /(\w+)\:([-+]?[0-9]*\.?[0-9]+)/;
+  var m = reg.exec(filter);
+  if (filter != null && m) {
+    Object.keys(data.values).forEach(metric => {
+      var metricValue = 1.0 * data.values[metric][0].value;
+      var condition = m[1];
+      var value = m[2];
+      if ( !(
+                 (condition == "gt" && metricValue > value)
+              || (condition == "ge" && metricValue >= value)
+              || (condition == "lt" && metricValue < value)
+              || (condition == "le" && metricValue <= value)
+                                                            )) {
+        delete data.values[metric];
+      }
+    });
+  }
   return data;
 };
 
