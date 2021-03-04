@@ -33,10 +33,11 @@ curl -X PUT localhost:9200/_cluster/settings -H 'Content-Type: application/json'
 {
   "persistent": {
     "action.auto_create_index": "false",
-    "indices.query.bool.max_clause_count": 1000000
+    "search.max_buckets": 1000000
   }
 }
 '
+    #"indices.query.bool.max_clause_count": 1000000,
 
 echo "Creating templates and indices"
 # Create the templates and indices
