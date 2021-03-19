@@ -18,14 +18,14 @@ function list(val) {
 
 program
   .version('0.1.0')
-  .option('--url <host:port>', 'The host and port of the Elasticsearch instance')
+  .option('--url <host:port>', 'The host and port of the Elasticsearch instance', 'localhost:9200')
   .option('--run <uuid>', 'The UUID from the run')
   .option('--period <uuid>', 'The UUID from the benchmark-iteration-sample-period')
   .option('--source <name>', 'The metric source, like a tool or benchmark name (sar, fio)')
   .option('--type <name>', 'The metric type, like Gbps or IOPS')
   .option('--begin [uint]', '[optional] Timestamp in epochtime_ms, within the period\'s begin-end time range, where the calculation of the metric will begin')
   .option('--end [uint]', '[optional] Timestamp in epochtime_ms, within the period\'s begin-end time range, where the calculation of the metric will end.  If no --begin and no -end are provided, a begin and end timestamp will be derived based on when all metrics of this source and type have data present.  If --begin is before or --end is after these derived begin/end vaules, they will be adjusted (--begin is increased and/or --end is decreased) to fit within this range.')
-  .option('--resolution [uint]', 'The number of datapoints to produce in a data-series')
+  .option('--resolution [uint]', 'The number of datapoints to produce in a data-series', 1)
   .option('--breakout <label1,label2,label3...>', 'List of labels to break-out the metric, like --breakout=host,id with --source=sar -type=ProcessorBusyUtil', list, [])
   .option('--filter <gt|ge|lt|le:value>', 'Filter out (do not output) metrics which do not pass the conditional.  gt=greather-than, ge=greater-than-or-equal, lt=less-than, le=less-than-or-equal')
   .parse(process.argv);
