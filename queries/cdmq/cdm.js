@@ -148,7 +148,10 @@ exports.getPeriodRange = function (url, periId) {
             'size': 1 };
   var resp = esRequest(url, "period/_doc/_search", q);
   var data = JSON.parse(resp.getBody());
-  if (data.hits.hits[0] && data.hits.hits[0]._source && data.hits.hits[0]._source.period.begin && data.hits.hits[0]._source.period.end) {
+  if (data.hits.hits[0] && data.hits.hits[0]._source && 
+      data.hits.hits[0]._source.period &&
+      data.hits.hits[0]._source.period.begin &&
+      data.hits.hits[0]._source.period.end) {
     return { "begin": data.hits.hits[0]._source.period.begin, "end": data.hits.hits[0]._source.period.end };
   }
 };

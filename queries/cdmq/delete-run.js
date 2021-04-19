@@ -4,7 +4,7 @@ var program = require('commander');
 program
   .version('0.1.0')
   .option('--run <run ID>')
-  .option('--url <host:port>')
+  .option('--url <host:port>', 'The host and port of the Elasticsearch instance', 'localhost:9200')
   .parse(process.argv);
 
 var docTypes = [ 'run', 'iteration', 'sample', 'period', 'param'];
