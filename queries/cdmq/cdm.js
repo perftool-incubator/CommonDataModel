@@ -142,7 +142,7 @@ exports.getPrimaryPeriodName = function (url, iterId) {
   }
 };
 
-exports.getPeriodRange = function (url, periId) {
+getPeriodRange = function (url, periId) {
   var q = { 'query': { 'bool': { 'filter': [ {"term": {"period.id": periId}} ] }},
             '_source': [ 'period.begin', 'period.end' ],
             'size': 1 };
@@ -155,6 +155,7 @@ exports.getPeriodRange = function (url, periId) {
     return { "begin": data.hits.hits[0]._source.period.begin, "end": data.hits.hits[0]._source.period.end };
   }
 };
+exports.getPeriodRange = getPeriodRange;
 
 exports.getSampleStatus = function (url, sampId) {
   var q = { 'query': { 'bool': { 'filter': [ {"term": {"sample.id": sampId}} ] }},
@@ -1043,7 +1044,19 @@ exports.getMetricDataFromIds = getMetricDataFromIds;
 exports.getMetricData = function(url, runId, periId, source, type, begin, end, resolution, breakout, filter) {
   var data = { "name": source, "type": type, "label": "", "values": {},
                "breakouts": getMetricNames(url, runId, null, source, type) };
-  //TODO: if begin and end are not provided, but periId is, get begin and end from that period
+  if (begin == undefined || end == undefined) {
+    if (periId == undefined) {
+      console.log("You must define either periId or begin and end");
+      return;
+    }
+    var range = getPeriodRange(url, periId);
+    if (begin == undefined) {
+      begin = range.begin;
+    }
+    if (end == undefined) {
+      end = range.end;
+    }
+  }
   var usedBreakouts = [];
   var regExp = /([^\=]+)\=([^\=]+)/;
   breakout.forEach(field => {
