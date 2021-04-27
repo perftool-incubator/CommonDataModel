@@ -60,7 +60,7 @@ runIds.forEach(runId => {
     //console.log(d + " call:getParams");
     var params = cdm.getParams(program.url, [{ "term": "iteration.id", "match": "eq", "value": iterationId }]);
     params.sort((a, b) => a.arg < b.arg ? -1 : 1)
-    var paramList = "    params: ";
+    var paramList = "      params: ";
     params.forEach(param => {
       paramList += param.arg + "=" + param.val + " ";
     });
@@ -80,7 +80,7 @@ runIds.forEach(runId => {
       console.log("      the primary period-name for this iteration is undefined, exiting\n");
       process.exit(1);
     }
-    console.log("    primary-period name: " + primaryPeriodName);
+    console.log("      primary-period name: " + primaryPeriodName);
     var samples = cdm.getSamples(program.url, [{ "term": "iteration.id", "match": "eq", "value": iterationId }]);
     //dPrev = d;
     //d = Date.now();
@@ -90,23 +90,23 @@ runIds.forEach(runId => {
     var sampleVals = [];
     var sampleList = "";
     var periods = [];
-    console.log("    samples:");
+    console.log("      samples:");
     samples.forEach(sample => {
       if (cdm.getSampleStatus(program.url, sample) == "pass") {
         //d = Date.now();
-        console.log("      sample-id: " + sample);
+        console.log("        sample-id: " + sample);
         var primaryPeriodId = cdm.getPrimaryPeriodId(program.url, sample, primaryPeriodName);
         if (primaryPeriodId == undefined || primaryPeriodId == null) {
-          console.log("        the primary perdiod-id for this sample is not valid, exiting\n");
+          console.log("          the primary perdiod-id for this sample is not valid, exiting\n");
           process.exit(1);
         }
-	      console.log("        primary period-id: %s", primaryPeriodId);
+	      console.log("          primary period-id: %s", primaryPeriodId);
         var range = cdm.getPeriodRange(program.url, primaryPeriodId);
         if (range == undefined || range == null) {
-          console.log("        the range for the primary period is undefined, exiting");
+          console.log("          the range for the primary period is undefined, exiting");
           process.exit(1);
         }
-        console.log("        period range: begin: " + range.begin + " end: " + range.end);
+        console.log("          period range: begin: " + range.begin + " end: " + range.end);
         //dPrev = d;
         //d = Date.now();
         //console.log(d + " return:getPeriodRange +" + (d - dPrev));
@@ -117,41 +117,40 @@ runIds.forEach(runId => {
       }
     });
  
-    //d = Date.now();
-    //console.log(d + " call:getMetricDataSets");
-    var metricDataSets = cdm.getMetricDataSets(program.url, periods);
-    //dPrev = d;
-    //d = Date.now();
-    //console.log(d + " return:getMetricDataSets +" + (d - dPrev));
-    var msampleCount = 0;
-    var msampleVals = [];
-    var msampleTotal = 0;
-    var msampleList = "";
-    metricDataSets.forEach(metricData => {
-      //console.log(JSON.stringify(metricData));
-      var msampleVal = metricData[""];
-      if (msampleVal && msampleVal[0] && msampleVal[0].value) {
-        msampleVal = parseFloat(msampleVal[0].value);
-        msampleVals.push(msampleVal);
-        msampleTotal += msampleVal;
-        var msampleFixed = msampleVal.toFixed(2);
-        msampleList += " " + msampleFixed;
-        msampleCount++;
-      }
-    });
-    if (msampleCount > 0) {
-      var mean = msampleTotal / msampleCount;
-      var diff = 0;
-      msampleVals.forEach(val => {
-        diff += (mean - val) * (mean - val);
+    if (periods.length > 0) {
+      var metricDataSets = cdm.getMetricDataSets(program.url, periods);
+      //dPrev = d;
+      //d = Date.now();
+      //console.log(d + " return:getMetricDataSets +" + (d - dPrev));
+      var msampleCount = 0;
+      var msampleVals = [];
+      var msampleTotal = 0;
+      var msampleList = "";
+      metricDataSets.forEach(metricData => {
+        var msampleVal = metricData[""];
+        if (msampleVal && msampleVal[0] && msampleVal[0].value) {
+          msampleVal = parseFloat(msampleVal[0].value);
+          msampleVals.push(msampleVal);
+          msampleTotal += msampleVal;
+          var msampleFixed = msampleVal.toFixed(2);
+          msampleList += " " + msampleFixed;
+          msampleCount++;
+        }
       });
-      diff /= msampleTotal;
-      var mstddev = Math.sqrt(diff);
-      var mstddevpct = 100 * mstddev / mean;
-      console.log("        result: (" + primaryMetric + ") samples:" + msampleList +
-                  " mean: " + parseFloat(mean).toFixed(2) + " stddev: " +
-                  parseFloat(mstddev).toFixed(2) + " stddevpct: " +
-                  parseFloat(mstddevpct).toFixed(2));
+      if (msampleCount > 0) {
+        var mean = msampleTotal / msampleCount;
+        var diff = 0;
+        msampleVals.forEach(val => {
+          diff += (mean - val) * (mean - val);
+        });
+        diff /= msampleTotal;
+        var mstddev = Math.sqrt(diff);
+        var mstddevpct = 100 * mstddev / mean;
+        console.log("        result: (" + primaryMetric + ") samples:" + msampleList +
+                    " mean: " + parseFloat(mean).toFixed(2) + " stddev: " +
+                    parseFloat(mstddev).toFixed(2) + " stddevpct: " +
+                    parseFloat(mstddevpct).toFixed(2));
+      }
     }
   });
 });
