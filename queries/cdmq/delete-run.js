@@ -7,7 +7,7 @@ program
   .option('--url <host:port>', 'The host and port of the Elasticsearch instance', 'localhost:9200')
   .parse(process.argv);
 
-var docTypes = [ 'run', 'iteration', 'sample', 'period', 'param'];
+var docTypes = [ 'run', 'iteration', 'sample', 'period', 'param', 'tag'];
 var q = {};
 if (program.run) {
     q = { 'query': { 'bool': { 'filter': [ {"term": {"run.id": program.run}} ] }}};

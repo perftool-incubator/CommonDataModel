@@ -54,10 +54,21 @@ exports.getMetricDescs = getMetricDescs;
 // Delete all the metric (metric_desc and metric_data) for a run
 deleteMetrics = function (url, runId) {
   var ids = getMetricDescs(url, runId);
+  console.log("There are " + ids.length + " metric_desc docs");
+  var q = { 'query': { 'bool': { 'filter': { "terms": { "metric_desc.id": [] }}}}};
   ids.forEach(element => {
-    var q = { 'query': { 'bool': { 'filter': [{ "term": {"metric_desc.id": element }}]}}};
-    deleteDocs(url, ['metric_data', 'metric_desc'], q)
+    var term = {"metric_desc.id": element };
+    q['query']['bool']['filter']['terms']["metric_desc.id"].push(element);
+    if (q['query']['bool']['filter']['terms']["metric_desc.id"].length >= 5000) {
+      console.log("deleting " + q['query']['bool']['filter']['terms']["metric_desc.id"].length + " metrics");
+      deleteDocs(url, ['metric_data', 'metric_desc'], q);
+      q['query']['bool']['filter']['terms']["metric_desc.id"] = [];
+    }
   });
+  if (q['query']['bool']['filter']['terms']["metric_desc.id"].length > 0) {
+    console.log("deleting " + q['query']['bool']['filter']['terms']["metric_desc.id"].length + " metrics");
+    deleteDocs(url, ['metric_data', 'metric_desc'], q);
+  }
 };
 exports.deleteMetrics = deleteMetrics;
 
