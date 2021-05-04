@@ -153,13 +153,27 @@ exports.getPrimaryPeriodName = function (url, iterId) {
   }
 };
 
+getRunFromPeriod = function (url, periId) {
+  var q = { 'query': { 'bool': { 'filter': [ {"term": {"period.id": periId}} ] }},
+            '_source': [ 'run.id' ],
+            'size': 1 };
+  var resp = esRequest(url, "period/_doc/_search", q);
+  var data = JSON.parse(resp.getBody());
+  if (data.hits.hits[0] && data.hits.hits[0]._source &&
+      data.hits.hits[0]._source.run &&
+      data.hits.hits[0]._source.run.id) {
+    return data.hits.hits[0]._source.run.id;
+  }
+};
+exports.getRunFromPeriod = getRunFromPeriod;
+
 getPeriodRange = function (url, periId) {
   var q = { 'query': { 'bool': { 'filter': [ {"term": {"period.id": periId}} ] }},
             '_source': [ 'period.begin', 'period.end' ],
             'size': 1 };
   var resp = esRequest(url, "period/_doc/_search", q);
   var data = JSON.parse(resp.getBody());
-  if (data.hits.hits[0] && data.hits.hits[0]._source && 
+  if (data.hits.hits[0] && data.hits.hits[0]._source &&
       data.hits.hits[0]._source.period &&
       data.hits.hits[0]._source.period.begin &&
       data.hits.hits[0]._source.period.end) {
@@ -1055,6 +1069,14 @@ exports.getMetricDataFromIds = getMetricDataFromIds;
 exports.getMetricData = function(url, runId, periId, source, type, begin, end, resolution, breakout, filter) {
   var data = { "name": source, "type": type, "label": "", "values": {},
                "breakouts": getMetricNames(url, runId, null, source, type) };
+  if (runId == undefined) {
+    if (periId != undefined) {
+      runId = getRunFromPeriod(url, periId);
+    } else {
+      console.log("You must define either periId or the runId");
+      return;
+    }
+  }
   if (begin == undefined || end == undefined) {
     if (periId == undefined) {
       console.log("You must define either periId or begin and end");
@@ -1068,6 +1090,8 @@ exports.getMetricData = function(url, runId, periId, source, type, begin, end, r
       end = range.end;
     }
   }
+  // At this point the period ID is not needed because we have a runId, begin, and end
+  periId = undefined;
   var usedBreakouts = [];
   var regExp = /([^\=]+)\=([^\=]+)/;
   breakout.forEach(field => {
