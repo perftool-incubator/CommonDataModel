@@ -31,6 +31,10 @@ if (!program.url) {
   program.url = "localhost:9200";
 }
 var runIds = cdm.getRuns(program.url, searchTerms);
+if (runIds == undefined) {
+  console.log("The run ID could not be found, exiting");
+  process.exit(1);
+}
 runIds.forEach(runId => {
   console.log("\nrun-id: " + runId);
   var tags = cdm.getTags(program.url, runId);
