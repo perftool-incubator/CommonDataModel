@@ -147,7 +147,7 @@ runIds.forEach(runId => {
         msampleVals.forEach(val => {
           diff += (mean - val) * (mean - val);
         });
-        diff /= msampleTotal;
+        diff /= (msampleCount - 1);
         var mstddev = Math.sqrt(diff);
         var mstddevpct = 100 * mstddev / mean;
         console.log("        result: (" + primaryMetric + ") samples:" + msampleList +
