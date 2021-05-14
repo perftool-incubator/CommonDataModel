@@ -49,6 +49,7 @@
                   "cpu": { "type": "keyword" },
                   "irq": { "type": "keyword" },
                   "desc": { "type": "keyword" },
+                  "counter": { "type": "keyword" },
                   "cstype": { "type": "keyword" },
                   "csid": { "type": "keyword" }
                 }
