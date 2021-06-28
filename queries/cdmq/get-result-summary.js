@@ -104,7 +104,7 @@ runIds.forEach(runId => {
           console.log("          the primary perdiod-id for this sample is not valid, exiting\n");
           process.exit(1);
         }
-	      console.log("          primary period-id: %s", primaryPeriodId);
+        console.log("          primary period-id: %s", primaryPeriodId);
         var range = cdm.getPeriodRange(program.url, primaryPeriodId);
         if (range == undefined || range == null) {
           console.log("          the range for the primary period is undefined, exiting");
@@ -151,9 +151,11 @@ runIds.forEach(runId => {
         var mstddev = Math.sqrt(diff);
         var mstddevpct = 100 * mstddev / mean;
         console.log("        result: (" + primaryMetric + ") samples:" + msampleList +
-                    " mean: " + parseFloat(mean).toFixed(2) + " stddev: " +
-                    parseFloat(mstddev).toFixed(2) + " stddevpct: " +
-                    parseFloat(mstddevpct).toFixed(2));
+                    " mean: " + parseFloat(mean).toFixed(2) +
+                    " min: " + parseFloat(Math.min(...msampleVals)).toFixed(2) +
+                    " max: " + parseFloat(Math.max(...msampleVals)).toFixed(2) +
+                    " stddev: " + parseFloat(mstddev).toFixed(2) +
+                    " stddevpct: " + parseFloat(mstddevpct).toFixed(2));
       }
     }
   });
