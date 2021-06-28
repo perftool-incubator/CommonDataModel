@@ -1,6 +1,8 @@
           "iteration": {
             "properties": {
               "id": { "type": "keyword" },
+              "num": { "type": "keyword" },
+              "status": { "type": "keyword" },
               "primary-metric": { "type": "keyword" },
               "primary-period": { "type": "keyword" }
             }
