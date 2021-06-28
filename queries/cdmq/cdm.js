@@ -74,8 +74,8 @@ exports.deleteMetrics = deleteMetrics;
 
 exports.getIterations = function (url, searchTerms) {
   var q = { 'query': { 'bool': { 'filter': [] }},
-      '_source': "iteration.id",
-            'size': 1000 };
+            '_source': "iteration.id", 'size': 1000,
+            'sort': [ { "iteration.num": { "order": "asc"}} ] };
   if (searchTerms.length === 0) {
     console.log("Found no search terms\n");
     return;
@@ -121,8 +121,8 @@ exports.getParams = function (url, searchTerms) {
 
 exports.getSamples = function (url, searchTerms) {
   var q = { 'query': { 'bool': { 'filter': [] }},
-            '_source': "sample.id",
-            'size': 1000 };
+            '_source': "sample.id", 'size': 1000,
+            'sort': [ { "sample.num": { "order": "asc"}} ] };
   if (searchTerms.length === 0) {
     return;
   }
