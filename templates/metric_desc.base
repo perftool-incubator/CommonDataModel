@@ -8,6 +8,7 @@
               "names": {
                 "properties": {
                   "bridge": { "type": "keyword" },
+                  "interface": { "type": "keyword" },
                   "id": { "type": "keyword" },
                   "num": { "type": "keyword" },
                   "class": { "type": "keyword" },
