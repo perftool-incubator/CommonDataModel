@@ -1,8 +1,6 @@
 #!/bin/bash
-
-# This will echo to stdout commands which you can copy/paste to load index templates into ES
-# These index templates ensure new indices will adhere to the mappings
-
+# -*- mode: sh; indent-tabs-mode: nil; sh-basic-offset: 4 -*-
+# vim: autoindent tabstop=4 shiftwidth=4 expandtab softtabstop=4 filetype=bash
 
 pushd "`dirname $0`" >/dev/null
 
@@ -14,6 +12,8 @@ fi
 if [ ! -x /usr/bin/curl ]; then
 	echo "You must have curl installed to use this script"
 	exit 1
+else
+    curl_cmd='curl --silent --show-error --stderr -'
 fi
 
 es_ver_file="../VERSION"
@@ -27,29 +27,57 @@ fi
 # Build the template and index jsons
 make >/dev/null
 
-echo "Adding cluster settings"
+echo "Initializing ES..."
+
+echo -n "Adding cluster settings..."
 # Don't allow index auto-creation
-curl -X PUT localhost:9200/_cluster/settings -H 'Content-Type: application/json' -d'
+qresult=$(${curl_cmd} -X PUT localhost:9200/_cluster/settings -H 'Content-Type: application/json' -d'
 {
   "persistent": {
     "action.auto_create_index": "false",
     "search.max_buckets": 1000000
   }
 }
-'
+')
+if echo "${qresult}" | grep -q '"acknowledged":true'; then
+    echo "success"
+else
+    echo "failed"
+    echo "${qresult}"
+fi
     #"indices.query.bool.max_clause_count": 1000000,
 
-echo "Creating templates and indices"
+echo "Checking templates and indices:"
 # Create the templates and indices
 for i in `/bin/ls *.json | sed -e s/\.json//`; do
-    curl -X GET localhost:9200/_cat/templates 2>/dev/null | grep -q "$es_ver-$i" || \
-        (echo "Template for $i not found, creating"; \
-         curl -X PUT $es_url/_template/cdm$es_ver-$i -H 'Content-Type: application/json' -d@./$i.json; \
-         echo)
-    curl -X GET localhost:9200/_cat/indices 2>/dev/null | grep -q "$es_ver-$i" || \
-        (echo "Index for $i not found, creating"; \
-	     curl -X PUT $es_url/cdm$es_ver-$i; \
-         echo)
+    qresult=$(${curl_cmd} -X GET localhost:9200/_cat/templates)
+    if echo "${qresult}" | grep -q "$es_ver-$i"; then
+        echo "Found template for $i"
+    else
+        echo -n "Template for $i not found, creating..."
+        qresult=$(${curl_cmd} -X PUT $es_url/_template/cdm$es_ver-$i -H 'Content-Type: application/json' -d@./$i.json)
+        if echo "${qresult}" | grep -q  '"acknowledged":true'; then
+            echo "success"
+        else
+            echo "failed"
+            echo "${qresult}"
+        fi
+    fi
+    qresult=$(${curl_cmd} -X GET localhost:9200/_cat/indices)
+    if echo "${qresult}" | grep -q "$es_ver-$i"; then
+        echo "Found index for $i"
+    else
+        echo -n "Index for $i not found, creating..."
+        qresult=$(${curl_cmd} -X PUT $es_url/cdm$es_ver-$i)
+        if echo "${qresult}" | grep -q '"acknowledged":true'; then
+             echo "success"
+        else
+            echo "failed"
+            echo "${qresult}"
+        fi
+    fi
 done
+
+echo "...ES initilization complete!"
 
 popd >/dev/null
