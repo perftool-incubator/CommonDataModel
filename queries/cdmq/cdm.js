@@ -710,6 +710,7 @@ getMetricDataFromIds = function (url, begin, end, resolution, metricIds) {
       break;
     }
   }
+  //console.log("request: " + ndjson);
   var resp = esRequest(url, "metric_data/_doc/_msearch", ndjson);
   var data = JSON.parse(resp.getBody());
   thisBegin = begin;
@@ -726,6 +727,7 @@ getMetricDataFromIds = function (url, begin, end, resolution, metricIds) {
     var aggWeight;
     var aggAvgTimesWeight;
     var newWeight;
+    console.log("\n\n\n\n\n\n\ndata.repsonses[" + count + "]: " + JSON.stringify(data.responses[count], null, 2));
     aggAvg = data.responses[count].aggregations.metric_avg.value; //$$resp_ref{'responses'}[$count]{'aggregations'}{'metric_avg'}{'value'};
     if (typeof aggAvg != "undefined") {
       // We have the weighted average for documents that don't overlap the time range,

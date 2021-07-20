@@ -25,6 +25,7 @@ else
 fi
 
 # Build the template and index jsons
+make clean >/dev/null
 make >/dev/null
 
 echo "Initializing ES..."
