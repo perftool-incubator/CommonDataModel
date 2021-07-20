@@ -4,7 +4,7 @@ var bigQuerySize = 262144;
 
 
 function getIndexBaseName() {
-  return 'cdmv5dev-';
+  return 'cdmv6dev-';
 }
 
 function esRequest(host, idx, q) {
@@ -72,19 +72,29 @@ deleteMetrics = function (url, runId) {
 };
 exports.deleteMetrics = deleteMetrics;
 
+exports.getIterationDoc = function (url, id) {
+  var q = { 'query': { 'bool': { 'filter': [ { "term": { "iteration.id": id }} ] }}};
+  var resp = esRequest(url, "iteration/_doc/_search", q);
+  console.log("Query:" + JSON.stringify(q));
+  var data = JSON.parse(resp.getBody());
+  return data;
+};
+
 exports.getIterations = function (url, searchTerms) {
   var q = { 'query': { 'bool': { 'filter': [] }},
             '_source': "iteration.id", 'size': 1000,
-            'sort': [ { "iteration.num": { "order": "asc"}} ] };
+            'sort': [ { "iteration.num": { "order": "asc", "numeric_type": "long" }} ] };
   if (searchTerms.length === 0) {
     console.log("Found no search terms\n");
     return;
   }
   searchTerms.forEach(element => {
+    console.log("adding search term: " + JSON.stringify(element));
     var myTerm = {};
     myTerm[element.term] = element.value;
     q.query.bool.filter.push({"term": myTerm});
   });
+  console.log("Query:" + JSON.stringify(q));
   var resp = esRequest(url, "iteration/_doc/_search", q);
   var data = JSON.parse(resp.getBody());
   var ids = [];

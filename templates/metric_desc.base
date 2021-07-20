@@ -10,7 +10,7 @@
                   "bridge": { "type": "keyword" },
                   "interface": { "type": "keyword" },
                   "id": { "type": "keyword" },
-                  "num": { "type": "keyword" },
+                  "num": { "type": "double" },
                   "class": { "type": "keyword" },
                   "type": { "type": "keyword" },
                   "host": { "type": "keyword" },
