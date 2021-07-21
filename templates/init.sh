@@ -63,6 +63,13 @@ for i in `/bin/ls *.json | sed -e s/\.json//`; do
             echo "failed"
             echo "${qresult}"
         fi
+        older_templates=$(${curl_cmd} -X GET localhost:9200/_cat/templates | grep $i | grep -v ^cdm-$es_ver)
+        if [ ! -z "$older_templates" ]; then
+            for $this_older_template in $older_templates; do
+                echo -n "Deleting older template $this_older_template"
+                echo ${curl_cmd} -X DELETE $es_url/index_template/$this_older_template
+            done
+        fi
     fi
     qresult=$(${curl_cmd} -X GET localhost:9200/_cat/indices)
     if echo "${qresult}" | grep -q "$es_ver-$i"; then
@@ -75,6 +82,14 @@ for i in `/bin/ls *.json | sed -e s/\.json//`; do
         else
             echo "failed"
             echo "${qresult}"
+        fi
+        older_indices=$(${curl_cmd} -X GET localhost:9200/_cat/indices | grep $i | grep -v ^cdm-$es_ver)
+        if [ ! -z "$older_indices" ]; then
+            echo -n "Older indices exist.  These will be deleted, and you may need to re-index your results"
+            for $this_older_index in $older_indices; do
+                echo -n "Deleting older index $this_older_index"
+                echo "echo ${curl_cmd} -X DELETE $es_url/index/$this_older_index_"
+            done
         fi
     fi
 done
