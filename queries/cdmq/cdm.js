@@ -51,6 +51,15 @@ getMetricDescs = function (url, runId) {
 };
 exports.getMetricDescs = getMetricDescs;
 
+getMetricDataDocs = function (url, metricId) {
+  var q = { 'query': { 'bool': { 'filter': [ {"term": {"metric_desc.id": metricId}} ] }},
+            'size': 10000 };
+  var resp = esRequest(url, "metric_data/_doc/_search", q);
+  var data = JSON.parse(resp.getBody());
+  return data;
+};
+exports.getMetricDataDocs = getMetricDataDocs;
+
 // Delete all the metric (metric_desc and metric_data) for a run
 deleteMetrics = function (url, runId) {
   var ids = getMetricDescs(url, runId);
