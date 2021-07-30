@@ -10,6 +10,7 @@ program
   .option('--run <run-ID>')
   .option('--harness <harness name>')
   .option('--url <host:port>')
+  .option('--base-run-dir <dir>')
   .parse(process.argv);
 
 //console.log(JSON.stringify(program));
