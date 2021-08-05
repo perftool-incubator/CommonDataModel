@@ -1,8 +1,9 @@
           "iteration": {
             "properties": {
               "id": { "type": "keyword" },
-              "num": { "type": "keyword" },
+              "num": { "type": "unsigned_long" },
               "status": { "type": "keyword" },
+              "path": { "type": "keyword" },
               "primary-metric": { "type": "keyword" },
               "primary-period": { "type": "keyword" }
             }

@@ -46,7 +46,7 @@ templates=$(${curl_cmd} -X GET "$es_url/_cat/templates?v")
 if echo "${templates}" | grep -q "^curl"; then
     echo ${templates}
 else
-    for i in $(echo "${templates}" | grep cdm$es_ver | awk '{print $1}'); do
+    for i in $(echo "${templates}" | grep ^cdm | awk '{print $1}'); do
         echo -n "Deleting template $i..."
         qresult=$(${curl_cmd} -X DELETE $es_url/_template/$i)
         if echo "${qresult}" | grep -q '"acknowledged":true'; then

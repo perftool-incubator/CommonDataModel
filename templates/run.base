@@ -9,6 +9,7 @@
             "email": { "type": "keyword" },
             "name": { "type": "keyword" },
             "desc": { "type": "text", "analyzer": "standard" },
-            "tags": { "type": "text", "analyzer": "whitespace", "fields": { "raw": { "type":  "keyword" } } }
+            "tags": { "type": "text", "analyzer": "whitespace", "fields": { "raw": { "type":  "keyword" } } },
+            "source": { "type": "keyword" }
           }
         }

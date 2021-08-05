@@ -4,7 +4,7 @@ var bigQuerySize = 262144;
 
 
 function getIndexBaseName() {
-  return 'cdmv5dev-';
+  return 'cdmv6dev-';
 }
 
 function esRequest(host, idx, q) {
@@ -51,6 +51,15 @@ getMetricDescs = function (url, runId) {
 };
 exports.getMetricDescs = getMetricDescs;
 
+getMetricDataDocs = function (url, metricId) {
+  var q = { 'query': { 'bool': { 'filter': [ {"term": {"metric_desc.id": metricId}} ] }},
+            'size': 10000 };
+  var resp = esRequest(url, "metric_data/_doc/_search", q);
+  var data = JSON.parse(resp.getBody());
+  return data;
+};
+exports.getMetricDataDocs = getMetricDataDocs;
+
 // Delete all the metric (metric_desc and metric_data) for a run
 deleteMetrics = function (url, runId) {
   var ids = getMetricDescs(url, runId);
@@ -72,10 +81,17 @@ deleteMetrics = function (url, runId) {
 };
 exports.deleteMetrics = deleteMetrics;
 
+exports.getIterationDoc = function (url, id) {
+  var q = { 'query': { 'bool': { 'filter': [ { "term": { "iteration.id": id }} ] }}};
+  var resp = esRequest(url, "iteration/_doc/_search", q);
+  var data = JSON.parse(resp.getBody());
+  return data;
+};
+
 exports.getIterations = function (url, searchTerms) {
   var q = { 'query': { 'bool': { 'filter': [] }},
             '_source': "iteration.id", 'size': 1000,
-            'sort': [ { "iteration.num": { "order": "asc"}} ] };
+            'sort': [ { "iteration.num": { "order": "asc", "numeric_type": "long" }} ] };
   if (searchTerms.length === 0) {
     console.log("Found no search terms\n");
     return;

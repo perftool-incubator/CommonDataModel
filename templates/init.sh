@@ -19,12 +19,14 @@ fi
 es_ver_file="../VERSION"
 if [ -e "$es_ver_file" ]; then
 	es_ver=`cat "$es_ver_file"`
+    echo "Current CDM version is $es_ver"
 else
 	echo "Could not find the VERSION file which should be located in the root directory of this repository"
 	exit 1
 fi
 
 # Build the template and index jsons
+make clean >/dev/null
 make >/dev/null
 
 echo "Initializing ES..."
@@ -50,32 +52,63 @@ fi
 echo "Checking templates and indices:"
 # Create the templates and indices
 for i in `/bin/ls *.json | sed -e s/\.json//`; do
+    echo -n "Checking for cdm$es_ver-$i..."
     qresult=$(${curl_cmd} -X GET localhost:9200/_cat/templates)
     if echo "${qresult}" | grep -q "$es_ver-$i"; then
-        echo "Found template for $i"
+        echo -n " found template"
     else
-        echo -n "Template for $i not found, creating..."
+        echo -n "  template missing, creating..."
         qresult=$(${curl_cmd} -X PUT $es_url/_template/cdm$es_ver-$i -H 'Content-Type: application/json' -d@./$i.json)
         if echo "${qresult}" | grep -q  '"acknowledged":true'; then
-            echo "success"
+            echo " success"
         else
-            echo "failed"
+            echo " failed"
             echo "${qresult}"
         fi
     fi
+    older_templates=$(${curl_cmd} -X GET localhost:9200/_cat/templates | grep ^cdm | grep -- -$i | grep -v $es_ver | awk '{print $1}')
+    if [ ! -z "$older_templates" ]; then
+        for this_older_template in $older_templates; do
+            older_ver=`echo $this_older_template | sed -e s/^cdm// | awk -F- '{print $1}'`
+            echo -n ", found older version ($older_ver) of this template, deleteing..."
+            qresult=$(${curl_cmd} -X DELETE $es_url/_template/$this_older_template)
+            if echo "${qresult}" | grep -q  '"acknowledged":true'; then
+                echo -n "success"
+            else
+                echo -n "failed"
+                echo "${qresult}"
+            fi
+        done
+    fi
+
     qresult=$(${curl_cmd} -X GET localhost:9200/_cat/indices)
     if echo "${qresult}" | grep -q "$es_ver-$i"; then
-        echo "Found index for $i"
+        echo -n ", found index"
     else
-        echo -n "Index for $i not found, creating..."
+        echo -n ", index missing, creating..."
         qresult=$(${curl_cmd} -X PUT $es_url/cdm$es_ver-$i)
         if echo "${qresult}" | grep -q '"acknowledged":true'; then
-             echo "success"
+             echo -n "success"
         else
-            echo "failed"
+            echo -n "failed"
             echo "${qresult}"
         fi
     fi
+    older_indices=$(${curl_cmd} -X GET localhost:9200/_cat/indices | awk '{print $3}' | grep ^cdm | grep -- -$i | grep -v $es_ver | awk '{print $1}')
+    if [ ! -z "$older_indices" ]; then
+        for this_older_index in $older_indices; do
+            older_ver=`echo $this_older_index | sed -e s/^cdm// | awk -F- '{print $1}'`
+            echo -n ", found older version ($older_ver) of this index, deleteing..."
+            qresult=$(${curl_cmd} -X DELETE $es_url/$this_older_index)
+            if echo "${qresult}" | grep -q  '"acknowledged":true'; then
+                echo -n "success"
+            else
+                echo -n "failed"
+                echo "${qresult}"
+            fi
+        done
+    fi
+    echo
 done
 
 echo "...ES initilization complete!"
