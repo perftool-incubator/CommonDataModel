@@ -58,6 +58,10 @@ runIds.forEach(runId => {
   });
   console.log("  iterations:");
   var benchIterations = cdm.getIterations(program.url, [{ "term": "run.id", "match": "eq", "value": runId }]);
+  if (benchIterations.length == 0) {
+    console.log("There were no iterations found, exiting");
+    process.exit(1);
+  }
   benchIterations.forEach(iterationId => {
     console.log("    iteration-id: %s", iterationId);
     //d = Date.now();
