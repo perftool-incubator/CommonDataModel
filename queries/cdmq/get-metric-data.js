@@ -30,5 +30,13 @@ program
   .option('--filter <gt|ge|lt|le:value>', 'Filter out (do not output) metrics which do not pass the conditional.  gt=greather-than, ge=greater-than-or-equal, lt=less-than, le=less-than-or-equal')
   .parse(process.argv);
 
-console.log(JSON.stringify(cdm.getMetricData(program.url, program.run, program.period, program.source, program.type, program.begin, program.end, program.resolution, program.breakout,program.filter), null, 2));
+metric_data = cdm.getMetricData(program.url, program.run, program.period, program.source, program.type, program.begin, program.end, program.resolution, program.breakout,program.filter);
 
+if (Object.keys(metric_data.values).length == 0) {
+    console.log("There were no metrics found, exiting");
+    process.exit(1);
+}
+
+json_output = JSON.stringify(metric_data, null, 2);
+
+console.log(json_output);
