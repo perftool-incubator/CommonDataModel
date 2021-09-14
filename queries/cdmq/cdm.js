@@ -20,12 +20,7 @@ function esRequest(host, idx, q) {
 }
 
 deleteDocs = function (url, docTypes, q) {
-  //console.log("deleteDocs(): docTypes: " + docTypes);
-  //console.log("deleteDocs(): q: " + JSON.stringify(q));
   docTypes.forEach(docType => {
-    //var nd_resp = esRequest(url, docType + "/_doc/_search", q);
-    //var nd_data = JSON.parse(nd_resp.getBody());
-    //console.log("deleteDocs(): deleting by query for " + docType);
     var resp = esRequest(url, docType + "/_doc/_delete_by_query", q);
     var data = JSON.parse(resp.getBody());
   });
@@ -86,18 +81,6 @@ deleteMetrics = function (url, runId) {
   if (remaining > 0) {
     console.log("deleting " + q['query']['bool']['filter']['terms']["metric_desc.id"].length + " metrics");
     deleteDocs(url, ['metric_data', 'metric_desc'], q);
-    //console.log(remaining + " metrics remain");
-    //var number = 1;
-    //q['query']['bool']['filter']['terms']["metric_desc.id"].forEach(element => {
-      //console.log("deleting " + number);
-      //var singleQ = { 'query': { 'bool': { 'filter': { "terms": { "metric_desc.id": [] }}}}} 
-      //singleQ['query']['bool']['filter']['terms']["metric_desc.id"].push(element);
-      //console.log("deleting " + singleQ['query']['bool']['filter']['terms']["metric_desc.id"].length + " metrics");
-      //console.log("query: ");
-      //console.log(JSON.stringify(singleQ));
-      //deleteDocs(url, ['metric_data', 'metric_desc'], singleQ);
-      //number++;
-    //});
   }
 };
 exports.deleteMetrics = deleteMetrics;
