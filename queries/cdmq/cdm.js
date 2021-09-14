@@ -15,14 +15,18 @@ function esRequest(host, idx, q) {
     q = JSON.stringify(q);
   }
   var resp = request('POST', url, { body: q, headers: {"Content-Type": "application/json" } });
+  //console.log("esRequest complete");
   return resp;
 }
 
 deleteDocs = function (url, docTypes, q) {
-  docTypes.forEach(element => {
-    var nd_resp = esRequest(url, element + "/_doc/_search", q);
-    var nd_data = JSON.parse(nd_resp.getBody());
-    var resp = esRequest(url, element + "/_doc/_delete_by_query", q);
+  //console.log("deleteDocs(): docTypes: " + docTypes);
+  //console.log("deleteDocs(): q: " + JSON.stringify(q));
+  docTypes.forEach(docType => {
+    //var nd_resp = esRequest(url, docType + "/_doc/_search", q);
+    //var nd_data = JSON.parse(nd_resp.getBody());
+    //console.log("deleteDocs(): deleting by query for " + docType);
+    var resp = esRequest(url, docType + "/_doc/_delete_by_query", q);
     var data = JSON.parse(resp.getBody());
   });
 };
@@ -44,7 +48,11 @@ getMetricDescs = function (url, runId) {
   var ids = [];
   if (Array.isArray(data.hits.hits) && data.hits.hits.length > 0) {
     data.hits.hits.forEach(element => {
-      ids.push(element._source.metric_desc.id);
+      if (ids.find(value => value == element._source.metric_desc.id)) {
+        console.log("Odd, metric ID " + element._source.metric_desc.id + "found more than once");
+      } else {
+        ids.push(element._source.metric_desc.id);
+      }
     });
   }
   return ids;
@@ -68,15 +76,28 @@ deleteMetrics = function (url, runId) {
   ids.forEach(element => {
     var term = {"metric_desc.id": element };
     q['query']['bool']['filter']['terms']["metric_desc.id"].push(element);
-    if (q['query']['bool']['filter']['terms']["metric_desc.id"].length >= 5000) {
+    if (q['query']['bool']['filter']['terms']["metric_desc.id"].length >= 1000) {
       console.log("deleting " + q['query']['bool']['filter']['terms']["metric_desc.id"].length + " metrics");
       deleteDocs(url, ['metric_data', 'metric_desc'], q);
       q['query']['bool']['filter']['terms']["metric_desc.id"] = [];
     }
   });
-  if (q['query']['bool']['filter']['terms']["metric_desc.id"].length > 0) {
+  var remaining = q['query']['bool']['filter']['terms']["metric_desc.id"].length;
+  if (remaining > 0) {
     console.log("deleting " + q['query']['bool']['filter']['terms']["metric_desc.id"].length + " metrics");
     deleteDocs(url, ['metric_data', 'metric_desc'], q);
+    //console.log(remaining + " metrics remain");
+    //var number = 1;
+    //q['query']['bool']['filter']['terms']["metric_desc.id"].forEach(element => {
+      //console.log("deleting " + number);
+      //var singleQ = { 'query': { 'bool': { 'filter': { "terms": { "metric_desc.id": [] }}}}} 
+      //singleQ['query']['bool']['filter']['terms']["metric_desc.id"].push(element);
+      //console.log("deleting " + singleQ['query']['bool']['filter']['terms']["metric_desc.id"].length + " metrics");
+      //console.log("query: ");
+      //console.log(JSON.stringify(singleQ));
+      //deleteDocs(url, ['metric_data', 'metric_desc'], singleQ);
+      //number++;
+    //});
   }
 };
 exports.deleteMetrics = deleteMetrics;
@@ -343,6 +364,20 @@ exports.getRuns = function (url, searchTerms) {
     });
     return ids;
   }
+};
+
+exports.getDocCountByMetricId = function (url, Id, docType) {
+  var q = { 'query': { 'bool': { 'filter': [ {"term": {"metric_desc.id": Id}} ] }}};
+  var resp = esRequest(url, docType + "/_doc/_count", q);
+  var data = JSON.parse(resp.getBody());
+  return data.count;
+};
+
+exports.getDocCount = function (url, runId, docType) {
+  var q = { 'query': { 'bool': { 'filter': [ {"term": {"run.id": runId}} ] }}};
+  var resp = esRequest(url, docType + "/_doc/_count", q);
+  var data = JSON.parse(resp.getBody());
+  return data.count;
 };
 
 // Traverse a response from a nested aggregation to generate a set of filter terms
