@@ -1,0 +1,37 @@
+name: crucible-ci
+
+on:
+  # run on push or pull request events for the master branch only
+  pull_request:
+    branches: [ master ]
+
+  # allow for manual invocation from the actions tab
+  workflow_dispatch:
+
+jobs:
+  crucible-ci-samples-iteration-repeat-runs-fio:
+    name: crucible-ci-samples-iteration-repeat-runs-fio
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout CommonDataModel
+      uses: actions/checkout@v2
+      with:
+        path: CommonDataModel
+
+    - name: Checkout crucible-ci
+      uses: actions/checkout@v2
+      with:
+        repository: perftool-incubator/crucible-ci
+        ref: main
+        path: crucible-ci
+
+    - name: Run crucible-ci->integration-tests
+      uses: ./crucible-ci/.github/actions/integration-tests
+      with:
+        artifact_tag: "samples-iteration-repeat-runs"
+        ci_target: "CommonDataModel"
+        ci_target_dir: ${{ github.workspace }}/CommonDataModel
+        scenarios: "fio"
+        repeat_runs: "yes"
+        run_samples: "3"
