@@ -62,15 +62,45 @@ runIds.forEach(runId => {
     console.log("There were no iterations found, exiting");
     process.exit(1);
   }
+  var allParams = [];
+  var allParamsCounts = [];
+  benchIterations.forEach(iterationId => {
+    var params = cdm.getParams(program.url, [{ "term": "iteration.id", "match": "eq", "value": iterationId }]);
+    params.forEach(param => {
+      newParam = param.arg + "=" + param.val;
+      idx = allParams.indexOf(newParam)
+      if (idx == -1) {
+        allParams.push(newParam);
+        allParamsCounts.push(1);
+      } else {
+        allParamsCounts[idx] += 1
+      }
+    });
+  });
+  var commonParams = [];
+  for (var idx=0; idx<allParams.length; idx++) {
+    if (allParamsCounts[idx] == benchIterations.length) {
+      commonParams.push(allParams[idx]);
+    }
+  }
+  commonParams.sort()
+  var commonParamsStr = "    common params: ";
+  commonParams.forEach(param => {
+    commonParamsStr += param + " ";
+  });
+  console.log(commonParamsStr);
   benchIterations.forEach(iterationId => {
     console.log("    iteration-id: %s", iterationId);
     //d = Date.now();
     //console.log(d + " call:getParams");
     var params = cdm.getParams(program.url, [{ "term": "iteration.id", "match": "eq", "value": iterationId }]);
-    params.sort((a, b) => a.arg < b.arg ? -1 : 1)
-    var paramList = "      params: ";
+    params.sort((a, b) => a.arg < b.arg ? -1 : 1);
+    var paramList = "      unique params: ";
     params.forEach(param => {
-      paramList += param.arg + "=" + param.val + " ";
+      paramStr = param.arg + "=" + param.val;
+      if (commonParams.indexOf(paramStr) == -1) {
+        paramList += param.arg + "=" + param.val + " ";
+      }
     });
     console.log(paramList);
     //dPrev = d;
