@@ -16,17 +16,31 @@ program
           'Only include benchmark-iterations which match a tag <key>:<value> pair(s)', list, [])
   .option('--filter-by-params <params>, param1:value1[,paramN:valueN>',
           'Only include benchmark-iterations which match a param <key>:<value> pair(s)', list, [])
-  .option('--separate-by-tags tag1[,tagN]',
-          'Ensure that benchmark-iterations that have a different value for tag <key> are in organnized into diffrent groups', list, [])
-  .option('--separate-by-params param1[,paramN]',
-          'Ensure that benchmark-iterations that have a different value for param <key> are in organnized into diffrent groups', list, [])
+  .option('--dont-breakout-tags <tags>, tag1[,tagN]',
+          'Do not break out these tags (because of different values per iteration) into different clusters of iterations.  These tag values will show up in the label for the result instead', list, [])
+  .option('--omit-tags <tags>, tag1[,tagN]',
+          'If these tags are found, just pretend they never existed', list, [])
+  .option('--dont-breakout-params <tags>, tag1[,tagN]',
+          'Do not break out these params (because of different values per iteration) into different clusters of iterations.  These param values will show up in the label for the result instead', list, [])
+  .option('--omit-params <tags>, tag1[,tagN]',
+          'If these params are found, just pretend they never existed.  Do not do this unless you really are sure these params are not relevant.', list, [])
   .parse(process.argv);
-
-program.url = "localhost:9200";
 
 console.log('Options: ', program.opts());
 console.log('Remaining arguments: ', program.args);
 
+program.url = "localhost:9200";
 
-getIters(program.url, program.filterByAge, program.filterByTags, program.filterByParams);
+if (typeof(program.dontBreakoutParams) == "undefined") {
+  console.log("Setting program.dontBreakoutParams to empty array");
+  program.dontBreakoutParams = [];
+}
 
+if (typeof(program.dontBreakoutTags) == "undefined") {
+  console.log("Setting program.dontBreakoutTags to empty array");
+  program.dontBreakoutTags = [];
+}
+
+
+var iterTree = getIters(program.url, program.filterByAge, program.filterByTags, program.filterByParams, program.dontBreakoutTags, program.omitTags, program.dontBreakoutParams, program.omitParams);
+reportIters(iterTree);

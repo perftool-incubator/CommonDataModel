@@ -1,5 +1,6 @@
 //# vim: autoindent tabstop=2 shiftwidth=2 expandtab softtabstop=2 filetype=javascript
 var request = require('sync-request');
+var printf = require('printf');
 var bigQuerySize = 262144;
 
 
@@ -48,12 +49,13 @@ deleteDocs = function (url, docTypes, q) {
 };
 exports.deleteDocs = deleteDocs;
 
-exports.getPrimaryMetric = function (url, iterId) {
+getPrimaryMetric = function (url, iterId) {
   var q = { 'query': { 'bool': { 'filter': [ {"term": {"iteration.id": iterId}} ] }}};
   var resp = esRequest(url, "iteration/_doc/_search", q);
   var data = JSON.parse(resp.getBody());
   return data.hits.hits[0]._source.iteration['primary-metric'];
 };
+exports.getPrimaryMetric = getPrimaryMetric;
 
 getMetricDescs = function (url, runId) {
   var q = { 'query': { 'bool': { 'filter': [{ "term": {"run.id": runId }}] }},
@@ -106,20 +108,17 @@ deleteMetrics = function (url, runId) {
 };
 exports.deleteMetrics = deleteMetrics;
 
-buildIterTree = function (params, tags, iterIds) {
+buildIterTree = function (url, params, tags, paramValueByIterAndArg, tagValueByIterAndName, iterIds, dontBreakoutTags, dontBreakoutParams, omitParams) {
 
-  // paramArgs:  1-d array, elements = args as strings
   // params: 2-d hash, {arg}{val}, value = [list of iteration IDs that has this val]
-  //console.log("buildIterTree START: paramArgs: " + JSON.stringify(paramArgs) + " params: " + JSON.stringify(Object.keys(params)));
+  // tags: 2-d hash, {name}{val}, value = [list of iteration IDs that has this val]
 
   var iterNode = {};
   if (typeof(iterIds) == "undefined" || iterIds.length == 0) {
     return iterNode;
   };
 
-  //var remainingParamArgs = [];
   // Move any params which have only 1 value to current iterNode
-  //paramArgs.forEach(arg => {
   Object.keys(params).forEach(arg =>{
     if (Object.keys(params[arg]).length == 1) {
       if (typeof(iterNode["params"]) == "undefined") {
@@ -127,17 +126,13 @@ buildIterTree = function (params, tags, iterIds) {
       }
       var val = Object.keys(params[arg])[0]; // the one and only value
       var thisParam = { "arg": arg, "val": val };
-      //console.log("Adding this param to iterNode which has only 1 value: " + JSON.stringify(thisParam));
       iterNode.params.push(thisParam);
       iterIds = intersectTwoArrays(iterIds, params[arg][val]);
-      //console.log("removing this param: " + arg + " from params which has 1 value");
       delete params[arg]; // delete all possible values for this arg
     }
   });
 
-  //var remainingTagNames = [];
   // Move any tags which have only 1 value to current iterNode
-  //tagNames.forEach(name => {
   Object.keys(tags).forEach(name =>{
     if (Object.keys(tags[name]).length == 1) {
       if (typeof(iterNode["tags"]) == "undefined") {
@@ -148,100 +143,154 @@ buildIterTree = function (params, tags, iterIds) {
       //console.log("Adding this tag which has only 1 value to current iterNode: " + JSON.stringify(thisTag));
       iterNode.tags.push(thisTag);
       iterIds = intersectTwoArrays(iterIds, tags[name][val]);
-      //console.log("removing this tag: " + name + " from tags which has 1 value");
       delete tags[name]; // delete all possible values for this arg
     }
   });
 
-  //console.log("remainingParamArgs: " + JSON.stringify(remainingParamArgs));
-  //console.log("remainingTagNames: " + JSON.stringify(remainingTagNames));
-  //console.log("iterNode now has: " + JSON.stringify(iterNode));
-
-
   // The child nodes can only be from breaking out one param or one tag
   // The current implementation checks for a param first, and only if there
   // are none, does it try a tag.  The opposite order could also work.
-  //if (remainingParamArgs.length > 0) {
+  
   if (Object.keys(params).length > 0) {
-    //console.log("in breakout, params: " + JSON.stringify(Object.keys(params)));
-    var nextArg = Object.keys(params)[0];
-    //console.log("nextArg: " + nextArg + " values: " + JSON.stringify(Object.keys(params[nextArg])));
-    //if (remainingParamArgs == "undefined") {
-      //remainingParamArgs = [];
-    //}
-    Object.keys(params[nextArg]).forEach(val => {
-      const intersectedIterIds = intersectTwoArrays(iterIds, params[nextArg][val]);
-      var newIter;
-      // copy params, then modify copy such that newParams{nextArg} only has 1 value
-      var newParamsJsonStr = JSON.stringify(params);
-      var newParams = JSON.parse(newParamsJsonStr);
-      newParams[nextArg] = {}; // delete all possible values for this arg
-      newParams[nextArg][val] = params[nextArg][val]; 
-      //console.log("calling buildIterTree with params: " + JSON.stringify(newParams));
-      newIter = buildIterTree(newParams, tags, intersectedIterIds);
-      if (typeof(newIter) != "undefined" && Object.keys(newIter).length > 0) {
-        console.log("pushing this newIter: " + JSON.stringify(newIter));
-        if (typeof(iterNode["breakout"]) == "undefined") {
-          iterNode["breakout"] = [];
-        }
-        iterNode["breakout"].push(newIter);
-      }
-    });
-  } else {
-    var annotatedIterIds = [];
-    iterIds.forEach(id => {
-      var thisIter = { "id": id, "annotations": [] }
-      // add tag name/val pairs
-      //remainingTagNames.forEach(name => {
-      Object.keys(tags).forEach(name => {
-        // need to push name/val pair
-        thisIter["annotations"].push(name);
-      });
-      annotatedIterIds.push(thisIter);
-    });
-    iterNode["iterIds"] = annotatedIterIds;
-  }
-
-
-  /*
-  else { // No params to subdivide, so do tags
-    console.log("\n\nremainingParamArgs was empty, so breaking out by remainingTagNames: " + JSON.stringify(remainingTagNames) + "\n");
-    if (remainingTagNames.length > 0) {
-      console.log("remainingTagNames: " + JSON.stringify(remainingTagNames));
-      var nextName = remainingTagNames.pop();
-      console.log("nextName: " + nextName);
-      if (typeof(iterNode["breakoouts"]) == "undefined") {
-        iterNode["breakoouts"] = [];
-      }
-      console.log("tags[" + nextName + "]: " + JSON.stringify(tags[nextName]));
-      if (remainingTagNames == "undefined") {
-        remainingTagNames= [];
-      }
-      Object.keys(tags[nextName]).forEach(val => {
-        const iterIds = intersectTwoArrays(breakoouts, tags[nextName][val]);
+    console.log("dontBreakoutParams: " + JSON.stringify(dontBreakoutParams));
+    var args = Object.keys(params).filter(x => !dontBreakoutParams.includes(x));
+    if (args.length > 0) {
+      var nextArg = args[0];
+      Object.keys(params[nextArg]).forEach(val => {
+        const intersectedIterIds = intersectTwoArrays(iterIds, params[nextArg][val]);
         var newIter;
-        if (remainingParamArgs.length == 0 && remainingTagNames.length == 0 && iterIds.length > 0) {
-          newIter = { "tags": [ { "name": nextName, "val": val } ], "ids": iterIds };
-        } else {
-          newIter = { "tags": [ { "name": nextName, "val": val } ], "breakoouts": buildIterTree(remainingParamArgs, remainingTagNames, params, tags, iterIds) };
-        }
-        if (typeof(newIter) != "undefined") {
-          iterNode["breakoouts"].push(newIter);
+        // deep-copy params, then modify copy such that newParams{nextArg} only has 1 value
+        var newParamsJsonStr = JSON.stringify(params);
+        var newParams = JSON.parse(newParamsJsonStr);
+        newParams[nextArg] = {}; // delete all possible values for this arg
+        newParams[nextArg][val] = params[nextArg][val]; 
+        newIter = buildIterTree(url, newParams, tags, paramValueByIterAndArg, tagValueByIterAndName, intersectedIterIds, dontBreakoutTags, dontBreakoutParams, omitParams);
+        if (typeof(newIter) != "undefined" && Object.keys(newIter).length > 0) {
+          if (typeof(iterNode["breakout"]) == "undefined") {
+            iterNode["breakout"] = [];
+          }
+          iterNode["breakout"].push(newIter);
         }
       });
     }
   }
-  */
 
-  console.log("returning iterNode: " + JSON.stringify(iterNode));
+  if (typeof(iterNode["breakout"]) == "undefined") {
+    // skipping any requested "don't break out tags" below
+    var names = Object.keys(tags).filter(x => !dontBreakoutTags.includes(x));
+    if (names.length > 0) {
+      var nextName = names[0];
+      Object.keys(tags[nextName]).forEach(val => {
+        const intersectedIterIds = intersectTwoArrays(iterIds, tags[nextName][val]);
+        var newIter;
+        // deep-copy tags, then modify copy such that newTags{nextName} only has 1 value
+        var newTagsJsonStr = JSON.stringify(tags);
+        var newTags = JSON.parse(newTagsJsonStr);
+        newTags[nextName] = {}; // delete all possible values for this arg
+        newTags[nextName][val] = tags[nextName][val]; 
+        newIter = buildIterTree(url, params, newTags, paramValueByIterAndArg, tagValueByIterAndName, intersectedIterIds, dontBreakoutTags, dontBreakoutParams, omitParams);
+        if (typeof(newIter) != "undefined" && Object.keys(newIter).length > 0) {
+          if (typeof(iterNode["breakout"]) == "undefined") {
+            iterNode["breakout"] = [];
+          }
+          iterNode["breakout"].push(newIter);
+        }
+      });
+    }
+  }
+
+  // Only if there are no more breakouts, should we create the iteration
+  if (typeof(iterNode["breakout"]) == "undefined") {
+    var iterations = [];
+    iterIds.forEach(id => {
+      var result = getIterMetrics(url, id);
+      var thisIter = { "id": id, "labels": [], "mean": result["mean"], "stddevpct": result["stddevpct"], "min": result["min"], "max": result["max"] }
+      Object.keys(tags).forEach(name => {
+        //var thisLabel = { "name": name, "val": tagValueByIterAndName[id][name] };
+        thisIter["labels"].push(name + "=" + tagValueByIterAndName[id][name]);
+      });
+      Object.keys(params).forEach(arg => {
+        //var thisLabel = { "arg": arg, "val": paramValueByIterAndArg[id][arg] };
+        thisIter["labels"].push(arg + "=" + paramValueByIterAndArg[id][arg]);
+      });
+      iterations.push(thisIter);
+    });
+    iterNode["iterations"] = iterations;
+  }
+
+  //console.log("returning iterNode: " + JSON.stringify(iterNode));
   return iterNode;
 };
 
+reportIters = function(iterTree, indent) {
+
+  var midPoint = 40;
+  var len = 0;
+  var paramStr = "";
+  if (typeof(iterTree.params) != "undefined") {
+    if (iterTree.params.length == 1) {
+      paramStr += iterTree.params[0].arg + "=" + iterTree.params[0].val;
+    } else {
+      var separator;
+      if (typeof(indent) == "undefined") {
+        separator = " "; // params common to all results at top full width
+      } else {
+        separator = "\n";
+      }
+      iterTree.params.forEach(param => {
+        paramStr += separator + param.arg + "=" + param.val;
+      });
+    }
+    paramStr = printf("%-" + midPoint + "s", indent + paramStr);
+    if (len < paramStr.length) {
+      len = paramStr.length;
+    }
+    process.stdout.write(paramStr + "\n");
+  }
+
+  var tagStr = "";
+  if (typeof(iterTree.tags) != "undefined") {
+    if (iterTree.tags.length == 1) {
+      tagStr += iterTree.tags[0].name + "=" + iterTree.tags[0].val;
+    } else {
+      iterTree.tags.forEach(tag => {
+        tagStr += "\n" + tag.name + "=" + tag.val;
+      });
+    }
+    tagStr = printf("%-" + midPoint + "s", indent + tagStr);
+    if (len < tagStr.length) {
+      len = tagStr.length;
+    }
+    process.stdout.write(tagStr + "\n");
+  }
+
+  if (typeof(indent) == "undefined") {  // print the row names after all common tags/params are printed
+    var header = printf("%" + midPoint + "s" + " %-10s %-10s", "label", "    mean", "stddevpct");
+    console.log(header);
+    indent = "";
+  }
+
+  if (typeof(iterTree.breakout) != "undefined") {
+    iterTree.breakout.forEach(iter => {
+      reportIters(iter, "  " + indent);
+    });
+  }
+  if (typeof(iterTree.iterations) != "undefined") {
+    iterTree.iterations.forEach(i => {
+      var metrics = printf("%" + midPoint + "s" + "     %-010.4f %-10.4f", i["labels"], i["mean"], i["stddevpct"], i["labels"]);
+      console.log(metrics);
+    });
+  }
+
+}
+
 // getIters(): filter and group interations, typically for generating comparisons (clustered bar graphs)
-getIters = function (url, filterByAge, filterByTags, filterByParams) {
+getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakoutTags, omitTags, dontBreakoutParams, omitParams) {
 
   console.log("filterByTags:\n" + JSON.stringify(filterByTags, null, 2));
   console.log("filterByParams:\n" + JSON.stringify(filterByParams, null, 2));
+  console.log("dontBreakoutParams:\n" + JSON.stringify(dontBreakoutParams, null, 2));
+  console.log("dontBreakoutTags:\n" + JSON.stringify(dontBreakoutTags, null, 2));
 
   // Process:
   // 1) Get run.ids from age and tag filters
@@ -276,15 +325,15 @@ getIters = function (url, filterByAge, filterByTags, filterByParams) {
   // to have only the run.ids that match all tag filters.
   filterByTags.forEach(nameval => {
     var tag_query = JSON.parse(base_q_json);
-    console.log("\n\ntag_query: " + JSON.stringify(tag_query));
+    //console.log("\n\ntag_query: " + JSON.stringify(tag_query));
     var tagName = { "term": { "tag.name": nameval.split(':')[0]}};
-    console.log("tagName: " + JSON.stringify(tagName));
+    //console.log("tagName: " + JSON.stringify(tagName));
     tag_query.query.bool.filter.push(tagName);
-    console.log("tag_query: " + JSON.stringify(tag_query));
+    //console.log("tag_query: " + JSON.stringify(tag_query));
     var tagVal = { "term": { "tag.val": nameval.split(':')[1]}};
-    console.log("tagVal: " + JSON.stringify(tagVal));
+    //console.log("tagVal: " + JSON.stringify(tagVal));
     tag_query.query.bool.filter.push(tagVal);
-    console.log("tag_query: " + JSON.stringify(tag_query));
+    //console.log("tag_query: " + JSON.stringify(tag_query));
     ndjson += '{"index": "' + getIndexBaseName() + 'tag' + '" }\n';
     ndjson += JSON.stringify(tag_query) + "\n"; 
   }); 
@@ -352,90 +401,68 @@ getIters = function (url, filterByAge, filterByTags, filterByParams) {
   iterIds.push(iterIdsFromRun);
   iterIds.push(iterIdsFromParam);
   var allFilterIterIds = intersectAllArrays(iterIds);
-  console.log("intersected iterationIds from params and run filters:\n" + JSON.stringify(allFilterIterIds, null, 2));
   var iterations = [];
+  var paramValueByIterAndArg = {}; 
+  var tagValueByIterAndName = {};
   allFilterIterIds.forEach(iter => {
     var params = getParams(url, [{ "term": "iteration.id", "match": "eq", "value": iter }]);
-    var paramsStr = '    ';
-    var paramsHash = {};
-    params.forEach(p => {
-      paramsHash[p.arg] = p.val;
-    });
-    Object.keys(paramsHash).sort().forEach(arg => {
-      paramsStr += arg + "=" + paramsHash[arg] + " ";
-    });
-
     var runId = getRunFromIter(url, iter);
-    var tagsStr = '    ';
     var tags = getTags(url, runId);
-    var tagsHash = {};
-    tags.forEach(t => {
-      tagsHash[t.name] = t.val;
-    });
-    Object.keys(tagsHash).sort().forEach(name => {
-      tagsStr += name + "=" + tagsHash[name] + " ";
-    });
-
-    console.log(iter + paramsStr + tagsStr);
     var thisIter = { "iterId": iter, "tags": tags, "params": params };
+    params.forEach(thisParam => {
+      if (typeof(paramValueByIterAndArg[iter]) == "undefined") {
+        paramValueByIterAndArg[iter] = {};
+      }
+      paramValueByIterAndArg[iter][thisParam["arg"]] = thisParam["val"];
+    });
+    tags.forEach(thisTag => {
+      if (typeof(tagValueByIterAndName[iter]) == "undefined") {
+        tagValueByIterAndName[iter] = {};
+      }
+      tagValueByIterAndName[iter][thisTag["name"]] = thisTag["val"];
+    });
     iterations.push(thisIter);
   });
-  console.log("iterations (and their porams & tags)\n" + JSON.stringify(iterations, null, 2));
+  console.log("paramValueByIterAndArg:\n" + JSON.stringify(paramValueByIterAndArg, null, 2));
+  console.log("tagValueByIterAndName:\n" + JSON.stringify(tagValueByIterAndName, null, 2));
+  //console.log("iterations (and their porams & tags)\n" + JSON.stringify(iterations, null, 2));
 
   // Scan iterations to find all different values for each tag
   var tags = {};
   var params = {};
   iterations.forEach(iter => {
-    //console.log("iter: " + JSON.stringify(iter, null, 2));
+
     iter.tags.forEach(tag => {
-      //console.log("tag: " + JSON.stringify(tag, null, 2));
-      if (typeof(tags[tag.name]) == "undefined") {
-        tags[tag.name] = {};
+      if (!omitTags.includes(tag.name)) {
+        if (typeof(tags[tag.name]) == "undefined") {
+          tags[tag.name] = {};
+        }
+        if (typeof(tags[tag.name][tag.val]) == "undefined") {
+          tags[tag.name][tag.val] = [];
+        }
+        tags[tag.name][tag.val].push(iter.iterId);
       }
-      if (typeof(tags[tag.name][tag.val]) == "undefined") {
-        tags[tag.name][tag.val] = [];
-      }
-      tags[tag.name][tag.val].push(iter.iterId);
     });
+
     iter.params.forEach(param => {
-      //console.log("param: " + JSON.stringify(param, null, 2));
-      if (typeof(params[param.arg]) == "undefined") {
-        params[param.arg] = {};
+      if (!omitParams.includes(param.name)) {
+        if (typeof(params[param.arg]) == "undefined") {
+          params[param.arg] = {};
+        }
+        if (typeof(params[param.arg][param.val]) == "undefined") {
+          params[param.arg][param.val] = [];
+        }
+        params[param.arg][param.val].push(iter.iterId);
       }
-      if (typeof(params[param.arg][param.val]) == "undefined") {
-        params[param.arg][param.val] = [];
-      }
-      params[param.arg][param.val].push(iter.iterId);
     });
-  });
-  //console.log("params:\n" + JSON.stringify(tags, null, 2));
 
-  var allTagNames = Object.keys(tags);
-  var allParamArgs = Object.keys(params);
-
-/*
-  // Find all params and tags that have only 1 value across all iterations
-  console.log("all tag names: " + JSON.stringify(allTagNames));
-  console.log("all param args: " + JSON.stringify(allParamArgs));
-  allTagNames.forEach(name => {
-    if (Object.keys(tags[name]).length == 1) {
-      console.log("tag " + name + " only has 1 value");
-    } else {
-      console.log("tag " + name + " has >1 value");
-    }
   });
-  allParamArgs.forEach(arg => {
-    if (Object.keys(params[arg]).length == 1) {
-      console.log("param " + arg + " only has 1 value");
-    } else {
-      console.log("param " + arg + " has >1 value");
-    }
-  });
-*/
 
   var iterTree = {};
-  iterTree = buildIterTree(params, tags, allFilterIterIds);
-  console.log("iterTree: " + JSON.stringify(iterTree, null, 2));
+  iterTree = buildIterTree(url, params, tags, paramValueByIterAndArg, tagValueByIterAndName, allFilterIterIds, dontBreakoutTags, dontBreakoutParams, omitParams);
+  //console.log("iterTree: " + JSON.stringify(iterTree, null, 2));
+  return iterTree;
+
 }
 exports.getIters = getIters;
 
@@ -495,7 +522,7 @@ getParams = function (url, searchTerms) {
 exports.getParams = getParams;
 
 
-exports.getSamples = function (url, searchTerms) {
+getSamples = function (url, searchTerms) {
   var q = { 'query': { 'bool': { 'filter': [] }},
             '_source': "sample.id", 'size': 1000,
             'sort': [ { "sample.num": { "order": "asc"}} ] };
@@ -517,8 +544,9 @@ exports.getSamples = function (url, searchTerms) {
   }
   return ids;
 };
+exports.getSamples = getSamples;
 
-exports.getPrimaryPeriodName = function (url, iterId) {
+getPrimaryPeriodName = function (url, iterId) {
   var q = { 'query': { 'bool': { 'filter': [ {"term": {"iteration.id": iterId}} ] }},
             '_source': 'iteration.primary-period',
             'size': 1 };
@@ -528,6 +556,7 @@ exports.getPrimaryPeriodName = function (url, iterId) {
     return data.hits.hits[0]._source.iteration['primary-period'];
   }
 };
+exports.getPrimaryPeriodName = getPrimaryPeriodName;
 
 getRunFromIter = function (url, iterId) {
   var q = { 'query': { 'bool': { 'filter': [ {"term": {"iteration.id": iterId}} ] }},
@@ -572,7 +601,7 @@ getPeriodRange = function (url, periId) {
 };
 exports.getPeriodRange = getPeriodRange;
 
-exports.getSampleStatus = function (url, sampId) {
+getSampleStatus = function (url, sampId) {
   var q = { 'query': { 'bool': { 'filter': [ {"term": {"sample.id": sampId}} ] }},
             '_source': 'sample.status',
             'size': 1 };
@@ -584,8 +613,9 @@ exports.getSampleStatus = function (url, sampId) {
     console.log("sample status not found\n");
   }
 };
+exports.getSampleStatus = getSampleStatus;
 
-exports.getPrimaryPeriodId = function (url, sampId, periName) {
+getPrimaryPeriodId = function (url, sampId, periName) {
   var q = { 'query': { 'bool': { 'filter': [ {"term": {"sample.id": sampId}}, {"term": {"period.name": periName}} ] }},
             '_source': 'period.id',
             'size': 1 };
@@ -597,6 +627,7 @@ exports.getPrimaryPeriodId = function (url, sampId, periName) {
     return null;
   }
 };
+exports.getPrimaryPeriodId = getPrimaryPeriodId;
 
 exports.getMetricSources = function (url, runId) {
   var q = { 'query': { 'bool': { 'filter': [ {"term": {"run.id": runId}} ] }},
@@ -923,14 +954,16 @@ getMetricGroupsFromBreakouts = function (url, sets) {
     var aggs = JSON.parse(result);
     var q = { 'query': { 'bool': { 'filter': [ 
                                               {"term": {"metric_desc.source": period.source}},
-                                              {"term": {"metric_desc.type": period.type}},
-                                              {"term": {"run.id": period.run}}
+                                              {"term": {"metric_desc.type": period.type}}
                                              ]
                                 }},
              'size': 0 };
   
     if (period.period != null) {
       q.query.bool.filter.push(JSON.parse('{"term": {"period.id": "' + period.period + '"}}'));
+    }
+    if (period.run != null) {
+      q.query.bool.filter.push(JSON.parse('{"term": {"run.id": "' + period.run + '"}}'));
     }
     // If the breaout contains a match requirement (something like "host=myhost"), then we must add a term filter for it.
     // Eventually it would be nice to have something other than a match, like a regex: host=/^client/.
@@ -947,6 +980,7 @@ getMetricGroupsFromBreakouts = function (url, sets) {
     ndjson += JSON.stringify(index) + "\n";
     ndjson += JSON.stringify(q) + "\n";
   });
+  console.log("request:\n" + ndjson);
   var resp = esRequest(url, "metric_desc/_doc/_msearch", ndjson);
   var data = JSON.parse(resp.getBody());
 
@@ -1537,8 +1571,77 @@ exports.getMetricData = function(url, runId, periId, source, type, begin, end, r
   return data;
 };
 
-exports.getMetricDataSets = function(url, sets) {
+getMetricDataSets = function(url, sets) {
   var metricGroupIdsByLabelSets = getMetricGroupsFromBreakouts(url, sets);
   var dataSets = getMetricDataFromIdsSets(url, sets, metricGroupIdsByLabelSets);
   return dataSets;
 }
+exports.getMetricDataSets = getMetricDataSets;
+
+
+getIterMetrics = function(url, iterationId) {
+  var result = {};
+  var primaryMetric = getPrimaryMetric(url, iterationId);
+  var primaryPeriodName = getPrimaryPeriodName(url, iterationId);
+  if (primaryPeriodName == undefined) {
+    console.log("      the primary period-name for this iteration is undefined, exiting\n");
+    process.exit(1);
+  }
+  var samples = getSamples(url, [{ "term": "iteration.id", "match": "eq", "value": iterationId }]);
+  var sampleTotal = 0;
+  var sampleCount = 0;
+  var sampleVals = [];
+  var sampleList = "";
+  var periods = [];
+  samples.forEach(sample => {
+    if (getSampleStatus(url, sample) == "pass") {
+      var primaryPeriodId = getPrimaryPeriodId(url, sample, primaryPeriodName);
+      if (primaryPeriodId == undefined || primaryPeriodId == null) {
+        console.log("          the primary perdiod-id for this sample is not valid, exiting\n");
+        process.exit(1);
+      }
+      console.log("          primary period-id: %s", primaryPeriodId);
+      var range = getPeriodRange(url, primaryPeriodId);
+      if (range == undefined || range == null) {
+        console.log("          the range for the primary period is undefined, exiting");
+        process.exit(1);
+      }
+      var breakout = []; // By default we do not break-out a benchmark metric, so this is empty
+      // Needed for getMetricDataSets further below:
+      var period = { "period": primaryPeriodId, "source": "uperf", "type": primaryMetric, "begin": range.begin, "end": range.end, "resolution": 1, "breakout": [] };
+      periods.push(period);
+    }
+  });
+
+  if (periods.length > 0) {
+    var metricDataSets = getMetricDataSets(url, periods);
+    var msampleCount = 0;
+    var msampleVals = [];
+    var msampleTotal = 0;
+    var msampleList = "";
+    metricDataSets.forEach(metricData => {
+      var msampleVal = metricData[""];
+      if (msampleVal && msampleVal[0] && msampleVal[0].value) {
+        msampleVal = parseFloat(msampleVal[0].value);
+        msampleVals.push(msampleVal);
+        msampleTotal += msampleVal;
+        var msampleFixed = msampleVal.toFixed(2);
+        msampleList += " " + msampleFixed;
+        msampleCount++;
+      }
+    });
+    if (msampleCount > 0) {
+      var mean = msampleTotal / msampleCount;
+      var diff = 0;
+      msampleVals.forEach(val => {
+        diff += (mean - val) * (mean - val);
+      });
+      diff /= (msampleCount - 1);
+      var mstddev = Math.sqrt(diff);
+      var mstddevpct = 100 * mstddev / mean;
+      result = { "mean": parseFloat(mean).toFixed(2), "min": parseFloat(Math.min(...msampleVals)).toFixed(2), "max": parseFloat(Math.max(...msampleVals)).toFixed(2), "stddev": parseFloat(mstddev).toFixed(2), "stddevpct": parseFloat(mstddevpct).toFixed(2) };
+    }
+  }
+  return result;
+}
+exports.getIterMetrics = getIterMetrics;
