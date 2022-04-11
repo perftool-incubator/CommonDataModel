@@ -177,16 +177,16 @@ runIds.forEach(runId => {
           console.log(file_name + ' error in description to file');
         }
       });
-        prevDescriptionCSV = descriptionCSV;
+      prevDescriptionCSV = descriptionCSV;
     };
 
       //TODO: remove the trailing ',' in the line
     file.appendFile(file_name, dataCSV +'\n',err => {
-        if(err) {
+      if(err) {
         console.log(err);
         console.log(file_name + ' error in writing data to file');
-        }
-        });
+      }
+    });
   });// iteration
 
 
