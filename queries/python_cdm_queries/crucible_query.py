@@ -17,7 +17,7 @@ print(es.info())
 Work in progress document
 '''
 
-def run_id_to_topo_tag(main_run_id: str):
+def run_id_to_tag(main_run_id: str, tag_name: str):
     '''
     Use the run_id to find all the topo tag, return the pair
     '''
@@ -31,7 +31,7 @@ def run_id_to_topo_tag(main_run_id: str):
     )
     #print(json.dumps(run_resp.body,indent=2))
     for tag in run_resp['hits']['hits']:
-        if tag['_source']['tag']['name'] == 'topo':
+        if tag['_source']['tag']['name'] == tag_name:
             return tag['_source']['tag']['val'], main_run_id
 
 def run_id_to_all_tags(main_run_id: str):
@@ -150,7 +150,7 @@ def get_primary_period_id(sample_id):
             'sample': period['_source']['sample']['num'],
             'type': period['_source']['iteration']['primary-metric']})
     return periods
-    
+
 def get_metric_data_sets(run_id,primary_period,source,type_primary_metric,period_begin,period_end,resolution,metric):
     pass
     # TODO, this function from cdm.js
@@ -169,11 +169,11 @@ def get_metric_data_sets(run_id,primary_period,source,type_primary_metric,period
         ]#filter
         }
         }
-    metric_aggs = {'aggs': {'metric_avg' : 
+    metric_aggs = {'aggs': {'metric_avg' :
         {'weighted_avg': {'value': {
             'field':'metric_data.value'},
             'weight':{'field':'metric_data.duration'}}}}}
-   
+
     metric_resp = es.search(
             index = 'metric_data',
             size = 10_000,
@@ -222,10 +222,6 @@ def main(tag_pair):
     datapath,topo,test-type,rsize,wsize,proto,pods-per-host,nthreads,sample,metric
     '''
 
-    '''
-    make a named tuple from the set of tag names and params, use that for the index names? or some way to
-    get the right values in the right place
-    '''
 
     '''
     want to have {runId:[array of tuples of key val pairs]}
