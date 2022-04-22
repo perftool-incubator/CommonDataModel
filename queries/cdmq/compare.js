@@ -24,6 +24,10 @@ program
           'Do not break out these params (because of different values per iteration) into different clusters of iterations.  These param values will show up in the label for the result instead', list, [])
   .option('--omit-params <tags>, tag1[,tagN]',
           'If these params are found, just pretend they never existed.  Do not do this unless you really are sure these params are not relevant.', list, [])
+  .option('--breakout-order-params <arg>, arg1[,arg2]',
+          'When performing the breakout of params, try to break them out in the order provided', list, [])
+  .option('--breakout-order-tags <name>, name1[,name]',
+          'When performing the breakout of tags, try to break them out in the order provided', list, [])
   .parse(process.argv);
 
 console.log('Options: ', program.opts());
@@ -41,6 +45,16 @@ if (typeof(program.dontBreakoutTags) == "undefined") {
   program.dontBreakoutTags = [];
 }
 
+if (typeof(program.breakoutOrderTags) == "undefined") {
+  console.log("Setting program.breakoutOrderTags to empty array");
+  program.breakoutOrderTags = [];
+}
 
-var iterTree = getIters(program.url, program.filterByAge, program.filterByTags, program.filterByParams, program.dontBreakoutTags, program.omitTags, program.dontBreakoutParams, program.omitParams);
+if (typeof(program.breakoutOrderParams) == "undefined") {
+  console.log("Setting program.breakoutOrderParams to empty array");
+  program.breakoutOrderParams = [];
+}
+
+
+var iterTree = getIters(program.url, program.filterByAge, program.filterByTags, program.filterByParams, program.dontBreakoutTags, program.omitTags, program.dontBreakoutParams, program.omitParams, program.breakoutOrderTags, program.breakoutOrderParams);
 reportIters(iterTree);
