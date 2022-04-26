@@ -30,9 +30,6 @@ program
           'When performing the breakout of tags, try to break them out in the order provided', list, [])
   .parse(process.argv);
 
-//console.log('Options: ', program.opts());
-//console.log('Remaining arguments: ', program.args);
-
 program.url = "localhost:9200";
 
 if (typeof(program.dontBreakoutParams) == "undefined") {

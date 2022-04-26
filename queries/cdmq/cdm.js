@@ -133,7 +133,6 @@ buildIterTree = function (url, params, tags, paramValueByIterAndArg, tagValueByI
       delete params[arg]; // delete all possible values for this arg
     }
   });
-  //console.log("After moving 1-value params to current iterNode, the following iteration IDs remain:\n" + JSON.stringify(iterIds));
 
   // Move any tags which have only 1 value to current iterNode
   Object.keys(tags).forEach(name =>{
@@ -143,15 +142,11 @@ buildIterTree = function (url, params, tags, paramValueByIterAndArg, tagValueByI
       }
       var val = Object.keys(tags[name])[0]; // the one and only value
       var thisTag = { "name": name, "val": val };
-      //console.log("Adding this tag which has only 1 value to current iterNode: " + JSON.stringify(thisTag));
       iterNode.tags.push(thisTag);
-      //console.log("iterIds before intersection: " + JSON.stringify(iterIds));
       iterIds = intersectTwoArrays(iterIds, tags[name][val]);
-      //console.log("iterIds after intersection: " + JSON.stringify(iterIds));
       delete tags[name]; // delete all possible values for this arg
     }
   });
-  //console.log("After moving 1-value tags to current iterNode, the following iteration IDs remain:\n" + JSON.stringify(iterIds));
 
   // The child nodes can only be from breaking out one param or one tag
   // The current implementation checks for a param first, and only if there
@@ -170,10 +165,8 @@ buildIterTree = function (url, params, tags, paramValueByIterAndArg, tagValueByI
         }
       }
       if (typeof(nextArg) == "undefined") {
-        //console.log("Assigning nextArg to args[0]:" + args[0]);
         nextArg = args[0];
       }
-      //console.log("nextArg: [" + nextArg + "]");
       Object.keys(params[nextArg]).forEach(val => {
         const intersectedIterIds = intersectTwoArrays(iterIds, params[nextArg][val]);
         var newIter;
@@ -198,23 +191,18 @@ buildIterTree = function (url, params, tags, paramValueByIterAndArg, tagValueByI
   if (typeof(iterNode["breakout"]) == "undefined") {
     // skipping any requested "don't break out tags" below
     var names = Object.keys(tags).filter(x => !dontBreakoutTags.includes(x));
-    //console.log("Tags:\n" + JSON.stringify(names));
     if (names.length > 0) {
       var nextName;
-      //console.log("breakoutOrderTags: " + JSON.stringify(breakoutOrderTags));
       for (i = 0; i < breakoutOrderTags.length; i++) {
         if (names.includes(breakoutOrderTags[i])) {
-          //console.log("Assigning nextName to breakoutOrderTags[" + i + "]: " + breakoutOrderTags[i]);
           nextName = breakoutOrderTags[i];
           break;
         }
       }
       if (typeof(nextName) == "undefined") {
-        //console.log("Assigning nextName to names[0]:" + names[0]);
         nextName = names[0];
       }
 
-      //console.log("nextName: [" + nextName + "]");
       Object.keys(tags[nextName]).forEach(val => {
         const intersectedIterIds = intersectTwoArrays(iterIds, tags[nextName][val]);
         var newIter;
@@ -253,14 +241,12 @@ buildIterTree = function (url, params, tags, paramValueByIterAndArg, tagValueByI
     iterNode["iterations"] = iterations;
   }
 
-  //console.log("returning iterNode: " + JSON.stringify(iterNode));
   return iterNode;
 };
 
 reportIters = function(iterTree, indent) {
 
   if (typeof(indent) == "undefined" || indent == "") {
-    //console.log("iterTree:\n" + JSON.stringify(iterTree, null, 2));
   }
 
   var midPoint = 70;
@@ -341,11 +327,6 @@ reportIters = function(iterTree, indent) {
 // getIters(): filter and group interations, typically for generating comparisons (clustered bar graphs)
 getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakoutTags, omitTags, dontBreakoutParams, omitParams, breakoutOrderTags, breakoutOrderParams) {
 
-  //console.log("filterByTags:\n" + JSON.stringify(filterByTags, null, 2));
-  //console.log("filterByParams:\n" + JSON.stringify(filterByParams, null, 2));
-  //console.log("dontBreakoutParams:\n" + JSON.stringify(dontBreakoutParams, null, 2));
-  //console.log("dontBreakoutTags:\n" + JSON.stringify(dontBreakoutTags, null, 2));
-
   // Process:
   // 1) Get run.ids from age, benchmark, and tag filters
   // 2) From run.ids, get iteration.ids from param filters
@@ -396,7 +377,6 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
     }
   }); 
 
-  //console.log("query:\n" + ndjson);
   var resp = esRequest(url, "tag/_doc/_msearch", ndjson);
   var data = JSON.parse(resp.getBody());
   var runIds = [];
@@ -408,7 +388,6 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
     runIds.push(theseRunIds);
   });
   var intersectedRunIds = intersectAllArrays(runIds);
-  //console.log("intersectedRunIds (count: " + intersectedRunIds.length + ")\n" + JSON.stringify(intersectedRunIds, null, 2));
 
   if (ndjson2 != "") {
     //console.log("query:\n" + ndjson2);
@@ -419,13 +398,11 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
         if (intersectedRunIds.includes(run._source.run.id)) {
           var index = intersectedRunIds.indexOf(run._source.run.id);
           if (index !== -1) {
-            //console.log("removing run ID " + run._source.run.id + " because it has tag which cannot be present");
             intersectedRunIds.splice(index, 1);
           }
         }
       });
     });
-    //console.log("intersectedRunIds, after tag-not-present filters applied (count: " + intersectedRunIds.length + ")\n" + JSON.stringify(intersectedRunIds, null, 2));
   }
 
 
@@ -459,10 +436,8 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
     ndjson += JSON.stringify(param_query) + "\n"; 
   }); 
 
-  //console.log("query:\n" + ndjson);
   var resp = esRequest(url, "param/_doc/_msearch", ndjson);
   var data = JSON.parse(resp.getBody());
-  //console.log("response:\n" + JSON.stringify(data, null, 2))
   var iterationIds = [];
   data.responses.forEach(response => {
     var theseIterationIds = [];
@@ -471,7 +446,6 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
     });
     iterationIds.push(theseIterationIds);
   });
-  //console.log("iterationIds:\n" + JSON.stringify(iterationIds, null, 2));
   var iterIdsFromParam = intersectAllArrays(iterationIds);
 
   // Get the iteration IDs that are common from both tag and param filters
@@ -479,7 +453,6 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
   iterIds.push(iterIdsFromRun);
   iterIds.push(iterIdsFromParam);
   var allFilterIterIds = intersectAllArrays(iterIds);
-  //console.log("intersected iterationIds (" + allFilterIterIds.length + ") from params and tags filters:\n" + JSON.stringify(allFilterIterIds, null, 2));
 
   // Get all possible tag names
   console.log("Finding all tag names");
@@ -489,7 +462,6 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
     var tags = getTags(url, runId);
     tags.forEach(thisTag => {
       if (!allTagNames.includes(thisTag["name"])) {
-        //console.log("Adding this tag to allTagNames: " + thisTag["name"]);
         allTagNames.push(thisTag["name"]);
       }
     });
@@ -502,7 +474,6 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
     var params = getParams(url, [{ "term": "iteration.id", "match": "eq", "value": iter }]);
     params.forEach(thisParam => {
       if (!allParamArgs.includes(thisParam["arg"])) {
-        //console.log("Adding this arg to allParamArgs: " + thisParam["arg"]);
         allParamArgs.push(thisParam["arg"]);
       }
     });
@@ -532,9 +503,6 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
     });
     iterations.push(thisIter);
   });
-  //console.log("paramValueByIterAndArg:\n" + JSON.stringify(paramValueByIterAndArg, null, 2));
-  //console.log("tagValueByIterAndName:\n" + JSON.stringify(tagValueByIterAndName, null, 2));
-  //console.log("iterations (and their porams & tags)\n" + JSON.stringify(iterations, null, 2));
 
   // Find the tag names which are present in every single iteration
   // We can only do "breakouts" if the tag is used everywhere
@@ -555,8 +523,6 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
       }
     });
   });
-  //console.log("Common tag names: " + JSON.stringify(commonTagNames));
-  //console.log("Not common tag names: " + JSON.stringify(notCommonTagNames));
 
   // Find the param names which are present in every single iteration
   // We can only do "breakouts" if the param is used everywhere
@@ -577,8 +543,6 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
       }
     });
   });
-  //console.log("Common param args: " + JSON.stringify(commonParamArgs));
-  //console.log("Not common param args: " + JSON.stringify(notCommonParamArgs));
 
   // For the notCommonTagNames, add this tag with a value of "unused"
   // to any iteration which has this tag missing
@@ -626,8 +590,6 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
   var tags = {};
   var params = {};
   iterations.forEach(thisIter => {
-    //console.log("Working on this iteration\n" + JSON.stringify(thisIter));
-
     thisIter["tags"].forEach(tag => {
       if (!omitTags.includes(tag.name)) {
         if (typeof(tags[tag.name]) == "undefined") {
@@ -654,14 +616,10 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
     });
 
   });
-  //console.log("\nTags and all their possible values:\n" + JSON.stringify(tags, null, 2));
-  //console.log("\nParams and all their possible values:\n" + JSON.stringify(params, null, 2));
 
   var iterTree = {};
-  //console.log("allFilterIterIds:\n" + JSON.stringify(allFilterIterIds, null, 2));
   console.log("Build iterTree");
   iterTree = buildIterTree(url, params, tags, paramValueByIterAndArg, tagValueByIterAndName, allFilterIterIds, dontBreakoutTags, dontBreakoutParams, omitParams, breakoutOrderTags, breakoutOrderParams);
-  //console.log("iterTree: " + JSON.stringify(iterTree, null, 2));
   return iterTree;
 
 }
