@@ -325,7 +325,7 @@ reportIters = function(iterTree, indent) {
 }
 
 // getIters(): filter and group interations, typically for generating comparisons (clustered bar graphs)
-getIters = function (url, filterByAge, filterByTags, filterByParams, addRuns, addIterations, dontBreakoutTags, omitTags, dontBreakoutParams, omitParams, breakoutOrderTags, breakoutOrderParams) {
+getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakoutTags, omitTags, dontBreakoutParams, omitParams, breakoutOrderTags, breakoutOrderParams, addRuns, addIterations) {
 
   // Process:
   // 1) Get run.ids from age, benchmark, and tag filters
@@ -406,13 +406,6 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, addRuns, ad
 
   // Now we can get all of the iterations for these run.ids
   var iterIdsFromRun = getIterations(url, [{ "terms": { "run.id": intersectedRunIds }}]);
-  //var q = { 'query': { 'bool': { 'filter': [ { "terms": { "run.id": intersectedRunIds }} ] }}, 'size': 1000};
-  //resp = esRequest(url, "iteration/_doc/_search", q);
-  //data = JSON.parse(resp.getBody());
-  //var iterIdsFromRun = [];
-  //data.hits.hits.forEach(element => {
-    //iterIdsFromRun.push(element._source.iteration.id);
-  //});
 
   // Next, we must find the iterations that match the params filters.
   // Each filter of paramArg:paramVal must be a separate query.

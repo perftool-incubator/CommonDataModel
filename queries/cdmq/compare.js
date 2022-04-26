@@ -16,6 +16,10 @@ program
           'Only include benchmark-iterations which match a tag <key>:<value> pair(s)', list, [])
   .option('--filter-by-params <params>, param1:value1[,paramN:valueN>',
           'Only include benchmark-iterations which match a param <key>:<value> pair(s)', list, [])
+  .option('--add-runs <ids>, id1[,id2]',
+          'Add all iterations from these run IDs (not subject to filters)', list, [])
+  .option('--add-iterations <ids>, id1[,id2]',
+          'Add these iteraqtion IDs (not subject to filters)', list, [])
   .option('--dont-breakout-tags <tags>, tag1[,tagN]',
           'Do not break out these tags (because of different values per iteration) into different clusters of iterations.  These tag values will show up in the label for the result instead', list, [])
   .option('--omit-tags <tags>, tag1[,tagN]',
@@ -52,6 +56,6 @@ if (typeof(program.breakoutOrderParams) == "undefined") {
   program.breakoutOrderParams = [];
 }
 
-var iterTree = getIters(program.url, program.filterByAge, program.filterByTags, program.filterByParams, program.dontBreakoutTags, program.omitTags, program.dontBreakoutParams, program.omitParams, program.breakoutOrderTags, program.breakoutOrderParams);
+var iterTree = getIters(program.url, program.filterByAge, program.filterByTags, program.filterByParams, program.dontBreakoutTags, program.omitTags, program.dontBreakoutParams, program.omitParams, program.breakoutOrderTags, program.breakoutOrderParams, program.addRuns, program.addIterations);
 console.log("Results");
 reportIters(iterTree);
