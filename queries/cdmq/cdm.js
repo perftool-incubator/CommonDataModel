@@ -325,7 +325,7 @@ reportIters = function(iterTree, indent) {
 }
 
 // getIters(): filter and group interations, typically for generating comparisons (clustered bar graphs)
-getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakoutTags, omitTags, dontBreakoutParams, omitParams, breakoutOrderTags, breakoutOrderParams) {
+getIters = function (url, filterByAge, filterByTags, filterByParams, addRuns, addIterations, dontBreakoutTags, omitTags, dontBreakoutParams, omitParams, breakoutOrderTags, breakoutOrderParams) {
 
   // Process:
   // 1) Get run.ids from age, benchmark, and tag filters
@@ -390,7 +390,6 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
   var intersectedRunIds = intersectAllArrays(runIds);
 
   if (ndjson2 != "") {
-    //console.log("query:\n" + ndjson2);
     var resp2 = esRequest(url, "tag/_doc/_msearch", ndjson2);
     var data2 = JSON.parse(resp2.getBody());
     data2.responses.forEach(response => {
@@ -405,16 +404,17 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
     });
   }
 
-
   // Now we can get all of the iterations for these run.ids
-  var q = { 'query': { 'bool': { 'filter': [ { "terms": { "run.id": intersectedRunIds }} ] }}, 'size': 1000};
-  resp = esRequest(url, "iteration/_doc/_search", q);
-  data = JSON.parse(resp.getBody());
-  var iterIdsFromRun = [];
-  data.hits.hits.forEach(element => {
-    iterIdsFromRun.push(element._source.iteration.id);
-  });
+  var iterIdsFromRun = getIterations(url, [{ "terms": { "run.id": intersectedRunIds }}]);
+  //var q = { 'query': { 'bool': { 'filter': [ { "terms": { "run.id": intersectedRunIds }} ] }}, 'size': 1000};
+  //resp = esRequest(url, "iteration/_doc/_search", q);
+  //data = JSON.parse(resp.getBody());
+  //var iterIdsFromRun = [];
+  //data.hits.hits.forEach(element => {
+    //iterIdsFromRun.push(element._source.iteration.id);
+  //});
 
+  // Next, we must find the iterations that match the params filters.
   // Each filter of paramArg:paramVal must be a separate query.
   // However, all of these queries can be submitted together via msearch.
   // The responses (a list of iteration.ids for each query) must be intersected
@@ -453,6 +453,9 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
   iterIds.push(iterIdsFromRun);
   iterIds.push(iterIdsFromParam);
   var allFilterIterIds = intersectAllArrays(iterIds);
+
+  // Now we can add any iterations from --add-runs and --add-iterations.
+  // These options are not subject to the tags and params filters.
 
   // Get all possible tag names
   console.log("Finding all tag names");
@@ -632,19 +635,20 @@ exports.getIterationDoc = function (url, id) {
   return data;
 };
 
-exports.getIterations = function (url, searchTerms) {
-  var q = { 'query': { 'bool': { 'filter': [] }},
+getIterations = function (url, searchTerms) {
+  var q = { 'query': { 'bool': { 'filter': searchTerms }},
             '_source': "iteration.id", 'size': 1000,
             'sort': [ { "iteration.num": { "order": "asc", "numeric_type": "long" }} ] };
   if (searchTerms.length === 0) {
     console.log("Found no search terms\n");
     return;
   }
-  searchTerms.forEach(element => {
-    var myTerm = {};
-    myTerm[element.term] = element.value;
-    q.query.bool.filter.push({"term": myTerm});
-  });
+  //searchTerms.forEach(element => {
+    //var myTerm = {};
+    //myTerm[element.term] = element.value;
+    //q.query.bool.filter.push({"term": myTerm});
+  //});
+  console.log("QUERY: " + JSON.stringify(q, 2, null));
   var resp = esRequest(url, "iteration/_doc/_search", q);
   var data = JSON.parse(resp.getBody());
   var ids = [];
@@ -655,6 +659,7 @@ exports.getIterations = function (url, searchTerms) {
   }
   return ids;
 };
+exports.getIterations = getIterations;
 
 getParams = function (url, searchTerms) {
   var q = { 'query': { 'bool': { 'filter': [] }},
