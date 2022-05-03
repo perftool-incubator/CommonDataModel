@@ -189,7 +189,7 @@ buildIterTree = function (url, params, tags, paramValueByIterAndArg, tagValueByI
         newNewParams[nextArg] = {}; 
         newNewParams[nextArg][val] = newParams[nextArg][val]; 
         newIter = buildIterTree(url, newNewParams, newTags, paramValueByIterAndArg, tagValueByIterAndName, intersectedIterIds, dontBreakoutTags, dontBreakoutParams, omitParams, breakoutOrderTags, breakoutOrderParams, indent + "  ");
-        if (typeof(newIter) != "undefined" && Object.keys(newIter).length > 0) {
+        if (typeof(newIter) !== "undefined" && Object.keys(newIter).length > 0) {
           if (typeof(iterNode["breakout"]) == "undefined") {
             iterNode["breakout"] = [];
           }
@@ -218,30 +218,36 @@ buildIterTree = function (url, params, tags, paramValueByIterAndArg, tagValueByI
       nextName = names[0];
     }
     console.log(indent + "nextName: " + nextName + " (" + Object.keys(newTags[nextName]) + ")");
+    var intersectedIterCount = 0;
     Object.keys(newTags[nextName]).forEach(val => {
       const intersectedIterIds = intersectTwoArrays(iterIds, newTags[nextName][val]);
-      if (intersectedIterIds.length == 0) {
+      const intersectedIterLength = intersectedIterIds.length;
+      if (intersectedIterLength == 0) {
         console.log(indent + "name: " + nextName + " val: " + val + ", Not going to call buildIterTree because intersectedIterIds.length is 0");
-        return iterNode;
-      }
-      console.log(indent + "name: " + nextName + " val: " + val + ", GOING to call buildIterTree because intersectedIterIds.length is " + intersectedIterIds.length);
-      var newIter;
-      // deep-copy newTag, then modify copy such that newTags{nextName} only has 1 value
-      var newNewTagsJsonStr = JSON.stringify(newTags);
-      var newNewTags = JSON.parse(newNewTagsJsonStr);
-      delete newNewTags[nextName]; // delete all possible values for this arg
-      newNewTags[nextName] = {};
-      newNewTags[nextName][val] = newTags[nextName][val]; 
-      newIter = buildIterTree(url, newParams, newNewTags, paramValueByIterAndArg, tagValueByIterAndName, intersectedIterIds, dontBreakoutTags, dontBreakoutParams, omitParams, breakoutOrderTags, breakoutOrderParams, indent + "  ");
-      if (typeof(newIter) != "undefined" && Object.keys(newIter).length > 0) {
-        if (typeof(iterNode["breakout"]) == "undefined") {
-          iterNode["breakout"] = [];
-        }
-        iterNode["breakout"].push(newIter);
       } else {
-        console.log(indent + "warning: newIter undefined or empty:\n" + JSON.stringify(newIter, null, 2));
+        console.log(indent + "Incrementing intersectedIterCount by " + intersectedIterLength);
+        intersectedIterCount += intersectedIterLength;
+        console.log(indent + "name: " + nextName + " val: " + val + ", GOING to call buildIterTree because intersectedIterIds.length is " + intersectedIterIds.length);
+        var newIter;
+        var newNewTagsJsonStr = JSON.stringify(newTags);
+        var newNewTags = JSON.parse(newNewTagsJsonStr);
+        delete newNewTags[nextName]; // delete all possible values for this arg
+        newNewTags[nextName] = {};
+        newNewTags[nextName][val] = newTags[nextName][val]; 
+        newIter = buildIterTree(url, newParams, newNewTags, paramValueByIterAndArg, tagValueByIterAndName, intersectedIterIds, dontBreakoutTags, dontBreakoutParams, omitParams, breakoutOrderTags, breakoutOrderParams, indent + "  ");
+        if (typeof(newIter) !== "undefined" && Object.keys(newIter).length > 0) {
+          if (typeof(iterNode["breakout"]) == "undefined") {
+            iterNode["breakout"] = [];
+          }
+          iterNode["breakout"].push(newIter);
+        } else {
+          console.log(indent + "warning: newIter undefined or empty:\n" + JSON.stringify(newIter, null, 2));
+        }
       }
     });
+    if (iterIds.length !== intersectedIterCount) {
+      console.log(indent + "ERROR: iterIds.length (" + iterIds.length + ") and intersectedIterCount (" + intersectedIterCount + ") do not match for name: " + nextName);
+    }
     return iterNode;
   }
 
@@ -252,11 +258,15 @@ buildIterTree = function (url, params, tags, paramValueByIterAndArg, tagValueByI
   //var result = getIterMetrics(url, id);
     result = { "mean": 0, "stddevpct": 0, "min": 0, "max": 0 };
     var thisIter = { "id": id, "labels": "", "mean": result["mean"], "stddevpct": result["stddevpct"], "min": result["min"], "max": result["max"] }
-    Object.keys(tags).forEach(name => {
-      thisIter["labels"]+= " " + name + ":" + tagValueByIterAndName[id][name];
+    Object.keys(newTags).forEach(name => {
+      if (typeof(tagValueByIterAndName[id][name]) !== "undefined") {
+        thisIter["labels"]+= " " + name + ":" + tagValueByIterAndName[id][name];
+      }
     });
-    Object.keys(params).forEach(arg => {
-      thisIter["labels"]+= " " + arg + ":" + paramValueByIterAndArg[id][arg];
+    Object.keys(newParams).forEach(arg => {
+      if (typeof(paramValueByIterAndArg[id][arg]) !== "undefined") {
+        thisIter["labels"]+= " " + arg + ":" + paramValueByIterAndArg[id][arg];
+      }
     });
     iterations.push(thisIter);
     console.log(indent + "Adding iter to iterTree: " + JSON.stringify(thisIter));
@@ -272,7 +282,7 @@ reportIters = function(iterTree, indent, count) {
   if (typeof(count) == "undefined") {
     count = 0;
   }
-  console.log("enter reportIters, count: " + count);
+  //console.log("enter reportIters, count: " + count);
 
   var midPoint = 70;
   var len = 0;
@@ -339,11 +349,11 @@ reportIters = function(iterTree, indent, count) {
       iterTree.breakout.forEach(iter => {
         var retCount = reportIters(iter, "  " + indent, 0);
         count = count + retCount;
-        console.log(indent + "retCount, count after calling reportIters: " + retCount + " " + count);
+        //console.log(indent + "retCount, count after calling reportIters: " + retCount + " " + count);
       });
       return count;
     } else {
-      console.log("iterTree.breakout is undefined, how did we get here?");
+      //console.log("iterTree.breakout is undefined, how did we get here?");
       return count;
     }
 
@@ -353,14 +363,14 @@ reportIters = function(iterTree, indent, count) {
     const sorted = iterTree.iterations.sort((a, b) => (a.labels.localeCompare(b.labels , undefined, {numeric: true, sensitivity: 'base' })));
     sorted.forEach(i => {
       count++;
-      var metrics = printf("%d%" + midPoint+ "s" + " %10.4f %10.4f %10s", count, i["labels"], i["mean"], i["stddevpct"], i["id"]);
+      var metrics = printf("metric %d%" + midPoint+ "s" + " %10.4f %10.4f %10s", count, i["labels"], i["mean"], i["stddevpct"], i["id"]);
       console.log(metrics);
     });
     return count;
 
   }
 
-  console.log("returning nothing, iterTree: " + JSON.stringify(iterTree, null, 2));
+  //console.log("returning nothing, iterTree: " + JSON.stringify(iterTree, null, 2));
   return;
 }
 
@@ -643,45 +653,46 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
   // We can only do "breakouts" if the tag is used everywhere
   console.log("Finding only the tag names which are present in all iterations");
   var notCommonTagNames = [];
-  var commonTagNames = allTagNames;
-  allTagNames.forEach(name => {
-    allIterIds.forEach(iter => {
+  var notCommonParamArgs = [];
+  for (j = 0; j < allIterIds.length; j++) {
+    var iter = allIterIds[j];
+    for (i = 0; i < allTagNames.length; i++) {
+      var name = allTagNames[i];
       if (typeof(tagValueByIterAndName[iter][name]) == "undefined") {
         if (!notCommonTagNames.includes(name)) {
           notCommonTagNames.push(name);
         }
-        var index = commonTagNames.indexOf(name);
-          if (index !== -1) {
-            commonTagNames.splice(index, 1);
-          }
-        return;
+        var index = allTagNames.indexOf(name);
+        if (index !== -1) {
+          console.log("Removing " + name + " from allTagNames");
+          allTagNames.splice(index, 1);
+          i--;
+        }
       }
-    });
-  });
-
-  // Find the param names which are present in every single iteration
-  // We can only do "breakouts" if the param is used everywhere
-  console.log("Finding only the param args which are present in all iterations");
-  var notCommonParamArgs = [];
-  var commonParamArgs = allParamArgs;
-  allParamArgs.forEach(arg => {
-    allIterIds.forEach(iter => {
+    }
+    for (i = 0; i < allParamArgs.length; i++) {
+      var arg = allParamArgs[i];
       if (typeof(paramValueByIterAndArg[iter][arg]) == "undefined") {
         if (!notCommonParamArgs.includes(arg)) {
           notCommonParamArgs.push(arg);
         }
-        var index = commonParamArgs.indexOf(arg);
-          if (index !== -1) {
-            commonParamArgs.splice(index, 1);
-          }
-        return;
+        var index = allParamArgs.indexOf(arg);
+        if (index !== -1) {
+          console.log("Removing " + arg + " from allParamArgs");
+          allParamArgs.splice(index, 1);
+          i--;
+        }
       }
-    });
-  });
+    }
+  }
+
+  var commonTagNames = [...allTagNames];
+  var commonParamArgs = [...allParamArgs];
 
   // For the notCommonTagNames, add this tag with a value of "tag-not-used"
   // to any iteration which has this tag missing
   notCommonTagNames.forEach(name => {
+    console.log("checking all iterations for tag " + name);
     for (var i=0; i<iterations.length; i++){
       var iterId = iterations[i]["iterId"];
       var foundTag = false;
@@ -693,13 +704,13 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
       }
       if (foundTag == false) {
         var newTag = { "name": name, "val": "tag-not-used" };
-        //console.log("Did not find tag " + name + ", so adding with val: <tag-not-used>");
+        console.log("Did not find tag " + name + ", so adding with val: tag-not-used");
         iterations[i]["tags"].push(newTag);
       }
     }
   });
 
-  // For the notCommonParamArgs, add this param with a value of "unused"
+  // For the notCommonParamArgs, add this param with a value of "param-not-used"
   // to any iteration which has this param missing
   notCommonParamArgs.forEach(arg => {
     for (var i=0; i<iterations.length; i++){
@@ -713,7 +724,7 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
       }
       if (foundParam == false) {
         var newParam = { "arg": arg, "val": "param-not-used" };
-        //console.log("Did not find param " + arg + ", so adding with val: <param-not-used>");
+        console.log("Did not find param " + arg + ", so adding with val: param-not-used");
         iterations[i]["params"].push(newParam);
       }
     }
@@ -757,7 +768,7 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
     console.log("tag-name: " + name + " values: " + sortedTagValues);
   });
 
-  console.log("allIterIds:\n" + JSON.stringify(allIterIds, null, 2));
+  console.log("allIterIds: (" + allIterIds.length + ")\n" + JSON.stringify(allIterIds, null, 2));
   console.log("params:\n" + JSON.stringify(params, null, 2));
   console.log("tags:\n" + JSON.stringify(tags, null, 2));
   console.log("paramValueByIterAndArg:\n" + JSON.stringify(paramValueByIterAndArg, null, 2));
