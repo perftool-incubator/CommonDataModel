@@ -57,5 +57,5 @@ if (typeof(program.breakoutOrderParams) == "undefined") {
 }
 
 var iterTree = getIters(program.url, program.filterByAge, program.filterByTags, program.filterByParams, program.dontBreakoutTags, program.omitTags, program.dontBreakoutParams, program.omitParams, program.breakoutOrderTags, program.breakoutOrderParams, program.addRuns, program.addIterations);
-console.log("Results");
+console.log("\n");
 reportIters(iterTree);

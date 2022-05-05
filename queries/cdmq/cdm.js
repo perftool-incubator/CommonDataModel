@@ -132,7 +132,7 @@ buildIterTree = function (url, params, tags, paramValueByIterAndArg, tagValueByI
       var val = Object.keys(newParams[arg])[0]; // the one and only value
       var thisParam = { "arg": arg, "val": val };
       iterNode.params.push(thisParam);
-      console.log(indent + "deleting param " + arg + " (" + Object.keys(newParams[arg]) + ")");
+      //console.log(indent + "deleting param " + arg + " (" + Object.keys(newParams[arg]) + ")");
       delete newParams[arg]; // delete all possible values for this arg
     }
   });
@@ -146,7 +146,7 @@ buildIterTree = function (url, params, tags, paramValueByIterAndArg, tagValueByI
       var val = Object.keys(newTags[name])[0]; // the one and only value
       var thisTag = { "name": name, "val": val };
       iterNode.tags.push(thisTag);
-      console.log(indent + "deleting tag " + name + " (" + Object.keys(newTags[name]) + ")");
+      //console.log(indent + "deleting tag " + name + " (" + Object.keys(newTags[name]) + ")");
       delete newTags[name]; // delete all possible values for this arg
     }
   });
@@ -171,7 +171,7 @@ buildIterTree = function (url, params, tags, paramValueByIterAndArg, tagValueByI
     if (typeof(nextArg) == "undefined") {
       nextArg = args[0];
     }
-    console.log(indent + "nextArg: " + nextArg + " (" + Object.keys(newParams[nextArg]) + ")");
+    //console.log(indent + "nextArg: " + nextArg + " (" + Object.keys(newParams[nextArg]) + ")");
     var intersectedIterCount = 0;
     Object.keys(newParams[nextArg]).forEach(val => {
       const intersectedIterIds = intersectTwoArrays(iterIds, newParams[nextArg][val]);
@@ -179,9 +179,9 @@ buildIterTree = function (url, params, tags, paramValueByIterAndArg, tagValueByI
       if (intersectedIterLength == 0) {
         console.log(indent + "arg: " + nextArg + " val: " + val + ", Not going to call buildIterTree because intersectedIterIds.length is 0");
       } else {
-        console.log(indent + "Incrementing intersectedIterCount by " + intersectedIterLength);
+        //console.log(indent + "Incrementing intersectedIterCount by " + intersectedIterLength);
         intersectedIterCount += intersectedIterLength;
-        console.log(indent + "arg: " + nextArg + " val: " + val + ", GOING to call buildIterTree because intersectedIterIds.length is " + intersectedIterLength);
+        //console.log(indent + "arg: " + nextArg + " val: " + val + ", GOING to call buildIterTree because intersectedIterIds.length is " + intersectedIterLength);
         var newIter;
         var newNewParamsJsonStr = JSON.stringify(newParams);
         var newNewParams = JSON.parse(newNewParamsJsonStr);
@@ -217,17 +217,17 @@ buildIterTree = function (url, params, tags, paramValueByIterAndArg, tagValueByI
     if (typeof(nextName) == "undefined") {
       nextName = names[0];
     }
-    console.log(indent + "nextName: " + nextName + " (" + Object.keys(newTags[nextName]) + ")");
+    //console.log(indent + "nextName: " + nextName + " (" + Object.keys(newTags[nextName]) + ")");
     var intersectedIterCount = 0;
     Object.keys(newTags[nextName]).forEach(val => {
       const intersectedIterIds = intersectTwoArrays(iterIds, newTags[nextName][val]);
       const intersectedIterLength = intersectedIterIds.length;
       if (intersectedIterLength == 0) {
-        console.log(indent + "name: " + nextName + " val: " + val + ", Not going to call buildIterTree because intersectedIterIds.length is 0");
+        //console.log(indent + "name: " + nextName + " val: " + val + ", Not going to call buildIterTree because intersectedIterIds.length is 0");
       } else {
-        console.log(indent + "Incrementing intersectedIterCount by " + intersectedIterLength);
+        //console.log(indent + "Incrementing intersectedIterCount by " + intersectedIterLength);
         intersectedIterCount += intersectedIterLength;
-        console.log(indent + "name: " + nextName + " val: " + val + ", GOING to call buildIterTree because intersectedIterIds.length is " + intersectedIterIds.length);
+        //console.log(indent + "name: " + nextName + " val: " + val + ", GOING to call buildIterTree because intersectedIterIds.length is " + intersectedIterIds.length);
         var newIter;
         var newNewTagsJsonStr = JSON.stringify(newTags);
         var newNewTags = JSON.parse(newNewTagsJsonStr);
@@ -253,7 +253,7 @@ buildIterTree = function (url, params, tags, paramValueByIterAndArg, tagValueByI
 
 // There are no breakouts to create, so we should be at the leaf.  Create the iteration with labels, metrics, etc.
   var iterations = [];
-  console.log(indent + "creating leaf nodes (iterations) for: " + iterIds);
+  //console.log(indent + "creating leaf nodes (iterations) for: " + iterIds);
   iterIds.forEach(id => {
   //var result = getIterMetrics(url, id);
     result = { "mean": 0, "stddevpct": 0, "min": 0, "max": 0 };
@@ -269,7 +269,7 @@ buildIterTree = function (url, params, tags, paramValueByIterAndArg, tagValueByI
       }
     });
     iterations.push(thisIter);
-    console.log(indent + "Adding iter to iterTree: " + JSON.stringify(thisIter));
+    //console.log(indent + "Adding iter to iterTree: " + JSON.stringify(thisIter));
   });
   iterNode["iterations"] = iterations;
   return iterNode;
@@ -287,13 +287,6 @@ reportIters = function(iterTree, indent, count) {
   var midPoint = 70;
   var len = 0;
 
-  // Print the headers if this is the first call to reportIters
-  if (typeof(indent) == "undefined" || indent == "") {  // print the row names after all common tags/params are printed
-    var header = printf("\n%" + midPoint + "s" + " %10s %10s %10s", "label", "mean", "stddevpct", "iter-id");
-    console.log(header);
-    indent = "";
-  }
-
   // Print the params and tags for this subsection
   var tagStr = "";
   if (typeof(iterTree.tags) != "undefined") {
@@ -303,7 +296,7 @@ reportIters = function(iterTree, indent, count) {
       var separator;
       if (typeof(indent) == "undefined" || indent == "") {
         indent = "";
-        tagStr = "\nAll common tags:"
+        tagStr = "All common tags:"
         separator = " "; // params common to all results at top full width
       } else {
         separator = "\n";
@@ -317,6 +310,9 @@ reportIters = function(iterTree, indent, count) {
       len = tagStr.length;
     }
     process.stdout.write(tagStr + "\n");
+    if (typeof(indent) == "undefined" || indent == "") {
+      console.log("");
+    }
   }
   var paramStr = "";
   if (typeof(iterTree.params) != "undefined") {
@@ -326,7 +322,7 @@ reportIters = function(iterTree, indent, count) {
       var separator;
       if (typeof(indent) == "undefined" || indent == "") {
         indent = "";
-        paramStr = "\nAll common params:";
+        paramStr = "All common params:";
         separator = " "; // params common to all results at top full width
       } else {
         separator = "\n";
@@ -340,6 +336,16 @@ reportIters = function(iterTree, indent, count) {
       len = paramStr.length;
     }
     process.stdout.write(paramStr + "\n");
+    if (typeof(indent) == "undefined" || indent == "") {
+      console.log("");
+    }
+  }
+
+  // Print the headers if this is the first call to reportIters
+  if (typeof(indent) == "undefined" || indent == "") {  // print the row names after all common tags/params are printed
+    var header = printf("\n%" + midPoint + "s" + " %10s %10s %36s", "label", "mean", "stddevpct", "iter-id");
+    console.log(header);
+    indent = "";
   }
 
   if (typeof(iterTree.iterations) == "undefined") {
@@ -363,7 +369,7 @@ reportIters = function(iterTree, indent, count) {
     const sorted = iterTree.iterations.sort((a, b) => (a.labels.localeCompare(b.labels , undefined, {numeric: true, sensitivity: 'base' })));
     sorted.forEach(i => {
       count++;
-      var metrics = printf("metric %d%" + midPoint+ "s" + " %10.4f %10.4f %10s", count, i["labels"], i["mean"], i["stddevpct"], i["id"]);
+      var metrics = printf("%" + midPoint + "s" + " %10.4f %10.4f %36s", i["labels"], i["mean"], i["stddevpct"], i["id"]);
       console.log(metrics);
     });
     return count;
@@ -412,7 +418,7 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
   // However, all of these queries can be submitted together via msearch.
   // The responses (a list of run.ids for each query) must be intersected
   // to have only the run.ids that match *all* tag filters.
-  console.log("Get all iterations from tag filters");
+  console.log("Get all iterations from " + filterByTags.length + " tag filters");
   filterByTags.forEach(nameval => {
     var tag_query = JSON.parse(base_q_json);
     var name = nameval.split(':')[0];
@@ -473,7 +479,7 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
   // However, all of these queries can be submitted together via msearch.
   // The responses (a list of iteration.ids for each query) must be intersected
   // to have only the iteration.ids that match all param filters.
-  console.log("Get all iterations from param filters qty(" + filterByParams.length + ")");
+  console.log("Get all iterations from " + filterByParams.length + " param filters");
   ndjson = '';
   filterByParams.forEach(argval => {
     var param_query = JSON.parse(base_q_json);
@@ -600,9 +606,9 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
   var tagValueByIterAndName = {};
   var iterations = [];
   allIterIds.forEach(iter => {
-    console.log("\niterId: " + iter);
+    //console.log("\niterId: " + iter);
     var params = getParams(url, [{ "term": "iteration.id", "match": "eq", "value": iter }]);
-    console.log("params:\n" + JSON.stringify(params, null, 2));
+    //console.log("params:\n" + JSON.stringify(params, null, 2));
     // Need to consolidate multiple params with same arg but different values
     var paramIdx = {};
     var l = params.length
@@ -611,17 +617,17 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
       if (typeof(paramIdx[arg]) !== "undefined") {
         // This param arg was already found, combine this value with exiting param
         var existing_arg_idx = paramIdx[arg];
-        console.log("i: " + i + "  This param arg (" + arg + ") was already found (idx: " + existing_arg_idx + "), combine this value: (" + JSON.stringify(params[i]) + "), with existing one (" + JSON.stringify(params[existing_arg_idx]) + ")");
+        //console.log("i: " + i + "  This param arg (" + arg + ") was already found (idx: " + existing_arg_idx + "), combine this value: (" + JSON.stringify(params[i]) + "), with existing one (" + JSON.stringify(params[existing_arg_idx]) + ")");
         params[existing_arg_idx]['val'] +=  "_" + params[i]['val'];
         params.splice(i, 1);
         l--;
         i--;
       } else {
-        console.log("Adding arg: " + arg + " to paramIdx[" + arg + "]:" + i);
+        //console.log("Adding arg: " + arg + " to paramIdx[" + arg + "]:" + i);
         paramIdx[arg] = i;
       }
     }
-    console.log("updated params:\n" + JSON.stringify(params, null, 2));
+    //console.log("updated params:\n" + JSON.stringify(params, null, 2));
     var runId = getRunFromIter(url, iter);
     var tags = getTags(url, runId);
     var thisIter = { "iterId": iter, "tags": tags, "params": params };
@@ -664,7 +670,7 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
         }
         var index = allTagNames.indexOf(name);
         if (index !== -1) {
-          console.log("Removing " + name + " from allTagNames");
+          //console.log("Removing " + name + " from allTagNames");
           allTagNames.splice(index, 1);
           i--;
         }
@@ -678,7 +684,7 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
         }
         var index = allParamArgs.indexOf(arg);
         if (index !== -1) {
-          console.log("Removing " + arg + " from allParamArgs");
+          //console.log("Removing " + arg + " from allParamArgs");
           allParamArgs.splice(index, 1);
           i--;
         }
@@ -692,7 +698,7 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
   // For the notCommonTagNames, add this tag with a value of "tag-not-used"
   // to any iteration which has this tag missing
   notCommonTagNames.forEach(name => {
-    console.log("checking all iterations for tag " + name);
+    //console.log("checking all iterations for tag " + name);
     for (var i=0; i<iterations.length; i++){
       var iterId = iterations[i]["iterId"];
       var foundTag = false;
@@ -704,7 +710,7 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
       }
       if (foundTag == false) {
         var newTag = { "name": name, "val": "tag-not-used" };
-        console.log("Did not find tag " + name + ", so adding with val: tag-not-used");
+        //console.log("Did not find tag " + name + ", so adding with val: tag-not-used");
         iterations[i]["tags"].push(newTag);
       }
     }
@@ -724,7 +730,7 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
       }
       if (foundParam == false) {
         var newParam = { "arg": arg, "val": "param-not-used" };
-        console.log("Did not find param " + arg + ", so adding with val: param-not-used");
+        //console.log("Did not find param " + arg + ", so adding with val: param-not-used");
         iterations[i]["params"].push(newParam);
       }
     }
@@ -765,13 +771,13 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
 
   sortedTagNames.forEach(name => {
     var sortedTagValues = Object.keys(tags[name]).sort((a, b) => (a.localeCompare(b, undefined, {numeric: true, sensitivity: 'base' })));
-    console.log("tag-name: " + name + " values: " + sortedTagValues);
+    //console.log("tag-name: " + name + " values: " + sortedTagValues);
   });
 
-  console.log("allIterIds: (" + allIterIds.length + ")\n" + JSON.stringify(allIterIds, null, 2));
-  console.log("params:\n" + JSON.stringify(params, null, 2));
-  console.log("tags:\n" + JSON.stringify(tags, null, 2));
-  console.log("paramValueByIterAndArg:\n" + JSON.stringify(paramValueByIterAndArg, null, 2));
+  //console.log("allIterIds: (" + allIterIds.length + ")\n" + JSON.stringify(allIterIds, null, 2));
+  //console.log("params:\n" + JSON.stringify(params, null, 2));
+  //console.log("tags:\n" + JSON.stringify(tags, null, 2));
+  //console.log("paramValueByIterAndArg:\n" + JSON.stringify(paramValueByIterAndArg, null, 2));
 
   var iterTree = {};
   console.log("Build iterTree, allIterIds.length: " + allIterIds.length);
