@@ -177,7 +177,7 @@ buildIterTree = function (url, params, tags, paramValueByIterAndArg, tagValueByI
       const intersectedIterIds = intersectTwoArrays(iterIds, newParams[nextArg][val]);
       const intersectedIterLength = intersectedIterIds.length;
       if (intersectedIterLength == 0) {
-        console.log(indent + "arg: " + nextArg + " val: " + val + ", Not going to call buildIterTree because intersectedIterIds.length is 0");
+        //console.log(indent + "arg: " + nextArg + " val: " + val + ", Not going to call buildIterTree because intersectedIterIds.length is 0");
       } else {
         //console.log(indent + "Incrementing intersectedIterCount by " + intersectedIterLength);
         intersectedIterCount += intersectedIterLength;
