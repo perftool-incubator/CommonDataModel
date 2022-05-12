@@ -255,8 +255,7 @@ buildIterTree = function (url, params, tags, paramValueByIterAndArg, tagValueByI
   var iterations = [];
   //console.log(indent + "creating leaf nodes (iterations) for: " + iterIds);
   iterIds.forEach(id => {
-  //var result = getIterMetrics(url, id);
-    result = { "mean": 0, "stddevpct": 0, "min": 0, "max": 0 };
+  var result = getIterMetrics(url, id);
     var thisIter = { "id": id, "labels": "", "mean": result["mean"], "stddevpct": result["stddevpct"], "min": result["min"], "max": result["max"] }
     Object.keys(newTags).forEach(name => {
       if (typeof(tagValueByIterAndName[id][name]) !== "undefined") {
