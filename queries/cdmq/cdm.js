@@ -844,28 +844,35 @@ getParams = function (url, searchTerms) {
 };
 exports.getParams = getParams;
 
+getSamples = function (url, iterArr) {
+  if (typeof(iterArr) !==  typeof([])) return;
 
-getSamples = function (url, searchTerms) {
-  var q = { 'query': { 'bool': { 'filter': [] }},
-            '_source': "sample.id", 'size': 1000,
-            'sort': [ { "sample.num": { "order": "asc"}} ] };
-  if (searchTerms.length === 0) {
-    return;
+  // Pack each per-iter sample query into an msearch
+  var ndjson = "";
+  var sampArr = [];
+  for (var i = 0; i < iterArr.length; i++) {
+    var req = {
+                'query': { 'bool': { 'filter': [ {"term": {"iteration.id": iterArr[i]}} ] }},
+                '_source': "sample.id", 'size': 1000,
+                'sort': [ { "sample.num": { "order": "asc"}} ]
+              };
+     ndjson += '{}\n' + JSON.stringify(req) + "\n";
   }
-  searchTerms.forEach(element => {
-    var myTerm = {};
-    myTerm[element.term] = element.value;
-    q.query.bool.filter.push({"term": myTerm});
-  });
-  var resp = esRequest(url, "sample/_doc/_search", q);
+  var resp = esRequest(url, "sample/_doc/_msearch", ndjson);
+
+  // Unpack response and organize samples in array of arrays
+  var sampIdsArr = [];
   var data = JSON.parse(resp.getBody());
-  var ids = [];
-  if (Array.isArray(data.hits.hits) && data.hits.hits.length > 0) {
-    data.hits.hits.forEach(element => {
-      ids.push(element._source.sample.id);
-    });
+  for (var i = 0; i < data.responses.length; i++) {
+    var sampIds = [];
+    if (Array.isArray(data.responses[i].hits.hits) && data.responses[i].hits.hits.length > 0) {
+      data.responses[i].hits.hits.forEach(element => {
+        sampIds.push(element._source.sample.id);
+      });
+    }
+    sampIdsArr[i] = sampIds;
   }
-  return ids;
+  return sampIdsArr;
 };
 exports.getSamples = getSamples;
 
@@ -1910,13 +1917,13 @@ getIterMetrics = function(url, iterationId) {
     console.log("      the primary period-name for this iteration is undefined, exiting\n");
     process.exit(1);
   }
-  var samples = getSamples(url, [{ "term": "iteration.id", "match": "eq", "value": iterationId }]);
+  var samples = getSamples(url, [ iterationId ]);
   var sampleTotal = 0;
   var sampleCount = 0;
   var sampleVals = [];
   var sampleList = "";
   var periods = [];
-  samples.forEach(sample => {
+  samples[0].forEach(sample => {
     if (getSampleStatus(url, sample) == "pass") {
       var primaryPeriodId = getPrimaryPeriodId(url, sample, primaryPeriodName);
       if (primaryPeriodId == undefined || primaryPeriodId == null) {
