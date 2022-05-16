@@ -11,4 +11,4 @@ var searchTerms = [];
 if (program.run) {
   searchTerms.push({ "term": "run.id", "match": "eq", "value": program.run });
 }
-console.log(JSON.stringify(cdm.getRunData(program.url, searchTerms)));
+console.log(JSON.stringify(cdm.getRunData(program.url, searchTerms), null, 2));

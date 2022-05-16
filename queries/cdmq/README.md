@@ -448,4 +448,92 @@ So far all of the metrics have been represented as a single value for a specific
       },
       "breakouts": []
     }
+### compare-results.js
+This script is used to generate comparisons across one or more runs and provides to the ability to tailor how iterations are grouped when comparing them.  This script is particularly useful when you run a benchmark with different settings in your test-bed.  For example, if you were to test a MTU of 1500 and then 9000, you could use this script to generate output that compares the two runs.  You are, however, not limited to two runs, and you are not actually required to specify the run IDs at all.
 
+`compare-results.js` has two primary purposes.  The first is to assemble the iterations to want to compare.  This is done with options to the script:
+ * `--filter-by-params`
+ * `--filter-by-tags`
+ * `--filter-by-age`
+ * `--add-runs`
+ * `--add-iterations`
+ 
+ When using the `--filter-by-*` options, iterations are queried from all three filters and then intersected.  Users can focus on specific benchmark params and test-bed configurations, for example:
+ 
+ `node ./compare-results.js --filter-by-params test-type:stream --filter-by-tags study:protocols --dont-breakout-params protocol`
+
+    All common tags: tuned:throughput-performance dir:forward study:protocols
+    All common params: test-type:stream nthreads:1 duration:120
+            
+            
+                                                                     label       mean  stddevpct                              iter-id
+      nthreads:1
+        wsize:256
+                                                              protocol:tcp     4.5800     6.7400 C65ABB68-B9EA-11EC-B891-E3EA7B3275F7
+                                                              protocol:udp     0.7500     3.0500 D86CF3AC-B9EA-11EC-9E01-2FED7B3275F7
+        wsize:512
+                                                              protocol:tcp     7.6500    13.7600 C68062AA-B9EA-11EC-83E9-E3EA7B3275F7
+                                                              protocol:udp     1.5000     0.5000 D89710EC-B9EA-11EC-9C32-2FED7B3275F7
+        wsize:1024
+                                                              protocol:tcp    11.3200    25.9800 C6B45BFA-B9EA-11EC-B65D-E3EA7B3275F7
+                                                              protocol:udp     3.0100     2.0600 D8CFF3B2-B9EA-11EC-AA4A-2FED7B3275F7
+        wsize:16384
+                                                              protocol:tcp     9.7800     1.3000 C6F1EBD2-B9EA-11EC-94EC-E3EA7B3275F7
+                                                              protocol:udp     5.3800     1.4300 D8F4B4E0-B9EA-11EC-9940-2FED7B3275F7
+        wsize:32768
+                                                              protocol:tcp    19.9100    55.8000 C70AFF28-B9EA-11EC-860C-E3EA7B3275F7
+                                                              protocol:udp     5.8000     0.1500 D9076644-B9EA-11EC-BD41-2FED7B3275F7
+      nthreads:16
+        wsize:256
+                                                              protocol:tcp    50.8200     0.4000 CF52816A-B9EA-11EC-8024-01EC7B3275F7
+                                                              protocol:udp    12.9900     3.3500 E16B9B02-B9EA-11EC-914C-4AEE7B3275F7
+        wsize:512
+                                                              protocol:tcp    65.0300     0.5600 CF76F2F2-B9EA-11EC-B5A0-01EC7B3275F7
+                                                              protocol:udp    24.8300     5.2100 E19F65D6-B9EA-11EC-A292-4AEE7B3275F7
+        wsize:1024
+                                                              protocol:tcp    66.4600     0.4600 CF95A92C-B9EA-11EC-9322-01EC7B3275F7
+        wsize:16384
+                                                              protocol:tcp   155.5700     3.1600 CFBC6D5A-B9EA-11EC-A4E5-01EC7B3275F7
+                                                              protocol:udp    76.6700     3.3700 E1F6D6A4-B9EA-11EC-9099-4AEE7B3275F7
+        wsize:32768
+                                                              protocol:tcp   122.5500    41.2100 CFEFB0A2-B9EA-11EC-A682-01EC7B3275F7
+
+In the output above `--dont-breakout-params protocol` forces the `protocol` param to be pushed to the label instead of broken-out on the left.  In most cases, the user will choose at least one param and/or one tag to not breakout, in order to create a "cluster" of results with labels (which can later be used to form a clustered bar chart).  
+
+Users can control both what gets pushed to the label, as well as the order of the breakout `--breakout-order-params`:
+
+    # node ./compare-results.js --filter-by-params test-type:stream --filter-by-tags study:protocols --dont-breakout-params wsize --breakout-order-params protocol,threads
+    
+    All common tags: study:protocols
+    All common params: test-type:stream duration:120
+    
+    
+                                                                     label       mean  stddevpct                              iter-id
+      protocol:tcp
+        nthreads:1
+                                                                 wsize:256     4.5800     6.7400 C65ABB68-B9EA-11EC-B891-E3EA7B3275F7
+                                                                 wsize:512     7.6500    13.7600 C68062AA-B9EA-11EC-83E9-E3EA7B3275F7
+                                                                wsize:1024    11.3200    25.9800 C6B45BFA-B9EA-11EC-B65D-E3EA7B3275F7
+                                                               wsize:16384     9.7800     1.3000 C6F1EBD2-B9EA-11EC-94EC-E3EA7B3275F7
+                                                               wsize:32768    19.9100    55.8000 C70AFF28-B9EA-11EC-860C-E3EA7B3275F7
+        nthreads:16
+                                                                 wsize:256    50.8200     0.4000 CF52816A-B9EA-11EC-8024-01EC7B3275F7
+                                                                 wsize:512    65.0300     0.5600 CF76F2F2-B9EA-11EC-B5A0-01EC7B3275F7
+                                                                wsize:1024    66.4600     0.4600 CF95A92C-B9EA-11EC-9322-01EC7B3275F7
+                                                               wsize:16384   155.5700     3.1600 CFBC6D5A-B9EA-11EC-A4E5-01EC7B3275F7
+                                                               wsize:32768   122.5500    41.2100 CFEFB0A2-B9EA-11EC-A682-01EC7B3275F7
+      protocol:udp
+        nthreads:1
+                                                                 wsize:256     0.7500     3.0500 D86CF3AC-B9EA-11EC-9E01-2FED7B3275F7
+                                                                 wsize:512     1.5000     0.5000 D89710EC-B9EA-11EC-9C32-2FED7B3275F7
+                                                                wsize:1024     3.0100     2.0600 D8CFF3B2-B9EA-11EC-AA4A-2FED7B3275F7
+                                                               wsize:16384     5.3800     1.4300 D8F4B4E0-B9EA-11EC-9940-2FED7B3275F7
+                                                               wsize:32768     5.8000     0.1500 D9076644-B9EA-11EC-BD41-2FED7B3275F7
+        nthreads:16
+                                                                 wsize:256    12.9900     3.3500 E16B9B02-B9EA-11EC-914C-4AEE7B3275F7
+                                                                 wsize:512    24.8300     5.2100 E19F65D6-B9EA-11EC-A292-4AEE7B3275F7
+                                                               wsize:16384    76.6700     3.3700 E1F6D6A4-B9EA-11EC-9099-4AEE7B3275F7
+
+Also, `--breakout-order-tags` and `--dont-breakout-tags` are also available with similar functions.
+
+Note that that while not required, `--filter-by-age` has a default of `0-30`, which filters iterations between 0 to 30 *days* old.  This default is used so that queries do not unnecessarily query very old run data (unless you select a different age range). 
