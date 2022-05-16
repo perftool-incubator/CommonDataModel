@@ -41,6 +41,45 @@ function esRequest(host, idx, q) {
   return resp;
 }
 
+// mSearch: take a several serach requests and create a ES _msearch
+// mSearch should be used whenever possible, instead of requesting
+// many single search requests separately.  Significant performance
+// improvements are generally possible when reducing the actual number
+// of http requests.
+mSearch = function (url, index, termKey, source, values, sort) {
+  var ndjson = "";
+  for (var i = 0; i < values.length; i++) {
+    var termStr = '{ "' + termKey + '": "' + values[i] + '"}';
+    var req = { 'query': { 'bool': { 'filter': [ {'term': {}} ] }},
+                '_source': source, 'size': 1000 };
+    req['query']['bool']['filter'][0]['term'] = JSON.parse(termStr);
+    if (typeof(sort) !== "undefined") req.sort = sort;
+                //'sort': [ { "sample.num": { "order": "asc"}} ] };
+     ndjson += '{}\n' + JSON.stringify(req) + "\n";
+  }
+  var resp = esRequest(url, index + "/_doc/_msearch", ndjson);
+  var data = JSON.parse(resp.getBody());
+
+  // Unpack response and organize in array of arrays
+  var retData = [];
+  for (var i = 0; i < data.responses.length; i++) {
+    var ids = [];
+    if (Array.isArray(data.responses[i].hits.hits) && data.responses[i].hits.hits.length > 0) {
+      data.responses[i].hits.hits.forEach(element => {
+        // A source of "x.y" <string> must be converted to reference the object
+        var obj = element._source;
+        source.split('.').forEach(thisObj => {
+          obj = obj[thisObj];
+        });
+        ids.push(obj);
+      });
+    }
+    retData[i] = ids;
+  }
+  return retData;
+}
+exports.mSearch = mSearch;
+
 deleteDocs = function (url, docTypes, q) {
   docTypes.forEach(docType => {
     var resp = esRequest(url, docType + "/_doc/_delete_by_query", q);
@@ -846,34 +885,8 @@ exports.getParams = getParams;
 
 getSamples = function (url, iterArr) {
   if (typeof(iterArr) !==  typeof([])) return;
-
-  // Pack each per-iter sample query into an msearch
-  var ndjson = "";
-  var sampArr = [];
-  for (var i = 0; i < iterArr.length; i++) {
-    var req = {
-                'query': { 'bool': { 'filter': [ {"term": {"iteration.id": iterArr[i]}} ] }},
-                '_source': "sample.id", 'size': 1000,
-                'sort': [ { "sample.num": { "order": "asc"}} ]
-              };
-     ndjson += '{}\n' + JSON.stringify(req) + "\n";
-  }
-  var resp = esRequest(url, "sample/_doc/_msearch", ndjson);
-
-  // Unpack response and organize samples in array of arrays
-  var sampIdsArr = [];
-  var data = JSON.parse(resp.getBody());
-  for (var i = 0; i < data.responses.length; i++) {
-    var sampIds = [];
-    if (Array.isArray(data.responses[i].hits.hits) && data.responses[i].hits.hits.length > 0) {
-      data.responses[i].hits.hits.forEach(element => {
-        sampIds.push(element._source.sample.id);
-      });
-    }
-    sampIdsArr[i] = sampIds;
-  }
-  return sampIdsArr;
-};
+  return mSearch(url, "sample", "iteration.id", "sample.id", iterArr);
+}
 exports.getSamples = getSamples;
 
 getPrimaryPeriodName = function (url, iterId) {
