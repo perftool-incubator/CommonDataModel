@@ -18,22 +18,29 @@ program
   .option('--output-format <fmt>, fmta[,fmtb]', 'one or more output formats: txt html', list, [])
   .parse(process.argv);
 
-var searchTerms = [];
+var termKeys = [];
+var values = [];
+
 if (program.user) {
-  searchTerms.push({ "term": "run.name", "match": "eq", "value": program.user });
+  termKeys.push("run.name");
+  values.push([ program.user ]);
 }
 if (program.email) {
-  searchTerms.push({ "term": "run.email", "match": "eq", "value": program.email });
+  termKeys.push("run.email");
+  values.push([ program.email ]);
 }
 if (program.run) {
-  searchTerms.push({ "term": "run.id", "match": "eq", "value": program.run });
+  termKeys.push("run.id");
+  values.push([ program.run ]);
 }
 if (program.harness) {
-  searchTerms.push({ "term": "run.harness", "match": "eq", "value": program.harness });
+  termKeys.push("run.harness");
+  values.push([ program.harness ]);
 }
 if (!program.url) {
   program.url = "localhost:9200";
 }
+
 if (!program.outputDir) {
   program.outputDir = "";
 }
@@ -51,7 +58,7 @@ function logOutput(str, formats) {
   }
 }
 
-var runIds = cdm.getRuns(program.url, searchTerms);
+var runIds = cdm.mSearch(program.url, "run", termKeys, values, "run.id", 1000)[0];
 if (runIds == undefined) {
   console.log("The run ID could not be found, exiting");
   process.exit(1);
@@ -75,7 +82,7 @@ runIds.forEach(runId => {
   var allParams = [];
   var allParamsCounts = [];
   benchIterations.forEach(iterationId => {
-    var params = cdm.getParams(program.url, [{ "term": "iteration.id", "match": "eq", "value": iterationId }]);
+    var params = cdm.getParams(program.url, iterationId);
     params.forEach(param => {
       newParam = param.arg + "=" + param.val;
       idx = allParams.indexOf(newParam)
@@ -117,6 +124,7 @@ runIds.forEach(runId => {
     var series = {};
     logOutput("    iteration-id: " + iterationId, noHtml);
     var params = cdm.getParams(program.url, [{ "term": "iteration.id", "match": "eq", "value": iterationId }]);
+    //var params = cdm.getParams(program.url, iterationId);
     params.sort((a, b) => a.arg < b.arg ? -1 : 1);
     var paramList = "      unique params: ";
     series['label'] = "";
@@ -145,6 +153,7 @@ runIds.forEach(runId => {
     }
     logOutput("      primary-period name: " + primaryPeriodName, noHtml);
     var samples = cdm.getSamples(program.url, [ iterationId ]);
+    //var samples = cdm.getSamples(program.url, iterationId);
     var sampleTotal = 0;
     var sampleCount = 0;
     var sampleVals = [];
@@ -152,6 +161,7 @@ runIds.forEach(runId => {
     var periods = [];
     logOutput("      samples:", noHtml);
     samples[0].forEach(sample => {
+    //samples.forEach(sample => {
       if (cdm.getSampleStatus(program.url, sample) == "pass") {
         logOutput("        sample-id: " + sample, noHtml);
         var primaryPeriodId = cdm.getPrimaryPeriodId(program.url, sample, primaryPeriodName);

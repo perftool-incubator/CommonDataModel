@@ -58,16 +58,22 @@ function esRequest(host, idx, q) {
 // many single search requests separately.  Significant performance
 // improvements are generally possible when reducing the actual number
 // of http requests.
-mSearch = function (url, index, termKey, source, values, sort) {
+mSearch = function (url, index, termKeys, values, source, size, sort) {
+  if (typeof(termKeys) !==  typeof([])) return;
+  if (typeof(values) !==  typeof([])) return;
   var ndjson = "";
-  for (var i = 0; i < values.length; i++) {
-    var termStr = '{ "' + termKey + '": "' + values[i] + '"}';
-    var req = { 'query': { 'bool': { 'filter': [ {'term': {}} ] }},
-                '_source': source, 'size': 1000 };
-    req['query']['bool']['filter'][0]['term'] = JSON.parse(termStr);
-    if (typeof(sort) !== "undefined") req.sort = sort;
-                //'sort': [ { "sample.num": { "order": "asc"}} ] };
-     ndjson += '{}\n' + JSON.stringify(req) + "\n";
+  for (var i = 0; i < values[0].length; i++) {
+    var req = { 'query': { 'bool': { 'filter': [] }}};
+    if (source !== "") {
+      req._source = source;
+    }
+    for (var x = 0; x < termKeys.length; x++) {
+      var termStr = '{ "term": { "' + termKeys[x] + '": "' + values[x][i] + '"}}';
+      req['query']['bool']['filter'].push(JSON.parse(termStr));
+      if (typeof(size) !== "undefined") req.size = size;
+      if (typeof(sort) !== "undefined") req.sort = sort;
+    }
+    ndjson += '{}\n' + JSON.stringify(req) + "\n";
   }
   var resp = esRequest(url, index + "/_doc/_msearch", ndjson);
   var data = JSON.parse(resp.getBody());
@@ -80,9 +86,11 @@ mSearch = function (url, index, termKey, source, values, sort) {
       data.responses[i].hits.hits.forEach(element => {
         // A source of "x.y" <string> must be converted to reference the object
         var obj = element._source;
-        source.split('.').forEach(thisObj => {
-          obj = obj[thisObj];
-        });
+        if (source !== "") {
+          source.split('.').forEach(thisObj => {
+            obj = obj[thisObj];
+          });
+        }
         ids.push(obj);
       });
     }
@@ -92,6 +100,140 @@ mSearch = function (url, index, termKey, source, values, sort) {
 }
 exports.mSearch = mSearch;
 
+mgetPrimaryMetric = function (url, iterations) {
+  return mSearch(url, "iteration", [ "iteration.id" ], [ iterations ], "iteration.primary-metric");
+}
+getPrimaryMetric = function (url, iteration) {
+  return mgetPrimaryMetric(url, [ iteration ])[0][0];
+};
+exports.getPrimaryMetric = getPrimaryMetric;
+
+mgetPrimaryPeriodName = function (url, iterations) {
+  return mSearch(url, "iteration", [ "iteration.id" ], [ iterations ], "iteration.primary-period");
+}
+exports.mgetPrimaryPeriodName = mgetPrimaryPeriodName;
+getPrimaryPeriodName = function (url, iteration) {
+  return mgetPrimaryPeriodName(url, [ iteration ])[0][0];
+}
+exports.getPrimaryPeriodName = getPrimaryPeriodName;
+
+mgetSamples = function (url, iters) {
+  return mSearch(url, "sample", [ "iteration.id" ], [ iters ], "sample.id");
+}
+exports.mgetSamples = mgetSamples;
+getSamples = function (url, iter) {
+  return mgetSamples(url, [ iter ])[0];
+}
+exports.getSamples = getSamples;
+
+mgetPrimaryPeriodId = function (url, sampIds, periNames) {
+  return mSearch(url, "period", [ "sample.id", "period.name" ], [ sampIds, periNames ], "period.id", 1);
+};
+exports.mgetPrimaryPeriodId = mgetPrimaryPeriodId;
+getPrimaryPeriodId = function (url, sampId, periName) {
+  return mgetPrimaryPeriodId(url, [sampId], [periName])[0][0];
+}
+exports.getPrimaryPeriodId = getPrimaryPeriodId;
+
+mgetMetricDescs = function (url, runIds) {
+  return mSearch(url, "metric_desc", [ "run.id" ], [ runIds ], "metrric_desc.id", bigQuerySize);
+}
+getMetricDescs = function (url, runId) {
+  return mgetMetricDescs(url, [ runId ]);
+};
+exports.getMetricDescs = getMetricDescs;
+
+mgetMetricDataDocs = function (url, metricIds) {
+  return mSearch(url, "metric_data", [ "metric_desc.id" ], [ metricIds ], "", bigQuerySize);
+}
+getMetricDataDocs = function (url, metricId) {
+  return mgetMetricDataDocs(url, [ metricId ])[0];
+};
+exports.getMetricDataDocs = getMetricDataDocs;
+
+mgetIterations = function (url, runIds) {
+  return mSearch(url, "iteration", [ "run.id" ], [ runIds ], "iteration.id", 1000,
+                [ { "iteration.num": { "order": "asc", "numeric_type": "long" }} ]);
+}
+getIterations = function (url, runId) {
+  return mgetIterations(url, [ runId ])[0];
+};
+exports.getIterations = getIterations;
+
+mgetTags = function (url, runIds) {
+  return mSearch(url, "tag", [ "run.id" ], [ runIds ], "tag", 1000);
+}
+getTags = function (url, runId) {
+  console.log("getTags, runId: " + runId);
+  return mgetTags(url, [ runId ])[0];
+}
+exports.getTags = getTags;
+
+mgetRunFromIter = function (url, iterIds) {
+  return mSearch(url, "iteration", [ "iteration.id" ], [ iterIds ], "run.id", 1000);
+}
+getRunFromIter = function (url, iterId) {
+  console.log("getRunFromIter");
+  return mgetRunFromIter(url, [ iterId ])[0][0];
+}
+exports.getRunFromIter = getRunFromIter;
+
+mgetRunFromPeriod = function (url, periIds) {
+  return mSearch(url, "period", [ "period.id" ], [ periIds ], "run.id", 1);
+}
+getRunFromPeriod = function (url, periId) {
+  return mgetRunFromPeriod(url, [ periId ])[0][0];
+}
+exports.getRunFromPeriod = getRunFromPeriod;
+
+mgetParams = function (url, iterIds) {
+  return mSearch(url, "param", [ "iteration.id" ], [ iterIds ], "param", 1000);
+}
+getParams = function (url, iterId) {
+  return mgetParams(url, [ iterId ])[0];
+}
+exports.getParams = getParams;
+
+mgetPeriodRange = function (url, periIds) {
+  return mSearch(url, "period", [ "period.id" ], [ periIds ], "period", 1000);
+}
+getPeriodRange = function (url, periId) {
+  return mgetPeriodRange(url, [ periId ])[0][0];
+}
+exports.getPeriodRange = getPeriodRange;
+
+mgetIterationDoc = function (url, iterIds) {
+  return mSearch(url, "iteration", [ "iteration.id" ], [ iterIds ], "", 1000);
+}
+getIterationDoc = function (url, iterId) {
+  return mgetIterationDoc(url, [ iterId ])[0][0];
+}
+exports.getIterationDoc = getIterationDoc;;
+
+mgetSampleStatus = function (url, sampIds) {
+  return mSearch(url, "sample", [ "sample.id" ], [ sampIds ], "sample.status", 1);
+}
+getSampleStatus = function (url, sampId) {
+  return mgetSampleStatus(url, [ sampId ])[0][0];
+}
+exports.getSampleStatus = getSampleStatus;
+
+mgetBenchmarkName = function (url, runIds) {
+  return mSearch(url, "run", [ "run.id" ], [ runIds ], "run.benchmark", 1);
+}
+getBenchmarkName = function (url, runId) {
+  return mgetBenchmarkName(url, [ runId ])[0][0];
+}
+exports.getBenchmarkName = getBenchmarkName;
+
+mgetRunData = function (url, runIds) {
+  return mSearch(url, "run", [ "run.id" ], [ runIds ], "", 1000);
+}
+getRunData = function (url, runId) {
+  return mgetRunData(url, [ runId ]);
+}
+exports.getRunData = getRunData;
+
 deleteDocs = function (url, docTypes, q) {
   docTypes.forEach(docType => {
     var resp = esRequest(url, docType + "/_doc/_delete_by_query", q);
@@ -99,43 +241,6 @@ deleteDocs = function (url, docTypes, q) {
   });
 };
 exports.deleteDocs = deleteDocs;
-
-getPrimaryMetric = function (url, iterId) {
-  var q = { 'query': { 'bool': { 'filter': [ {"term": {"iteration.id": iterId}} ] }}};
-  var resp = esRequest(url, "iteration/_doc/_search", q);
-  var data = JSON.parse(resp.getBody());
-  return data.hits.hits[0]._source.iteration['primary-metric'];
-};
-exports.getPrimaryMetric = getPrimaryMetric;
-
-getMetricDescs = function (url, runId) {
-  var q = { 'query': { 'bool': { 'filter': [{ "term": {"run.id": runId }}] }},
-            '_source': "metric_desc.id",
-            'size': bigQuerySize };
-  var resp = esRequest(url, "metric_desc/_doc/_search", q);
-  var data = JSON.parse(resp.getBody());
-  var ids = [];
-  if (Array.isArray(data.hits.hits) && data.hits.hits.length > 0) {
-    data.hits.hits.forEach(element => {
-      if (ids.find(value => value == element._source.metric_desc.id)) {
-        console.log("Odd, metric ID " + element._source.metric_desc.id + "found more than once");
-      } else {
-        ids.push(element._source.metric_desc.id);
-      }
-    });
-  }
-  return ids;
-};
-exports.getMetricDescs = getMetricDescs;
-
-getMetricDataDocs = function (url, metricId) {
-  var q = { 'query': { 'bool': { 'filter': [ {"term": {"metric_desc.id": metricId}} ] }},
-            'size': 10000 };
-  var resp = esRequest(url, "metric_data/_doc/_search", q);
-  var data = JSON.parse(resp.getBody());
-  return data;
-};
-exports.getMetricDataDocs = getMetricDataDocs;
 
 // Delete all the metric (metric_desc and metric_data) for a run
 deleteMetrics = function (url, runId) {
@@ -520,7 +625,8 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
     }
   }
   // Now we can get all of the iterations for these run.ids
-  var iterIdsFromRun = getIterations(url, [{ "terms": { "run.id": intersectedRunIds }}]);
+  //var iterIdsFromRun = getIterations(url, [{ "terms": { "run.id": intersectedRunIds }}]);
+  var iterIdsFromRun = getIterations(url, intersectedRunIds);
 
 
   // Next, we must find the iterations that match the params filters.
@@ -603,7 +709,8 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
   // Now we can add any iterations from --add-runs and --add-iterations.
   // These options are not subject to the tags and params filters.
   if (typeof(addRuns) != "undefined" && addRuns != []) {
-    var ids = getIterations(url, [{ "terms": { "run.id": addRuns }}]);
+    //var ids = getIterations(url, [{ "terms": { "run.id": addRuns }}]);
+    var ids = getIterations(url, addRuns);
     ids.forEach(id => {
       if (!allIterIds.includes(id)) {
         allIterIds.push(id);
@@ -642,7 +749,7 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
   console.log("Finding all param args");
   var allParamArgs = [];
   allIterIds.forEach(iter => {
-    var params = getParams(url, [{ "term": "iteration.id", "match": "eq", "value": iter }]);
+    var params = getParams(url, iter);
     params.forEach(thisParam => {
       if (!allParamArgs.includes(thisParam["arg"])) {
         allParamArgs.push(thisParam["arg"]);
@@ -657,7 +764,7 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
   var iterations = [];
   allIterIds.forEach(iter => {
     //console.log("\niterId: " + iter);
-    var params = getParams(url, [{ "term": "iteration.id", "match": "eq", "value": iter }]);
+    var params = getParams(url, iter);
     //console.log("params:\n" + JSON.stringify(params, null, 2));
     // Need to consolidate multiple params with same arg but different values
     var paramIdx = {};
@@ -837,153 +944,6 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
 }
 exports.getIters = getIters;
 
-exports.getIterationDoc = function (url, id) {
-  var q = { 'query': { 'bool': { 'filter': [ { "term": { "iteration.id": id }} ] }}};
-  var resp = esRequest(url, "iteration/_doc/_search", q);
-  var data = JSON.parse(resp.getBody());
-  return data;
-};
-
-getIterations = function (url, searchTerms) {
-  var q = { 'query': { 'bool': { 'filter': searchTerms }},
-            '_source': "iteration.id", 'size': 1000,
-            'sort': [ { "iteration.num": { "order": "asc", "numeric_type": "long" }} ] };
-  if (searchTerms.length === 0) {
-    console.log("Found no search terms\n");
-    return;
-  }
-  var resp = esRequest(url, "iteration/_doc/_search", q);
-  var data = JSON.parse(resp.getBody());
-  var ids = [];
-  if (Array.isArray(data.hits.hits) && data.hits.hits.length > 0) {
-    data.hits.hits.forEach(element => {
-      ids.push(element._source.iteration.id);
-    });
-  }
-  return ids;
-};
-exports.getIterations = getIterations;
-
-getParams = function (url, searchTerms) {
-  var q = { 'query': { 'bool': { 'filter': [] }},
-      '_source': "param",
-            'size': 1000 };
-  if (searchTerms.length === 0) {
-    return;
-  }
-  searchTerms.forEach(element => {
-    var myTerm = {};
-    myTerm[element.term] = element.value;
-    q.query.bool.filter.push({"term": myTerm});
-  });
-  var resp = esRequest(url, "param/_doc/_search", q);
-  var data = JSON.parse(resp.getBody());
-  var params = [];
-  if (Array.isArray(data.hits.hits) && data.hits.hits.length > 0) {
-    data.hits.hits.forEach(element => {
-      var thisParam = {"arg": element._source.param.arg, "val": element._source.param.val};
-      if (typeof(element._source.param.id) !== "undefined") {
-        thisParam.id = element._source.param.id;
-      }
-      if (typeof(element._source.param.role) !== "undefined") {
-        thisParam.role = element._source.param.role;
-      }
-      params.push(thisParam);
-    });
-  }
-  return params;
-};
-exports.getParams = getParams;
-
-getSamples = function (url, iterArr) {
-  if (typeof(iterArr) !==  typeof([])) return;
-  return mSearch(url, "sample", "iteration.id", "sample.id", iterArr);
-}
-exports.getSamples = getSamples;
-
-getPrimaryPeriodName = function (url, iterId) {
-  var q = { 'query': { 'bool': { 'filter': [ {"term": {"iteration.id": iterId}} ] }},
-            '_source': 'iteration.primary-period',
-            'size': 1 };
-  var resp = esRequest(url, "iteration/_doc/_search", q);
-  var data = JSON.parse(resp.getBody());
-  if (data.hits.hits[0]._source.iteration['primary-period']) {
-    return data.hits.hits[0]._source.iteration['primary-period'];
-  }
-};
-exports.getPrimaryPeriodName = getPrimaryPeriodName;
-
-getRunFromIter = function (url, iterId) {
-  var q = { 'query': { 'bool': { 'filter': [ {"term": {"iteration.id": iterId}} ] }},
-            '_source': [ 'run.id' ],
-            'size': 1 };
-  var resp = esRequest(url, "iteration/_doc/_search", q);
-  var data = JSON.parse(resp.getBody());
-  if (data.hits.hits[0] && data.hits.hits[0]._source &&
-      data.hits.hits[0]._source.run &&
-      data.hits.hits[0]._source.run.id) {
-    return data.hits.hits[0]._source.run.id;
-  }
-};
-exports.getRunFromIter = getRunFromIter;
-
-getRunFromPeriod = function (url, periId) {
-  var q = { 'query': { 'bool': { 'filter': [ {"term": {"period.id": periId}} ] }},
-            '_source': [ 'run.id' ],
-            'size': 1 };
-  var resp = esRequest(url, "period/_doc/_search", q);
-  var data = JSON.parse(resp.getBody());
-  if (data.hits.hits[0] && data.hits.hits[0]._source &&
-      data.hits.hits[0]._source.run &&
-      data.hits.hits[0]._source.run.id) {
-    return data.hits.hits[0]._source.run.id;
-  }
-};
-exports.getRunFromPeriod = getRunFromPeriod;
-
-getPeriodRange = function (url, periId) {
-  var q = { 'query': { 'bool': { 'filter': [ {"term": {"period.id": periId}} ] }},
-            '_source': [ 'period.begin', 'period.end' ],
-            'size': 1 };
-  var resp = esRequest(url, "period/_doc/_search", q);
-  var data = JSON.parse(resp.getBody());
-  if (data.hits.hits[0] && data.hits.hits[0]._source &&
-      data.hits.hits[0]._source.period &&
-      data.hits.hits[0]._source.period.begin &&
-      data.hits.hits[0]._source.period.end) {
-    return { "begin": data.hits.hits[0]._source.period.begin, "end": data.hits.hits[0]._source.period.end };
-  }
-};
-exports.getPeriodRange = getPeriodRange;
-
-getSampleStatus = function (url, sampId) {
-  var q = { 'query': { 'bool': { 'filter': [ {"term": {"sample.id": sampId}} ] }},
-            '_source': 'sample.status',
-            'size': 1 };
-  var resp = esRequest(url, "sample/_doc/_search", q);
-  var data = JSON.parse(resp.getBody());
-  if (data.hits.total.value > 0 && Array.isArray(data.hits.hits) && data.hits.hits[0]._source.sample.status) {
-    return data.hits.hits[0]._source.sample.status;
-  } else {
-    console.log("sample status not found\n");
-  }
-};
-exports.getSampleStatus = getSampleStatus;
-
-getPrimaryPeriodId = function (url, sampId, periName) {
-  var q = { 'query': { 'bool': { 'filter': [ {"term": {"sample.id": sampId}}, {"term": {"period.name": periName}} ] }},
-            '_source': 'period.id',
-            'size': 1 };
-  var resp = esRequest(url, "period/_doc/_search", q);
-  var data = JSON.parse(resp.getBody());
-  if (data.hits.total.value > 0 && Array.isArray(data.hits.hits) && data.hits.hits[0]._source.period.id) {
-    return data.hits.hits[0]._source.period.id;
-  } else {
-    return null;
-  }
-};
-exports.getPrimaryPeriodId = getPrimaryPeriodId;
-
 exports.getMetricSources = function (url, runId) {
   var q = { 'query': { 'bool': { 'filter': [ {"term": {"run.id": runId}} ] }},
             'aggs': { 'source': { 'terms': { 'field': 'metric_desc.source', "size": 10000 }}},
@@ -1042,78 +1002,6 @@ getMetricNames = function (url, runId, periId, source, type) {
   return names;
 };
 exports.getMetricNames = getMetricNames;
-
-getTags = function (url, runId) {
-  var q = { 'query': { 'bool': { 'filter': [ {"term": {"run.id": runId}} ] }},
-            //'_source': "tag", 'size': 1000};
-            'size': 1000};
-  var resp = esRequest(url, "tag/_doc/_search", q);
-  var data = JSON.parse(resp.getBody());
-  //console.log(JSON.stringify(data, null,2));
-  var tags = [];
-  if (Array.isArray(data.hits.hits) && data.hits.hits.length > 0) {
-    data.hits.hits.forEach(element => {
-      tags.push({"name": element._source.tag.name, "val": element._source.tag.val});
-    });
-  }
-  return tags;
-};
-exports.getTags = getTags;
-
-exports.getBenchmarkName = function (url, runId) {
-  var q = { 'query': { 'bool': { 'filter': [ {"term": {"run.id": runId}} ] }},
-            '_source': "run.benchmark",
-            'size': 1 };
-  var resp = esRequest(url, "run/_doc/_search", q);
-  var data = JSON.parse(resp.getBody());
-  if (data.hits.hits[0]._source.run.benchmark) {
-    return data.hits.hits[0]._source.run.benchmark;
-  }
-};
-
-exports.getRunData = function (url, searchTerms) {
-  var q = { 'query': { 'bool': { 'filter': [] }},
-            'size': 1000 };
-  if (searchTerms.length === 0) {
-    return;
-  }
-  searchTerms.forEach(element => {
-    var myTerm = {};
-    myTerm[element.term] = element.value;
-    q.query.bool.filter.push({"term": myTerm});
-  });
-  var resp = esRequest(url, "run/_doc/_search", q);
-  var data = JSON.parse(resp.getBody());
-  return data;
-};
-
-exports.getRuns = function (url, searchTerms) {
-  var q = { 'query': { 'bool': { 'filter': [] }},
-            'aggs': { 'source': { 'terms': { 'field': 'run.id', 'size': 10000}}},
-            // it's possible to have multiple run docs with same ID, so use aggregation
-            'size': 0 };
-  searchTerms.forEach(element => {
-    var myTerm = {};
-    myTerm[element.term] = element.value;
-    q.query.bool.filter.push({"term": myTerm});
-  });
-  var resp = esRequest(url, "run/_doc/_search", q);
-  var data = JSON.parse(resp.getBody());
-  var ids = [];
-  if (Array.isArray(data.aggregations.source.buckets) && data.aggregations.source.buckets.length > 0) {
-    data.aggregations.source.buckets.forEach(element => {
-      ids.push(element.key);
-    });
-    return ids;
-  }
-};
-
-exports.getDocCountByMetricId = function (url, Id, docType) {
-  var q = { 'query': { 'bool': { 'filter': [ {"term": {"metric_desc.id": Id}} ] }}};
-  var resp = esRequest(url, docType + "/_doc/_count", q);
-  var data = JSON.parse(resp.getBody());
-  return data.count;
-};
 
 exports.getDocCount = function (url, runId, docType) {
   var q = { 'query': { 'bool': { 'filter': [ {"term": {"run.id": runId}} ] }}};
@@ -1952,13 +1840,14 @@ getIterMetrics = function(url, iterationId) {
     console.log("      the primary period-name for this iteration is undefined, exiting\n");
     process.exit(1);
   }
-  var samples = getSamples(url, [ iterationId ]);
+  var samples = getSamples(url, iterationId );
   var sampleTotal = 0;
   var sampleCount = 0;
   var sampleVals = [];
   var sampleList = "";
   var periods = [];
-  samples[0].forEach(sample => {
+  samples.forEach(sample => {
+    console.log("sample: " + sample);
     if (getSampleStatus(url, sample) == "pass") {
       var primaryPeriodId = getPrimaryPeriodId(url, sample, primaryPeriodName);
       if (primaryPeriodId == undefined || primaryPeriodId == null) {
