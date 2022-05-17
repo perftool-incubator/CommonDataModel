@@ -119,7 +119,7 @@ runIds.forEach(runId => {
       process.exit(1);
     }
     console.log("      primary-period name: " + primaryPeriodName);
-    var samples = cdm.getSamples(program.url, [{ "term": "iteration.id", "match": "eq", "value": iterationId }]);
+    var samples = cdm.getSamples(program.url, [ iterationId ]);
     //dPrev = d;
     //d = Date.now();
     //console.log(d + " return:getSamples +" + (d - dPrev));
@@ -129,7 +129,7 @@ runIds.forEach(runId => {
     var sampleList = "";
     var periods = [];
     console.log("      samples:");
-    samples.forEach(sample => {
+    samples[0].forEach(sample => {
       if (cdm.getSampleStatus(program.url, sample) == "pass") {
         //d = Date.now();
         console.log("        sample-id: " + sample);

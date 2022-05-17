@@ -41,6 +41,45 @@ function esRequest(host, idx, q) {
   return resp;
 }
 
+// mSearch: take a several serach requests and create a ES _msearch
+// mSearch should be used whenever possible, instead of requesting
+// many single search requests separately.  Significant performance
+// improvements are generally possible when reducing the actual number
+// of http requests.
+mSearch = function (url, index, termKey, source, values, sort) {
+  var ndjson = "";
+  for (var i = 0; i < values.length; i++) {
+    var termStr = '{ "' + termKey + '": "' + values[i] + '"}';
+    var req = { 'query': { 'bool': { 'filter': [ {'term': {}} ] }},
+                '_source': source, 'size': 1000 };
+    req['query']['bool']['filter'][0]['term'] = JSON.parse(termStr);
+    if (typeof(sort) !== "undefined") req.sort = sort;
+                //'sort': [ { "sample.num": { "order": "asc"}} ] };
+     ndjson += '{}\n' + JSON.stringify(req) + "\n";
+  }
+  var resp = esRequest(url, index + "/_doc/_msearch", ndjson);
+  var data = JSON.parse(resp.getBody());
+
+  // Unpack response and organize in array of arrays
+  var retData = [];
+  for (var i = 0; i < data.responses.length; i++) {
+    var ids = [];
+    if (Array.isArray(data.responses[i].hits.hits) && data.responses[i].hits.hits.length > 0) {
+      data.responses[i].hits.hits.forEach(element => {
+        // A source of "x.y" <string> must be converted to reference the object
+        var obj = element._source;
+        source.split('.').forEach(thisObj => {
+          obj = obj[thisObj];
+        });
+        ids.push(obj);
+      });
+    }
+    retData[i] = ids;
+  }
+  return retData;
+}
+exports.mSearch = mSearch;
+
 deleteDocs = function (url, docTypes, q) {
   docTypes.forEach(docType => {
     var resp = esRequest(url, docType + "/_doc/_delete_by_query", q);
@@ -844,29 +883,10 @@ getParams = function (url, searchTerms) {
 };
 exports.getParams = getParams;
 
-
-getSamples = function (url, searchTerms) {
-  var q = { 'query': { 'bool': { 'filter': [] }},
-            '_source': "sample.id", 'size': 1000,
-            'sort': [ { "sample.num": { "order": "asc"}} ] };
-  if (searchTerms.length === 0) {
-    return;
-  }
-  searchTerms.forEach(element => {
-    var myTerm = {};
-    myTerm[element.term] = element.value;
-    q.query.bool.filter.push({"term": myTerm});
-  });
-  var resp = esRequest(url, "sample/_doc/_search", q);
-  var data = JSON.parse(resp.getBody());
-  var ids = [];
-  if (Array.isArray(data.hits.hits) && data.hits.hits.length > 0) {
-    data.hits.hits.forEach(element => {
-      ids.push(element._source.sample.id);
-    });
-  }
-  return ids;
-};
+getSamples = function (url, iterArr) {
+  if (typeof(iterArr) !==  typeof([])) return;
+  return mSearch(url, "sample", "iteration.id", "sample.id", iterArr);
+}
 exports.getSamples = getSamples;
 
 getPrimaryPeriodName = function (url, iterId) {
@@ -1910,13 +1930,13 @@ getIterMetrics = function(url, iterationId) {
     console.log("      the primary period-name for this iteration is undefined, exiting\n");
     process.exit(1);
   }
-  var samples = getSamples(url, [{ "term": "iteration.id", "match": "eq", "value": iterationId }]);
+  var samples = getSamples(url, [ iterationId ]);
   var sampleTotal = 0;
   var sampleCount = 0;
   var sampleVals = [];
   var sampleList = "";
   var periods = [];
-  samples.forEach(sample => {
+  samples[0].forEach(sample => {
     if (getSampleStatus(url, sample) == "pass") {
       var primaryPeriodId = getPrimaryPeriodId(url, sample, primaryPeriodName);
       if (primaryPeriodId == undefined || primaryPeriodId == null) {
