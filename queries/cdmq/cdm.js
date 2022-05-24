@@ -20,6 +20,26 @@ subtractTwoArrays = function (a1, a2) {
 };
 exports.subtractTwoArrays = subtractTwoArrays;
 
+// Return consolidation (non-repeated values) from value for key 'k' found in array of objects
+function getObjVals(a, k) {
+  const c = [];
+  a.forEach(b => {
+    if (typeof(b[k]) !== "undefined" && !c.includes(b[k])) c.push(b[k]);
+  });
+  return c;
+};
+
+// Return consolidation (non-repeated values) of a 2-dimensional array
+function consolidateAllArrays(a) {
+  const c = [];
+  a.forEach(b => {
+    b.forEach(e => {
+      if (!c.includes(e)) c.push(e);
+    });
+  });
+  return c;
+};
+
 // Return intersection of two 1-dimensional arrays
 function intersectTwoArrays(a1, a2) {
    const a3 = [];
@@ -49,7 +69,6 @@ function esRequest(host, idx, q) {
     q = JSON.stringify(q);
   }
   var resp = request('POST', url, { body: q, headers: {"Content-Type": "application/json" } });
-  //console.log("esRequest complete");
   return resp;
 }
 
@@ -81,8 +100,8 @@ mSearch = function (url, index, termKeys, values, source, size, sort) {
   // Unpack response and organize in array of arrays
   var retData = [];
   for (var i = 0; i < data.responses.length; i++) {
-    var ids = [];
     if (Array.isArray(data.responses[i].hits.hits) && data.responses[i].hits.hits.length > 0) {
+      var ids = [];
       data.responses[i].hits.hits.forEach(element => {
         // A source of "x.y" <string> must be converted to reference the object
         var obj = element._source;
@@ -93,8 +112,11 @@ mSearch = function (url, index, termKeys, values, source, size, sort) {
         }
         ids.push(obj);
       });
+      retData[i] = ids;
+    } else {
+      retData[i] = [];
+      console.log("WARNING: no hits for request:\nquery:\n" + ndjson + "\nresponse:\n" + JSON.stringify(data));
     }
-    retData[i] = ids;
   }
   return retData;
 }
@@ -127,6 +149,10 @@ getSamples = function (url, iter) {
 exports.getSamples = getSamples;
 
 mgetPrimaryPeriodId = function (url, sampIds, periNames) {
+  if (periNames.length == 1) {
+    // Only 1 primary-period-name provided, so assume all sample IDs have same primary-period-name
+    for (i = 1; i < sampIds.length; i ++) periNames[i] = periNames[0];
+  }
   return mSearch(url, "period", [ "sample.id", "period.name" ], [ sampIds, periNames ], "period.id", 1);
 };
 exports.mgetPrimaryPeriodId = mgetPrimaryPeriodId;
@@ -164,7 +190,6 @@ mgetTags = function (url, runIds) {
   return mSearch(url, "tag", [ "run.id" ], [ runIds ], "tag", 1000);
 }
 getTags = function (url, runId) {
-  console.log("getTags, runId: " + runId);
   return mgetTags(url, [ runId ])[0];
 }
 exports.getTags = getTags;
@@ -173,7 +198,6 @@ mgetRunFromIter = function (url, iterIds) {
   return mSearch(url, "iteration", [ "iteration.id" ], [ iterIds ], "run.id", 1000);
 }
 getRunFromIter = function (url, iterId) {
-  console.log("getRunFromIter");
   return mgetRunFromIter(url, [ iterId ])[0][0];
 }
 exports.getRunFromIter = getRunFromIter;
@@ -195,7 +219,7 @@ getParams = function (url, iterId) {
 exports.getParams = getParams;
 
 mgetPeriodRange = function (url, periIds) {
-  return mSearch(url, "period", [ "period.id" ], [ periIds ], "period", 1000);
+  return mSearch(url, "period", [ "period.id" ], [ periIds ], "period", 1);
 }
 getPeriodRange = function (url, periId) {
   return mgetPeriodRange(url, [ periId ])[0][0];
@@ -218,6 +242,14 @@ getSampleStatus = function (url, sampId) {
 }
 exports.getSampleStatus = getSampleStatus;
 
+mgetBenchmarkNameFromIter = function (url, Ids) {
+  return mSearch(url, "iteration", [ "iteration.id" ], [ Ids ], "run.benchmark", 1);
+}
+getBenchmarkNameFromIter = function (url, Id) {
+  return mgetBenchmarkNameFromIter(url, [ Id ])[0][0];
+}
+exports.getBenchmarkNameFromIter = getBenchmarkNameFromIter;
+
 mgetBenchmarkName = function (url, runIds) {
   return mSearch(url, "run", [ "run.id" ], [ runIds ], "run.benchmark", 1);
 }
@@ -234,6 +266,150 @@ getRunData = function (url, runId) {
 }
 exports.getRunData = getRunData;
 
+calcIterMetrics = function(vals) {
+  var count = vals.length;
+  if (count == 0) return -1;
+  //console.log("vals:\n" + JSON.stringify(vals));
+  var total = vals.reduce((a, b) => a + b, 0);
+  //console.log("total: " + total);
+  var mean = total / count;
+  //console.log("mean: " + mean);
+  var diff = 0;
+  vals.forEach(val => { diff += (mean - val) * (mean - val); });
+  diff /= (count - 1);
+  var mstddev = Math.sqrt(diff);
+  var mstddevpct = 100 * mstddev / mean;
+  return { "mean": mean, "min": Math.min(...vals), "max": Math.max(...vals), "stddev": mstddev, "stddevpct": mstddevpct };
+}
+
+mgetIterMetrics = function(url, iterationIds) {
+  var results = {};
+  var benchmarkNames = consolidateAllArrays(mgetBenchmarkNameFromIter(url, iterationIds));
+  if (benchmarkNames.length !== 1) {
+    console.log("ERROR: The benchmark-name for all iterations was not the same, includes: " + benchmarkNames);
+    process.exit(1);
+  }
+  var primaryMetrics = consolidateAllArrays(mgetPrimaryMetric(url, iterationIds));
+  if (primaryMetrics.length !== 1) {
+    console.log("ERROR: The primary-metric for all iterations was not the same, includes: " + primaryMetrics);
+    process.exit(1);
+  }
+  var primaryPeriodNames = consolidateAllArrays(mgetPrimaryPeriodName(url, iterationIds));
+  if (primaryPeriodNames.length !== 1) {
+    console.log("ERROR: The primary-period-name for all iterations was not the same, includes: " + primaryPeriodNames);
+    process.exit(1);
+  }
+  // Find all of the passing samples, then all of the primary-periods, then get the metric for all of them in one request
+  console.log("mgetSamples");
+  var samples = mgetSamples(url, iterationIds);  // Samples organized in 2D array, first dimension matching iterationIds
+  //console.log("\nsamples:\n" + JSON.stringify(samples, null, 2));
+  var samplesByIterId = {};
+  var iterIdFromSample = {};
+  for (i = 0; i < iterationIds.length; i++) {
+    var iterId = iterationIds[i];
+    var thisIterSamples = samples[i]; // Array
+    samplesByIterId[iterId] = thisIterSamples;
+    thisIterSamples.forEach(s => {
+      iterIdFromSample[s] = iterId;
+    });
+  }
+  //console.log("iterIdFromSample:\n" + JSON.stringify(iterIdFromSample, null, 2));
+  var consSamples = consolidateAllArrays(samples); // All sample IDs flattened into 1 array
+  var consSamplesStatus = mgetSampleStatus(url, consSamples);
+  var consPassingSamples = []; // Only passing samples in flattened array
+  for (i = 0; i < consSamplesStatus.length; i++) {
+    if (consSamplesStatus[i] == "pass") consPassingSamples.push(consSamples[i]);
+  }
+  //console.log("\nconsPassingSamples: " + consPassingSamples);
+  console.log("mgetPrimaryperiodId");
+  var primaryPeriodIds = mgetPrimaryPeriodId(url, consPassingSamples, primaryPeriodNames);
+  var periodsBySample = {};
+  var sampleIdFromPeriod = {};
+  for (i = 0; i < consPassingSamples.length; i++) {
+    var sampId = consPassingSamples[i];
+    var thisSamplePeriods = primaryPeriodIds[i]; // Array
+    periodsBySample[sampId] = thisSamplePeriods;
+    thisSamplePeriods.forEach(p => {
+      sampleIdFromPeriod[p] = sampId;
+    });
+  }
+  var consPrimaryPeriodIds = consolidateAllArrays(primaryPeriodIds);
+  //console.log("\nconsPrimaryPeriodIds: " + JSON.stringify(consPrimaryPeriodIds, null , 2));
+  console.log("mgetPeriodRange");
+  var periodRanges = mgetPeriodRange(url, consPrimaryPeriodIds);
+  //console.log("\nperiodRanges: " + JSON.stringify(periodRanges, null, 2));
+  // Create the sets for getMetricDataSets
+  var sets = [];
+  var periodsByIteration = {};
+  for (i = 0; i < consPrimaryPeriodIds.length; i++ ) {
+      periodId = consPrimaryPeriodIds[i]
+      //console.log("period: " + periodId + "  periodRanges[" + i + "]: " + JSON.stringify(periodRanges[i]));  
+      var p = {
+                "period": periodId,
+                "source": benchmarkNames[0],
+                "type": primaryMetrics[0],
+                "begin": periodRanges[i][0].begin,
+                "end": periodRanges[i][0].end,
+                "resolution": 1,
+                "breakout": []
+              };
+      sets.push(p);
+      periodsByIteration[iterIdFromSample[sampleIdFromPeriod[periodId]]] = p;
+  }
+  //console.log("\ngetMetricDataSets for " + sets.length + " sets");
+  // Returned data should be in same order as consPrimaryPeriodIds
+  console.log("getMetricDataSets");
+  var metricDataSets = getMetricDataSets(url, sets);
+  console.log("calcIterMetrics");
+  //console.log("\nMetricDataSets.length: " + metricDataSets.length);
+  // Build per-iteration results
+  var period = consPrimaryPeriodIds[0];
+  var sample = sampleIdFromPeriod[period];
+  var iter = iterIdFromSample[sample];
+  var vals = [];
+  // Below relies on the expectation that periods for the same sample are stored contiguously in consPrimaryPeriodIds array
+  for (i = 0; i < consPrimaryPeriodIds.length; i++ ) {
+    //console.log("i: " + i);
+    period = consPrimaryPeriodIds[i];
+    //console.log("period: " + period);
+    sample = sampleIdFromPeriod[period];
+    //console.log("sample: " + sample);
+    //console.log("                    iter: " + iter);
+    //console.log("iterIdFromSample[sample]: " + iterIdFromSample[sample]);
+    nextIter = iterIdFromSample[sample];
+    //if (iter !== iterIdFromSample[sample]) {
+    if (iter !== nextIter) {
+      // detected next iteration, calc current iteration's metrics
+      //console.log("vals:\n" + JSON.stringify(vals));
+      var thisResult = calcIterMetrics(vals);
+      //console.log(JSON.stringify(thisResult));
+      results[iter] = thisResult;
+      //console.log("results length is now: " + Object.keys(results).length);
+      // now switch to new iteration
+      //console.log("switching from iteration " + iter + " to iteration " + nextIter);
+      iter = nextIter ;
+      vals = [];
+    }
+    //console.log("Getting val from metricDataSets[" + i + "]:\n" + JSON.stringify(metricDataSets[i], null, 2));
+    // metricDataSets can return metrics with multiple labels, and for each of those, multiple data-samples.
+    // In this case, we are expecting a blank label since there is no metric-breakout, and exactly 1 data-sample.
+    //console.log("value: [" + metricDataSets[i][''][0].value + "]");
+    vals.push(metricDataSets[i][''][0].value);
+  }
+  //console.log("vals:\n" + JSON.stringify(vals));
+  var thisResult = calcIterMetrics(vals);
+  //console.log(JSON.stringify(thisResult));
+  results[iter] = thisResult;
+  //console.log("results length is now: " + Object.keys(results).length);
+  console.log("mgetIterMetrics complete");
+  return results;
+}
+exports.mgetIterMetrics = mgetIterMetrics;
+
+getIterMetrics = function(url, iterId) {
+  mgetIterMetrics(url, [ iterId ]);
+}
+
 deleteDocs = function (url, docTypes, q) {
   docTypes.forEach(docType => {
     var resp = esRequest(url, docType + "/_doc/_delete_by_query", q);
@@ -245,26 +421,26 @@ exports.deleteDocs = deleteDocs;
 // Delete all the metric (metric_desc and metric_data) for a run
 deleteMetrics = function (url, runId) {
   var ids = getMetricDescs(url, runId);
-  console.log("There are " + ids.length + " metric_desc docs");
+  //console.log("There are " + ids.length + " metric_desc docs");
   var q = { 'query': { 'bool': { 'filter': { "terms": { "metric_desc.id": [] }}}}};
   ids.forEach(element => {
     var term = {"metric_desc.id": element };
     q['query']['bool']['filter']['terms']["metric_desc.id"].push(element);
     if (q['query']['bool']['filter']['terms']["metric_desc.id"].length >= 1000) {
-      console.log("deleting " + q['query']['bool']['filter']['terms']["metric_desc.id"].length + " metrics");
+      //console.log("deleting " + q['query']['bool']['filter']['terms']["metric_desc.id"].length + " metrics");
       deleteDocs(url, ['metric_data', 'metric_desc'], q);
       q['query']['bool']['filter']['terms']["metric_desc.id"] = [];
     }
   });
   var remaining = q['query']['bool']['filter']['terms']["metric_desc.id"].length;
   if (remaining > 0) {
-    console.log("deleting " + q['query']['bool']['filter']['terms']["metric_desc.id"].length + " metrics");
+    //console.log("deleting " + q['query']['bool']['filter']['terms']["metric_desc.id"].length + " metrics");
     deleteDocs(url, ['metric_data', 'metric_desc'], q);
   }
 };
 exports.deleteMetrics = deleteMetrics;
 
-buildIterTree = function (url, params, tags, paramValueByIterAndArg, tagValueByIterAndName, iterIds, dontBreakoutTags, dontBreakoutParams, omitParams, breakoutOrderTags, breakoutOrderParams, indent) {
+buildIterTree = function (url, results, params, tags, paramValueByIterAndArg, tagValueByIterAndName, iterIds, dontBreakoutTags, dontBreakoutParams, omitParams, breakoutOrderTags, breakoutOrderParams, indent) {
 
   // params: 2-d hash, {arg}{val}, value = [list of iteration IDs that has this val]
   // tags: 2-d hash, {name}{val}, value = [list of iteration IDs that has this val]
@@ -288,7 +464,6 @@ buildIterTree = function (url, params, tags, paramValueByIterAndArg, tagValueByI
       var val = Object.keys(newParams[arg])[0]; // the one and only value
       var thisParam = { "arg": arg, "val": val };
       iterNode.params.push(thisParam);
-      //console.log(indent + "deleting param " + arg + " (" + Object.keys(newParams[arg]) + ")");
       delete newParams[arg]; // delete all possible values for this arg
     }
   });
@@ -302,7 +477,6 @@ buildIterTree = function (url, params, tags, paramValueByIterAndArg, tagValueByI
       var val = Object.keys(newTags[name])[0]; // the one and only value
       var thisTag = { "name": name, "val": val };
       iterNode.tags.push(thisTag);
-      //console.log(indent + "deleting tag " + name + " (" + Object.keys(newTags[name]) + ")");
       delete newTags[name]; // delete all possible values for this arg
     }
   });
@@ -327,24 +501,20 @@ buildIterTree = function (url, params, tags, paramValueByIterAndArg, tagValueByI
     if (typeof(nextArg) == "undefined") {
       nextArg = args[0];
     }
-    //console.log(indent + "nextArg: " + nextArg + " (" + Object.keys(newParams[nextArg]) + ")");
     var intersectedIterCount = 0;
     Object.keys(newParams[nextArg]).forEach(val => {
       const intersectedIterIds = intersectTwoArrays(iterIds, newParams[nextArg][val]);
       const intersectedIterLength = intersectedIterIds.length;
       if (intersectedIterLength == 0) {
-        //console.log(indent + "arg: " + nextArg + " val: " + val + ", Not going to call buildIterTree because intersectedIterIds.length is 0");
       } else {
-        //console.log(indent + "Incrementing intersectedIterCount by " + intersectedIterLength);
         intersectedIterCount += intersectedIterLength;
-        //console.log(indent + "arg: " + nextArg + " val: " + val + ", GOING to call buildIterTree because intersectedIterIds.length is " + intersectedIterLength);
         var newIter;
         var newNewParamsJsonStr = JSON.stringify(newParams);
         var newNewParams = JSON.parse(newNewParamsJsonStr);
         delete newNewParams[nextArg]; // delete all possible values for this arg
         newNewParams[nextArg] = {}; 
         newNewParams[nextArg][val] = newParams[nextArg][val]; 
-        newIter = buildIterTree(url, newNewParams, newTags, paramValueByIterAndArg, tagValueByIterAndName, intersectedIterIds, dontBreakoutTags, dontBreakoutParams, omitParams, breakoutOrderTags, breakoutOrderParams, indent + "  ");
+        newIter = buildIterTree(url, results, newNewParams, newTags, paramValueByIterAndArg, tagValueByIterAndName, intersectedIterIds, dontBreakoutTags, dontBreakoutParams, omitParams, breakoutOrderTags, breakoutOrderParams, indent + "  ");
         if (typeof(newIter) !== "undefined" && Object.keys(newIter).length > 0) {
           if (typeof(iterNode["breakout"]) == "undefined") {
             iterNode["breakout"] = [];
@@ -373,24 +543,20 @@ buildIterTree = function (url, params, tags, paramValueByIterAndArg, tagValueByI
     if (typeof(nextName) == "undefined") {
       nextName = names[0];
     }
-    //console.log(indent + "nextName: " + nextName + " (" + Object.keys(newTags[nextName]) + ")");
     var intersectedIterCount = 0;
     Object.keys(newTags[nextName]).forEach(val => {
       const intersectedIterIds = intersectTwoArrays(iterIds, newTags[nextName][val]);
       const intersectedIterLength = intersectedIterIds.length;
       if (intersectedIterLength == 0) {
-        //console.log(indent + "name: " + nextName + " val: " + val + ", Not going to call buildIterTree because intersectedIterIds.length is 0");
       } else {
-        //console.log(indent + "Incrementing intersectedIterCount by " + intersectedIterLength);
         intersectedIterCount += intersectedIterLength;
-        //console.log(indent + "name: " + nextName + " val: " + val + ", GOING to call buildIterTree because intersectedIterIds.length is " + intersectedIterIds.length);
         var newIter;
         var newNewTagsJsonStr = JSON.stringify(newTags);
         var newNewTags = JSON.parse(newNewTagsJsonStr);
         delete newNewTags[nextName]; // delete all possible values for this arg
         newNewTags[nextName] = {};
         newNewTags[nextName][val] = newTags[nextName][val]; 
-        newIter = buildIterTree(url, newParams, newNewTags, paramValueByIterAndArg, tagValueByIterAndName, intersectedIterIds, dontBreakoutTags, dontBreakoutParams, omitParams, breakoutOrderTags, breakoutOrderParams, indent + "  ");
+        newIter = buildIterTree(url, results, newParams, newNewTags, paramValueByIterAndArg, tagValueByIterAndName, intersectedIterIds, dontBreakoutTags, dontBreakoutParams, omitParams, breakoutOrderTags, breakoutOrderParams, indent + "  ");
         if (typeof(newIter) !== "undefined" && Object.keys(newIter).length > 0) {
           if (typeof(iterNode["breakout"]) == "undefined") {
             iterNode["breakout"] = [];
@@ -409,10 +575,10 @@ buildIterTree = function (url, params, tags, paramValueByIterAndArg, tagValueByI
 
 // There are no breakouts to create, so we should be at the leaf.  Create the iteration with labels, metrics, etc.
   var iterations = [];
-  //console.log(indent + "creating leaf nodes (iterations) for: " + iterIds);
   iterIds.forEach(id => {
-  var result = getIterMetrics(url, id);
-    var thisIter = { "id": id, "labels": "", "mean": result["mean"], "stddevpct": result["stddevpct"], "min": result["min"], "max": result["max"] }
+  //var result = getIterMetrics(url, id);
+    //return { "mean": mean, "min": Math.min(...vals), "max": Math.max(...vals), "stddev": mstddev, "stddevpct": mstddevpct };
+    var thisIter = { "id": id, "labels": "", "mean": results[id]["mean"], "stddevpct": results[id]["stddevpct"], "min": results[id]["min"], "max": results[id]["max"] }
     Object.keys(newTags).forEach(name => {
       if (typeof(tagValueByIterAndName[id][name]) !== "undefined") {
         thisIter["labels"]+= " " + name + ":" + tagValueByIterAndName[id][name];
@@ -424,7 +590,6 @@ buildIterTree = function (url, params, tags, paramValueByIterAndArg, tagValueByI
       }
     });
     iterations.push(thisIter);
-    //console.log(indent + "Adding iter to iterTree: " + JSON.stringify(thisIter));
   });
   iterNode["iterations"] = iterations;
   return iterNode;
@@ -437,7 +602,6 @@ reportIters = function(iterTree, indent, count) {
   if (typeof(count) == "undefined") {
     count = 0;
   }
-  //console.log("enter reportIters, count: " + count);
 
   var midPoint = 70;
   var len = 0;
@@ -510,11 +674,9 @@ reportIters = function(iterTree, indent, count) {
       iterTree.breakout.forEach(iter => {
         var retCount = reportIters(iter, "  " + indent, 0);
         count = count + retCount;
-        //console.log(indent + "retCount, count after calling reportIters: " + retCount + " " + count);
       });
       return count;
     } else {
-      //console.log("iterTree.breakout is undefined, how did we get here?");
       return count;
     }
 
@@ -531,7 +693,6 @@ reportIters = function(iterTree, indent, count) {
 
   }
 
-  //console.log("returning nothing, iterTree: " + JSON.stringify(iterTree, null, 2));
   return;
 }
 
@@ -625,9 +786,7 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
     }
   }
   // Now we can get all of the iterations for these run.ids
-  //var iterIdsFromRun = getIterations(url, [{ "terms": { "run.id": intersectedRunIds }}]);
   var iterIdsFromRun = getIterations(url, intersectedRunIds);
-
 
   // Next, we must find the iterations that match the params filters.
   // We are trying to find iterations that have *all* params filters matching, not just one.
@@ -732,39 +891,30 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
 
   console.log("Total iterations: " + allIterIds.length);
 
-  // Get all possible tag names
   console.log("Finding all tag names");
-  var allTagNames = [];
-  allIterIds.forEach(iter => {
-    var runId = getRunFromIter(url, iter);
-    var tags = getTags(url, runId);
-    tags.forEach(thisTag => {
-      if (!allTagNames.includes(thisTag["name"])) {
-        allTagNames.push(thisTag["name"]);
-      }
-    });
-  });
-
-  // Get all possible param args
+  var iterRunIds = mgetRunFromIter(url, allIterIds);
+  //console.log("runIds from Iters:\n" + JSON.stringify(runIds, null, 2));
+  var iterTags = mgetTags(url, iterRunIds);
+  var allTagNames = getObjVals(consolidateAllArrays(iterTags), "name");
+  console.log("allTagNames:\n" + JSON.stringify(allTagNames, null, 2));
   console.log("Finding all param args");
-  var allParamArgs = [];
-  allIterIds.forEach(iter => {
-    var params = getParams(url, iter);
-    params.forEach(thisParam => {
-      if (!allParamArgs.includes(thisParam["arg"])) {
-        allParamArgs.push(thisParam["arg"]);
-      }
-    });
-  });
+  var iterParams = mgetParams(url, allIterIds);
+  var allParamArgs = getObjVals(consolidateAllArrays(iterParams), "arg");
+  console.log("allParamArgs:\n" + JSON.stringify(allParamArgs, null, 2));
 
   // Build look-up tables [iterId][param-arg] = param-value and [iterId][tag-name] = tag-value
   console.log("Building param and tag look-up tables");
   var paramValueByIterAndArg = {};
   var tagValueByIterAndName = {};
   var iterations = [];
-  allIterIds.forEach(iter => {
+
+
+  //allIterIds.forEach(iter => {
+  for (j = 0; j < allIterIds.length; j++ ) {
+    var iter = allIterIds[j];
     //console.log("\niterId: " + iter);
-    var params = getParams(url, iter);
+    //var params = getParams(url, iter);
+    var params = iterParams[j];
     //console.log("params:\n" + JSON.stringify(params, null, 2));
     // Need to consolidate multiple params with same arg but different values
     var paramIdx = {};
@@ -785,8 +935,8 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
       }
     }
     //console.log("updated params:\n" + JSON.stringify(params, null, 2));
-    var runId = getRunFromIter(url, iter);
-    var tags = getTags(url, runId);
+    //var runId = getRunFromIter(url, iter);
+    var tags = iterTags[j];
     var thisIter = { "iterId": iter, "tags": tags, "params": params };
     var loggedParams = [];
     params.forEach(thisParam => {
@@ -810,7 +960,7 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
       tagValueByIterAndName[iter][thisTag["name"]] = thisTag["val"];
     });
     iterations.push(thisIter);
-  });
+  }
 
   // Find the tag names which are present in every single iteration
   // We can only do "breakouts" if the tag is used everywhere
@@ -928,19 +1078,20 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
 
   sortedTagNames.forEach(name => {
     var sortedTagValues = Object.keys(tags[name]).sort((a, b) => (a.localeCompare(b, undefined, {numeric: true, sensitivity: 'base' })));
-    //console.log("tag-name: " + name + " values: " + sortedTagValues);
   });
 
-  //console.log("allIterIds: (" + allIterIds.length + ")\n" + JSON.stringify(allIterIds, null, 2));
-  //console.log("params:\n" + JSON.stringify(params, null, 2));
-  //console.log("tags:\n" + JSON.stringify(tags, null, 2));
-  //console.log("paramValueByIterAndArg:\n" + JSON.stringify(paramValueByIterAndArg, null, 2));
 
   var iterTree = {};
-  console.log("Build iterTree, allIterIds.length: " + allIterIds.length);
-  iterTree = buildIterTree(url, params, tags, paramValueByIterAndArg, tagValueByIterAndName, allIterIds, dontBreakoutTags, dontBreakoutParams, omitParams, breakoutOrderTags, breakoutOrderParams);
-  return iterTree;
+  console.log("allIterIds.length: " + allIterIds.length);
 
+  // Build a lookup table of iterId->metrics
+  console.log("mgetIterMetrics");
+  var results = mgetIterMetrics(url, allIterIds);
+  //console.log("results:\n" + JSON.stringify(results, null, 2));
+
+  console.log("Build iterTree");
+  iterTree = buildIterTree(url, results, params, tags, paramValueByIterAndArg, tagValueByIterAndName, allIterIds, dontBreakoutTags, dontBreakoutParams, omitParams, breakoutOrderTags, breakoutOrderParams);
+  return iterTree;
 }
 exports.getIters = getIters;
 
@@ -1196,6 +1347,7 @@ exports.getMetricGroupsFromBreakout = getMetricGroupsFromBreakout;
 
 // Like above but get the metric groups for multiple sets
 getMetricGroupsFromBreakouts = function (url, sets) {
+  //console.log("getMetricGroupsFromBreakouts()");
   var metricGroupIdsByLabel = [];
   //var indexjson = '{"index": "' + getIndexBaseName() + 'metric_data' + '" }\n';
   var indexjson = '{}\n';
@@ -1473,7 +1625,7 @@ getMetricDataFromIds = function (url, begin, end, resolution, metricIds) {
     });
     var result = (aggAvgTimesWeight + sumValueTimesWeight) / totalWeightTimesMetrics;
     result *= numMetricIds;
-    result = Number.parseFloat(result).toPrecision(4);
+    //result = Number.parseFloat(result).toPrecision(4);
     var dataSample = {};
     dataSample.begin = thisBegin;
     dataSample.end = thisEnd;
@@ -1492,12 +1644,25 @@ exports.getMetricDataFromIds = getMetricDataFromIds;
 
 // Like above but queries for all sets of Metric IDs and for all labels
 getMetricDataFromIdsSets = function (url, sets, metricGroupIdsByLabelSets) {
+  //console.log("getMetricDataFromIdsSets()");
   var ndjson = "";
   for (var idx = 0; idx < metricGroupIdsByLabelSets.length; idx++) {
     Object.keys(metricGroupIdsByLabelSets[idx]).forEach(function(label) {
     //(metricGroupIdsByLabelSets[idx]).forEach(label => {
       var metricIds = metricGroupIdsByLabelSets[idx][label];
+      if (typeof(sets[idx].begin) == "undefined") {
+        console.log("ERROR: sets.[" + idx + "].begin is not defined:\n" + JSON.stringify(sets[idx]), null, 2);
+        process.exit(1);
+      }
       var begin = Number(sets[idx].begin);
+      if (isNaN(begin)) {
+        console.log("ERROR: begin is not defined");
+        process.exit(1);
+      }
+      if (typeof(sets[idx].end) == "undefined") {
+        console.log("ERROR: sets.[" + idx + "].end is not defined");
+        process.exit(1);
+      }
       var end = Number(sets[idx].end);
       var resolution = Number(sets[idx].resolution);
       var duration = Math.floor((end - begin) / resolution);
@@ -1716,7 +1881,7 @@ getMetricDataFromIdsSets = function (url, sets, metricGroupIdsByLabelSets) {
         });
         var result = (aggAvgTimesWeight + sumValueTimesWeight) / totalWeightTimesMetrics;
         result *= numMetricIds;
-        result = Number.parseFloat(result).toPrecision(4);
+        //result = Number.parseFloat(result).toPrecision(4);
         var dataSample = {};
         dataSample.begin = thisBegin;
         dataSample.end = thisEnd;
@@ -1832,70 +1997,3 @@ getMetricDataSets = function(url, sets) {
 exports.getMetricDataSets = getMetricDataSets;
 
 
-getIterMetrics = function(url, iterationId) {
-  var result = {};
-  var primaryMetric = getPrimaryMetric(url, iterationId);
-  var primaryPeriodName = getPrimaryPeriodName(url, iterationId);
-  if (primaryPeriodName == undefined) {
-    console.log("      the primary period-name for this iteration is undefined, exiting\n");
-    process.exit(1);
-  }
-  var samples = getSamples(url, iterationId );
-  var sampleTotal = 0;
-  var sampleCount = 0;
-  var sampleVals = [];
-  var sampleList = "";
-  var periods = [];
-  samples.forEach(sample => {
-    console.log("sample: " + sample);
-    if (getSampleStatus(url, sample) == "pass") {
-      var primaryPeriodId = getPrimaryPeriodId(url, sample, primaryPeriodName);
-      if (primaryPeriodId == undefined || primaryPeriodId == null) {
-        console.log("          the primary perdiod-id for this sample is not valid, exiting\n");
-        process.exit(1);
-      }
-      //console.log("          primary period-id: %s", primaryPeriodId);
-      var range = getPeriodRange(url, primaryPeriodId);
-      if (range == undefined || range == null) {
-        console.log("          the range for the primary period is undefined, exiting");
-        process.exit(1);
-      }
-      var breakout = []; // By default we do not break-out a benchmark metric, so this is empty
-      // Needed for getMetricDataSets further below:
-      var period = { "period": primaryPeriodId, "source": "uperf", "type": primaryMetric, "begin": range.begin, "end": range.end, "resolution": 1, "breakout": [] };
-      periods.push(period);
-    }
-  });
-
-  if (periods.length > 0) {
-    var metricDataSets = getMetricDataSets(url, periods);
-    var msampleCount = 0;
-    var msampleVals = [];
-    var msampleTotal = 0;
-    var msampleList = "";
-    metricDataSets.forEach(metricData => {
-      var msampleVal = metricData[""];
-      if (msampleVal && msampleVal[0] && msampleVal[0].value) {
-        msampleVal = parseFloat(msampleVal[0].value);
-        msampleVals.push(msampleVal);
-        msampleTotal += msampleVal;
-        var msampleFixed = msampleVal.toFixed(2);
-        msampleList += " " + msampleFixed;
-        msampleCount++;
-      }
-    });
-    if (msampleCount > 0) {
-      var mean = msampleTotal / msampleCount;
-      var diff = 0;
-      msampleVals.forEach(val => {
-        diff += (mean - val) * (mean - val);
-      });
-      diff /= (msampleCount - 1);
-      var mstddev = Math.sqrt(diff);
-      var mstddevpct = 100 * mstddev / mean;
-      result = { "mean": parseFloat(mean).toFixed(2), "min": parseFloat(Math.min(...msampleVals)).toFixed(2), "max": parseFloat(Math.max(...msampleVals)).toFixed(2), "stddev": parseFloat(mstddev).toFixed(2), "stddevpct": parseFloat(mstddevpct).toFixed(2) };
-    }
-  }
-  return result;
-}
-exports.getIterMetrics = getIterMetrics;
