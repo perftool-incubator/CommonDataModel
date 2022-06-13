@@ -269,11 +269,8 @@ exports.getRunData = getRunData;
 calcIterMetrics = function(vals) {
   var count = vals.length;
   if (count == 0) return -1;
-  //console.log("vals:\n" + JSON.stringify(vals));
   var total = vals.reduce((a, b) => a + b, 0);
-  //console.log("total: " + total);
   var mean = total / count;
-  //console.log("mean: " + mean);
   var diff = 0;
   vals.forEach(val => { diff += (mean - val) * (mean - val); });
   diff /= (count - 1);
@@ -1250,13 +1247,63 @@ getMetricGroupTermsByLabel = function (metricGroupTerms) {
   return metricGroupTermsByLabel;
 }
 
+mgetMetricIdsFromTerms = function (url, terms) {
+  var ndjson = "";
+  for (i = 0; i < terms.length; i++) {
+    var periId = terms[i].period;
+    var runId = terms[i].run;
+    Object.keys(terms[i]).forEach(label =>{
+      var terms_string = terms[i][label];
+      console.log("terms string: <<<" + terms[i][label] + ">>>");
+      var q = { 'query': { 'bool': { 'filter': JSON.parse("[" + terms_string + "]") }},
+                '_source': 'metric_desc.id',
+                'size': bigQuerySize };
+      if (periId != null) {
+        q.query.bool.filter.push(JSON.parse('{"term": {"period.id": "' + periId + '"}}'));
+      }
+      if (periId == null && runId == null) {
+        console.log("ERROR: mgetMetricIdsFromTerms must have either a period-id or run-id\n");
+        return;
+      }
+      if (periId != null) {
+        q.query.bool.filter.push(JSON.parse('{"term": {"period.id": "' + periId + '"}}'));
+      }
+      if (runId != null) {
+        q.query.bool.filter.push(JSON.parse('{"term": {"run.id": "' + runId + '"}}'));
+      }
+      ndjson += '{}\n' + JSON.stringify(q) + "\n";
+    });
+  }
+  var resp = esRequest(url, "metric_desc/_doc/_msearch", ndjson);
+  var data = JSON.parse(resp.getBody());
+
+  if (data.hits.total.value >= bigQuerySize) {
+    return;
+  }
+
+  var metricIds = [];
+  var respId = 0;
+  for (i = 0; i < terms.length; i++) {
+    var count = 0;
+    Object.keys(terms[i]).sort.forEach(label =>{
+      metricIds[i][label] = [];
+      for (j = 0; j < data.responses[respId].hits.hits.length; j++) {
+        metricIds[i][label].push(data.responses[respId].hits.hits[j].element._source.metric_desc.id);
+        respId++;
+      }
+    });
+  }
+  return metricIds;
+}
+exports.mgetMetricIdsFromTerms = mgetMetricIdsFromTerms;
+
 getMetricIdsFromTerms = function (url, runId, periId, terms_string) {
   var filter = JSON.parse("[" + terms_string + "]");
   var q = { 'query': { 'bool': { 'filter': JSON.parse("[" + terms_string + "]") }},
             '_source': 'metric_desc.id',
             'size': bigQuerySize };
-            // Need alternatives when exceeding 10,000.  This issue is detected below.
-            // Most tools/benchmarks probably would not exceed 10,000, but some could,
+            // Need alternatives when exceeding bigQuerySize.  This issue is detected below.
+            // Most tools/benchmarks probably would not exceed 262144, but some could,
             // if this was a very large test.  For example, pidstat per-PID cpu usage,
             // if you had 250 hosts and each host has 400 PIDs, that could produce
             // 10,000 metric IDs.  It could happen much quicker if we just added the 
@@ -1347,13 +1394,14 @@ exports.getMetricGroupsFromBreakout = getMetricGroupsFromBreakout;
 
 // Like above but get the metric groups for multiple sets
 getMetricGroupsFromBreakouts = function (url, sets) {
-  //console.log("getMetricGroupsFromBreakouts()");
+  console.log("getMetricGroupsFromBreakouts(): " + sets.length + " sets");
   var metricGroupIdsByLabel = [];
   //var indexjson = '{"index": "' + getIndexBaseName() + 'metric_data' + '" }\n';
   var indexjson = '{}\n';
   var index = JSON.parse(indexjson);
   var ndjson = "";
 
+  console.log(Math.floor(Date.now() / 1000) + " getMetricGroupsFromBreakouts(): getBreakoutAggregations");
   sets.forEach(period => {
     var result = getBreakoutAggregation(period.source, period.type, period.breakout);
     var aggs = JSON.parse(result);
@@ -1385,27 +1433,30 @@ getMetricGroupsFromBreakouts = function (url, sets) {
     ndjson += JSON.stringify(index) + "\n";
     ndjson += JSON.stringify(q) + "\n";
   });
+  console.log(Math.floor(Date.now() / 1000) + " getMetricGroupsFromBreakouts(): msearch");
   //console.log("request:\n" + ndjson);
   var resp = esRequest(url, "metric_desc/_doc/_msearch", ndjson);
   var data = JSON.parse(resp.getBody());
 
   // The response includes a result from a nested aggregation, which will be parsed to produce
   // query terms for each of the metric groups
-  //var metricGroupTerms = getMetricGroupTermsFromAgg(data.aggregations, 0, "");
-  //var metricGroupTerms = getMetricGroupTermsFromAgg(data.aggregations);
   var metricGroupIdsByLabelSets = [];
+  var metricGroupTermsSets = [];
+  var metricGroupTermsByLabelSets = [];
   for (var idx = 0; idx < data.responses.length; idx++) {
-  //data.responses.forEach(response => {
+    console.log(Math.floor(Date.now() / 1000) + " getMetricGroupsFromBreakouts(): getMetricGroupTermsFromAgg");
     var metricGroupTerms = getMetricGroupTermsFromAgg(data.responses[idx].aggregations);
     // Derive the label from each group and organize into a dict, key = label, value = the filter terms 
-    var metricGroupTermsByLabel = getMetricGroupTermsByLabel(metricGroupTerms);
+    metricGroupTermsByLabelSets.push(getMetricGroupTermsByLabel(metricGroupTerms));
+  }
+
+  for (var idx = 0; idx < data.responses.length; idx++) {
     // Now iterate over these labels and query with the label's search terms to get the metric IDs
-    Object.keys(metricGroupTermsByLabel).forEach(label => {
-      metricGroupIdsByLabel[label] = getMetricIdsFromTerms(url, sets[idx].run, sets[idx].period, metricGroupTermsByLabel[label]);
+    Object.keys(metricGroupTermsByLabelSets[idx]).forEach(label => {
+      console.log(Math.floor(Date.now() / 1000) + " getMetricGroupsFromBreakouts(): getMetricIdsFromTerms");
       metricGroupIdsByLabelSets[idx] = {};
-      metricGroupIdsByLabelSets[idx][label] = metricGroupIdsByLabel[label];
+      metricGroupIdsByLabelSets = mgetMetricIdsFromTerms(url, sets, metricGroupTermsByLabelSets);
     });
-  //});
   }
   return metricGroupIdsByLabelSets;
 };
@@ -1990,7 +2041,9 @@ exports.getMetricData = function(url, runId, periId, source, type, begin, end, r
 };
 
 getMetricDataSets = function(url, sets) {
+  console.log("getMetricGroupsFromBreakouts");
   var metricGroupIdsByLabelSets = getMetricGroupsFromBreakouts(url, sets);
+  console.log("getMetricDataFromIdsSets");
   var dataSets = getMetricDataFromIdsSets(url, sets, metricGroupIdsByLabelSets);
   return dataSets;
 }
