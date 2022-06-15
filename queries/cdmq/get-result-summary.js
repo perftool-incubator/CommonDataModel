@@ -170,7 +170,7 @@ runIds.forEach(runId => {
           msampleVal = parseFloat(msampleVal[0].value);
           msampleVals.push(msampleVal);
           msampleTotal += msampleVal;
-          var msampleFixed = msampleVal.toFixed(2);
+          var msampleFixed = msampleVal.toFixed(6);
           msampleList += " " + msampleFixed;
           msampleCount++;
         }
@@ -185,11 +185,11 @@ runIds.forEach(runId => {
         var mstddev = Math.sqrt(diff);
         var mstddevpct = 100 * mstddev / mean;
         console.log("        result: (" + primaryMetric + ") samples:" + msampleList +
-                    " mean: " + parseFloat(mean).toFixed(2) +
-                    " min: " + parseFloat(Math.min(...msampleVals)).toFixed(2) +
-                    " max: " + parseFloat(Math.max(...msampleVals)).toFixed(2) +
-                    " stddev: " + parseFloat(mstddev).toFixed(2) +
-                    " stddevpct: " + parseFloat(mstddevpct).toFixed(2));
+                    " mean: " + parseFloat(mean).toFixed(6) +
+                    " min: " + parseFloat(Math.min(...msampleVals)).toFixed(6) +
+                    " max: " + parseFloat(Math.max(...msampleVals)).toFixed(6) +
+                    " stddev: " + parseFloat(mstddev).toFixed(6) +
+                    " stddevpct: " + parseFloat(mstddevpct).toFixed(6));
       }
     }
   });
