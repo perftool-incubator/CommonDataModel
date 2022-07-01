@@ -38,13 +38,9 @@ if (!program.outputDir) {
   program.outputDir = "";
 }
 if (!program.outputFormat) {
-  program.outputFormat = ["txt"];
+  program.outputFormat = [""];
 }
 var noHtml = subtractTwoArrays(program.outputFormat, ['html']);
-
-
-console.log("Generating summary.  This may take a minute or two");
-
 var txt_summary = '';
 var html_summary = '<pre>';
 
@@ -238,11 +234,11 @@ runIds.forEach(runId => {
   html_styles += '</style>\n';
   var html = html_styles + html_resources + html_summary + html_div;
 
-  console.log(JSON.stringify(data, null, 2));
+  // Maintain default behavior of sending to stdout
+  console.log(txt_summary);
 
   const fs = require('fs');
   if (program.outputFormat.includes('txt')) {
-    console.log(txt_summary);
     try {
       fs.writeFileSync(program.outputDir + "/" + 'result-summary.txt', txt_summary);
     } catch (err) {
