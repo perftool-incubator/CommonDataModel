@@ -11,15 +11,15 @@ am5.ready(function() {
       layout: root.verticalLayout
     }));
     chart.children.unshift(am5.Label.new(root, {
-  text: thisChart,
-  fontSize: 25,
-  fontWeight: "500",
-  textAlign: "center",
-  x: am5.percent(50),
-  centerX: am5.percent(50),
-  paddingTop: 0,
-  paddingBottom: 0
-}));
+      text: thisChart,
+      fontSize: 25,
+      fontWeight: "500",
+      textAlign: "center",
+      x: am5.percent(50),
+      centerX: am5.percent(50),
+      paddingTop: 0,
+      paddingBottom: 0
+    }));
 
     // Add legend
     // https://www.amcharts.com/docs/v5/charts/xy-chart/legend-xy-series/
