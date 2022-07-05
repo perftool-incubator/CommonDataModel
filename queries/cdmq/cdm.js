@@ -8,6 +8,18 @@ function getIndexBaseName() {
   return 'cdmv6dev-';
 }
 
+// Return subtraction of two 1-dimensional arrays
+subtractTwoArrays = function (a1, a2) {
+   const a3 = [];
+   a1.forEach(element => {
+      if(!a2.includes(element)){
+        a3.push(element);
+      };
+   });
+   return a3;
+};
+exports.subtractTwoArrays = subtractTwoArrays;
+
 // Return intersection of two 1-dimensional arrays
 function intersectTwoArrays(a1, a2) {
    const a3 = [];
