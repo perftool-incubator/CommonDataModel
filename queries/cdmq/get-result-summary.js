@@ -45,9 +45,7 @@ var txt_summary = '';
 var html_summary = '<pre>';
 
 function logOutput(str, formats) {
-  if (formats.includes('txt')) {
-    txt_summary += str + '\n';
-  }
+  txt_summary += str + '\n';
   if (formats.includes('html')) {
     html_summary += str + '\n';
   }
@@ -228,7 +226,7 @@ runIds.forEach(runId => {
     html_div += '<div id="' + pri + '"></div>\n';
     html_styles += '#' + pri + ' {\n' +
                    '  width: 1000px;\n' +
-                   '  height: ' + 30*numIter[pri] + 'px;\n' +
+                   '  height: ' + (120 + 25*numIter[pri]) + 'px;\n' +
                    '}\n';
   });
   html_styles += '</style>\n';
