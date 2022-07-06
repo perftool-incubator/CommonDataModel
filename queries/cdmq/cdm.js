@@ -1211,7 +1211,7 @@ getMetricGroupTermsByLabel = function (metricGroupTerms) {
   return metricGroupTermsByLabel;
 }
 
-getMetricIdsFromTerms = function (url, periId, terms_string) {
+getMetricIdsFromTerms = function (url, runId, periId, terms_string) {
   var filter = JSON.parse("[" + terms_string + "]");
   var q = { 'query': { 'bool': { 'filter': JSON.parse("[" + terms_string + "]") }},
             '_source': 'metric_desc.id',
@@ -1229,12 +1229,21 @@ getMetricIdsFromTerms = function (url, periId, terms_string) {
             //    queries and aggregate the metric IDs.
             // 3) Simply adjust index.max_result_window to > 10,000, but test this,
             //    as the size is dependent on the Java heap size.
+            //
+  if (periId == null && runId == null) {
+    console.log("ERROR: getMetricIdsFromTerms must have either a period-id or run-id\n");
+    return;
+  }
   if (periId != null) {
     q.query.bool.filter.push(JSON.parse('{"term": {"period.id": "' + periId + '"}}'));
   }
+  if (runId != null) {
+    q.query.bool.filter.push(JSON.parse('{"term": {"run.id": "' + runId + '"}}'));
+  }
   var resp = esRequest(url, "metric_desc/_doc/_search", q);
   var data = JSON.parse(resp.getBody());
-  if (data.hits.total.value >= bigQuerySize) {
+  if (data.hits.total.value >= bigQuerySize || data.hits.hits.length >= bigQuerySize) {
+    console.log("ERROR: hits from returned query exceeded max size of " + bigQuerySize);
     return;
   }
   var metricIds = [];
@@ -1266,7 +1275,7 @@ getMetricGroupsFromBreakout = function (url, runId, periId, source, type, breako
   }
   q.aggs = JSON.parse(getBreakoutAggregation(source, type, breakout));
 
-  // If the breaout contains a match requirement (host=myhost), then we must add a term filter for it.
+  // If the breakout contains a match requirement (host=myhost), then we must add a term filter for it.
   // Eventually it would be nice to have something other than a match, like a regex: host=/^client/.
   var regExp = /([^\=]+)\=([^\=]+)/;
   breakout.forEach(field => {
@@ -1290,7 +1299,7 @@ getMetricGroupsFromBreakout = function (url, runId, periId, source, type, breako
   var metricGroupTermsByLabel = getMetricGroupTermsByLabel(metricGroupTerms);
   // Now iterate over these labels and query with the label's search terms to get the metric IDs
   Object.keys(metricGroupTermsByLabel).forEach(label => {
-    metricGroupIdsByLabel[label] = getMetricIdsFromTerms(url, periId, metricGroupTermsByLabel[label]);
+    metricGroupIdsByLabel[label] = getMetricIdsFromTerms(url, runId, periId, metricGroupTermsByLabel[label]);
   });
   return metricGroupIdsByLabel;
 };
@@ -1351,7 +1360,7 @@ getMetricGroupsFromBreakouts = function (url, sets) {
     var metricGroupTermsByLabel = getMetricGroupTermsByLabel(metricGroupTerms);
     // Now iterate over these labels and query with the label's search terms to get the metric IDs
     Object.keys(metricGroupTermsByLabel).forEach(label => {
-      metricGroupIdsByLabel[label] = getMetricIdsFromTerms(url, sets[idx].period, metricGroupTermsByLabel[label]);
+      metricGroupIdsByLabel[label] = getMetricIdsFromTerms(url, sets[idx].run, sets[idx].period, metricGroupTermsByLabel[label]);
       metricGroupIdsByLabelSets[idx] = {};
       metricGroupIdsByLabelSets[idx][label] = metricGroupIdsByLabel[label];
     });
