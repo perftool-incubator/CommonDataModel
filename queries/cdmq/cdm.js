@@ -1242,6 +1242,7 @@ getMetricIdsFromTerms = function (url, runId, periId, terms_string) {
   }
   var resp = esRequest(url, "metric_desc/_doc/_search", q);
   var data = JSON.parse(resp.getBody());
+  // hits.total.value is not reliable, so also check array length 
   if (data.hits.total.value >= bigQuerySize || data.hits.hits.length >= bigQuerySize) {
     console.log("ERROR: hits from returned query exceeded max size of " + bigQuerySize);
     return;
