@@ -58,6 +58,9 @@ function logOutput(str, formats) {
   }
 }
 
+console.log("termKeys:\n" + JSON.stringify(termKeys, null, 2));
+console.log("values:\n" + JSON.stringify(values, null, 2));
+
 var runIds = cdm.mSearch(program.url, "run", termKeys, values, "run.id", 1000)[0];
 if (runIds == undefined) {
   console.log("The run ID could not be found, exiting");
@@ -74,7 +77,7 @@ runIds.forEach(runId => {
   logOutput(tagList, program.outputFormat);
   var benchName = cdm.getBenchmarkName(program.url, runId);
   logOutput("  benchmark: " + benchName, program.outputFormat);
-  var benchIterations = cdm.getIterations(program.url, [{ "term": { "run.id": runId }}]);
+  var benchIterations = cdm.getIterations(program.url, runId);
   if (benchIterations.length == 0) {
     console.log("There were no iterations found, exiting");
     process.exit(1);
@@ -152,16 +155,14 @@ runIds.forEach(runId => {
       process.exit(1);
     }
     logOutput("      primary-period name: " + primaryPeriodName, noHtml);
-    var samples = cdm.getSamples(program.url, [ iterationId ]);
-    //var samples = cdm.getSamples(program.url, iterationId);
+    var samples = cdm.getSamples(program.url, iterationId);
     var sampleTotal = 0;
     var sampleCount = 0;
     var sampleVals = [];
     var sampleList = "";
-    var periods = [];
+    var sets = [];
     logOutput("      samples:", noHtml);
-    samples[0].forEach(sample => {
-    //samples.forEach(sample => {
+    samples.forEach(sample => {
       if (cdm.getSampleStatus(program.url, sample) == "pass") {
         logOutput("        sample-id: " + sample, noHtml);
         var primaryPeriodId = cdm.getPrimaryPeriodId(program.url, sample, primaryPeriodName);
@@ -178,19 +179,20 @@ runIds.forEach(runId => {
         logOutput("          period range: begin: " + range.begin + " end: " + range.end, noHtml);
         var breakout = []; // By default we do not break-out a benchmark metric, so this is empty
         // Needed for getMetricDataSets further below:
-        var period = { "run": runId, "period": primaryPeriodId, "source": benchName, "type": primaryMetric, "begin": range.begin, "end": range.end, "resolution": 1, "breakout": [] };
-        periods.push(period);
+        var set = { "run": runId, "period": primaryPeriodId, "source": benchName, "type": primaryMetric, "begin": range.begin, "end": range.end, "resolution": 1, "breakout": [] };
+        sets.push(set);
       }
     });
  
-    if (periods.length > 0) {
-      var metricDataSets = cdm.getMetricDataSets(program.url, periods);
+    if (sets.length > 0) {
+      var metricDataSets = cdm.getMetricDataSets(program.url, sets);
+      console.log("metricDataSets:\n" + JSON.stringify(metricDataSets, null, 2));
       var msampleCount = 0;
       var msampleVals = [];
       var msampleTotal = 0;
       var msampleList = "";
       metricDataSets.forEach(metricData => {
-        var msampleVal = metricData[""];
+        var msampleVal = metricData.values[""];
         if (msampleVal && msampleVal[0] && msampleVal[0].value) {
           msampleVal = parseFloat(msampleVal[0].value);
           msampleVals.push(msampleVal);
