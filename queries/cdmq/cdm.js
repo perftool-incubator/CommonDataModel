@@ -107,9 +107,15 @@ mSearch = function (url, index, termKeys, values, source, size, sort) {
       var ids = [];
       data.responses[i].hits.hits.forEach(element => {
         // A source of "x.y" <string> must be converted to reference the object
+        // For example, a source (string) of "metric_desc.id" needs to reference metric_desc[id]
         var obj = element._source;
-        if (source !== "") {
+        if (source !== "") {  // a blank source assumes you want everything returned
           source.split('.').forEach(thisObj => {
+            if (typeof(obj[thisObj]) == "undefined" ) {
+              console.log("WARNING: the requested source for this query [" + source + "] does not exist in the returned data:\n");
+              console.log(JSON.stringify(obj. null, 2));
+              return;
+            }
             obj = obj[thisObj];
           });
         }
@@ -170,10 +176,10 @@ getPrimaryPeriodId = function (url, sampId, periName) {
 exports.getPrimaryPeriodId = getPrimaryPeriodId;
 
 mgetMetricDescs = function (url, runIds) {
-  return mSearch(url, "metric_desc", [ "run.id" ], [ runIds ], "metrric_desc.id", bigQuerySize);
+  return mSearch(url, "metric_desc", [ "run.id" ], [ runIds ], "metric_desc.id", bigQuerySize);
 }
 getMetricDescs = function (url, runId) {
-  return mgetMetricDescs(url, [ runId ]);
+  return mgetMetricDescs(url, [ runId ])[0];
 };
 exports.getMetricDescs = getMetricDescs;
 
@@ -417,6 +423,7 @@ getIterMetrics = function(url, iterId) {
 
 deleteDocs = function (url, docTypes, q) {
   docTypes.forEach(docType => {
+    //console.log("deleteDocs() query:\n" + JSON.stringify(q, null, 2));
     var resp = esRequest(url, docType + "/_doc/_delete_by_query", q);
     var data = JSON.parse(resp.getBody());
   });
