@@ -58,9 +58,6 @@ function logOutput(str, formats) {
   }
 }
 
-console.log("termKeys:\n" + JSON.stringify(termKeys, null, 2));
-console.log("values:\n" + JSON.stringify(values, null, 2));
-
 var runIds = cdm.mSearch(program.url, "run", termKeys, values, "run.id", 1000)[0];
 if (runIds == undefined) {
   console.log("The run ID could not be found, exiting");
@@ -186,7 +183,7 @@ runIds.forEach(runId => {
  
     if (sets.length > 0) {
       var metricDataSets = cdm.getMetricDataSets(program.url, sets);
-      console.log("metricDataSets:\n" + JSON.stringify(metricDataSets, null, 2));
+      //console.log("metricDataSets:\n" + JSON.stringify(metricDataSets, null, 2));
       var msampleCount = 0;
       var msampleVals = [];
       var msampleTotal = 0;

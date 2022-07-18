@@ -96,10 +96,9 @@ mSearch = function (url, index, termKeys, values, source, size, sort) {
     }
     ndjson += '{}\n' + JSON.stringify(req) + "\n";
   }
-  console.log("ndjson:\n" + ndjson);
+  //console.log("ndjson:\n" + ndjson);
   var resp = esRequest(url, index + "/_doc/_msearch", ndjson);
   var data = JSON.parse(resp.getBody());
-  console.log("resp-data:\n" + JSON.stringify(data, null, 2));
 
   // Unpack response and organize in array of arrays
   var retData = [];
@@ -119,7 +118,7 @@ mSearch = function (url, index, termKeys, values, source, size, sort) {
       retData[i] = ids;
     } else {
       retData[i] = [];
-      console.log("WARNING: no hits for request:\nquery:\n" + ndjson + "\nresponse:\n" + JSON.stringify(data));
+      //console.log("WARNING: no hits for request:\nquery:\n" + ndjson + "\nresponse:\n" + JSON.stringify(data));
     }
   }
   return retData;
@@ -306,7 +305,7 @@ mgetIterMetrics = function(url, iterationIds) {
     process.exit(1);
   }
   // Find all of the passing samples, then all of the primary-periods, then get the metric for all of them in one request
-  console.log("mgetSamples");
+  //console.log("mgetSamples");
   var samples = mgetSamples(url, iterationIds);  // Samples organized in 2D array, first dimension matching iterationIds
   //console.log("\nsamples:\n" + JSON.stringify(samples, null, 2));
   var samplesByIterId = {};
@@ -327,7 +326,7 @@ mgetIterMetrics = function(url, iterationIds) {
     if (consSamplesStatus[i] == "pass") consPassingSamples.push(consSamples[i]);
   }
   //console.log("\nconsPassingSamples: " + consPassingSamples);
-  console.log("mgetPrimaryperiodId");
+  //console.log("mgetPrimaryperiodId");
   var primaryPeriodIds = mgetPrimaryPeriodId(url, consPassingSamples, primaryPeriodNames);
   var periodsBySample = {};
   var sampleIdFromPeriod = {};
@@ -341,7 +340,7 @@ mgetIterMetrics = function(url, iterationIds) {
   }
   var consPrimaryPeriodIds = consolidateAllArrays(primaryPeriodIds);
   //console.log("\nconsPrimaryPeriodIds: " + JSON.stringify(consPrimaryPeriodIds, null , 2));
-  console.log("mgetPeriodRange");
+  //console.log("mgetPeriodRange");
   var periodRanges = mgetPeriodRange(url, consPrimaryPeriodIds);
   //console.log("\nperiodRanges: " + JSON.stringify(periodRanges, null, 2));
   // Create the sets for getMetricDataSets
@@ -364,9 +363,9 @@ mgetIterMetrics = function(url, iterationIds) {
   }
   //console.log("\ngetMetricDataSets for " + sets.length + " sets");
   // Returned data should be in same order as consPrimaryPeriodIds
-  console.log("getMetricDataSets");
+  //console.log("getMetricDataSets");
   var metricDataSets = getMetricDataSets(url, sets);
-  console.log("calcIterMetrics");
+  //console.log("calcIterMetrics");
   //console.log("\nMetricDataSets.length: " + metricDataSets.length);
   // Build per-iteration results
   var period = consPrimaryPeriodIds[0];
@@ -1267,11 +1266,11 @@ mgetMetricIdsFromTerms = function (url, termsSets) {
   var ndjson = "";
   var totalReqs = 0;
   for (i = 0; i < termsSets.length; i++) {
-    console.log("mgetMetricIdsFromTerms():  termsSets[" + i + "]:\n" + JSON.stringify(termsSets[i], null, 2));
+    //console.log("mgetMetricIdsFromTerms():  termsSets[" + i + "]:\n" + JSON.stringify(termsSets[i], null, 2));
     var periId = termsSets[i].period;
     var runId = termsSets[i].run;
     Object.keys(termsSets[i].termsByLabel).sort().forEach(label =>{
-      console.log("mgetMetricIdsFromTerms():  label: '" + label + "'  terms string: '" + termsSets[i].termsByLabel[label] + "'");
+      //console.log("mgetMetricIdsFromTerms():  label: '" + label + "'  terms string: '" + termsSets[i].termsByLabel[label] + "'");
       var terms_string = termsSets[i].termsByLabel[label];
       var q = { 'query': { 'bool': { 'filter': JSON.parse("[" + terms_string + "]") }},
                 '_source': 'metric_desc.id',
@@ -1290,7 +1289,7 @@ mgetMetricIdsFromTerms = function (url, termsSets) {
       totalReqs++;
     });
   }
-  console.log("mgetMetricIdsFromTerms(): ndjson:\n" + ndjson + "\n");
+  //console.log("mgetMetricIdsFromTerms(): ndjson:\n" + ndjson + "\n");
   var resp = esRequest(url, "metric_desc/_doc/_msearch", ndjson);
   var data = JSON.parse(resp.getBody());
   if (totalReqs != data.responses.length) {
@@ -1298,34 +1297,34 @@ mgetMetricIdsFromTerms = function (url, termsSets) {
     return;
   }
 
-  console.log("data:\n" + JSON.stringify(data, null, 2));
+  //console.log("data:\n" + JSON.stringify(data, null, 2));
   // Process the responses and assemble metric IDs into array
-  console.log("\nmgetMetricIdsFromTerms():  termsSets.length: " + termsSets.length);
+  //console.log("\nmgetMetricIdsFromTerms():  termsSets.length: " + termsSets.length);
   var metricIdsSets = []; // eventual length = termsSets
   var count = 0;
   for (i = 0; i < termsSets.length; i++) {
-    console.log("\nmgetMetricIdsFromTerms():  i: " + i);
+    //console.log("\nmgetMetricIdsFromTerms():  i: " + i);
     var thisMetricIds = {};
     Object.keys(termsSets[i].termsByLabel).sort().forEach(label =>{
-      console.log("mgetMetricIdsFromTerms():  label: " + label);
-      console.log("mgetMetricIdsFromTerms():  count: " + count);
+      //console.log("mgetMetricIdsFromTerms():  label: " + label);
+      //console.log("mgetMetricIdsFromTerms():  count: " + count);
       thisMetricIds[label] = [];
       if (data.responses[i].hits.total.value >= bigQuerySize || data.responses[i].hits.hits.length >= bigQuerySize) {
-        console.log("ERROR: hits from returned query exceeded max size of " + bigQuerySize);
+        //console.log("ERROR: hits from returned query exceeded max size of " + bigQuerySize);
         return;
       }
-      console.log("mgetMetricIdsFromTerms():  data.responses[" + count + "]:\n" + JSON.stringify(data.responses[count], null, 2));
-      console.log("mgetMetricIdsFromTerms():  data.responses[" + count + "].hits.hits.length: " + data.responses[count].hits.hits.length);
+      //console.log("mgetMetricIdsFromTerms():  data.responses[" + count + "]:\n" + JSON.stringify(data.responses[count], null, 2));
+      //console.log("mgetMetricIdsFromTerms():  data.responses[" + count + "].hits.hits.length: " + data.responses[count].hits.hits.length);
       for (j = 0; j < data.responses[count].hits.hits.length; j++) {
-        console.log("mgetMetricIdsFromTerms():  data.responses[" + count + "].hits.hits[" + j + "]:\n" + JSON.stringify(data.responses[count].hits.hits[j], null, 2));
-        console.log("mgetMetricIdsFromTerms():  adding " + data.responses[count].hits.hits[j]._source.metric_desc.id);
+        //console.log("mgetMetricIdsFromTerms():  data.responses[" + count + "].hits.hits[" + j + "]:\n" + JSON.stringify(data.responses[count].hits.hits[j], null, 2));
+        //console.log("mgetMetricIdsFromTerms():  adding " + data.responses[count].hits.hits[j]._source.metric_desc.id);
         thisMetricIds[label].push(data.responses[count].hits.hits[j]._source.metric_desc.id);
       }
       count++;
     });
     metricIdsSets.push(thisMetricIds);
   }
-  console.log("mgetMetricIdsFromTerms:  metricIdsSets:\n" + JSON.stringify(metricIdsSets));
+  //console.log("mgetMetricIdsFromTerms:  metricIdsSets:\n" + JSON.stringify(metricIdsSets));
   return metricIdsSets;
 }
 exports.mgetMetricIdsFromTerms = mgetMetricIdsFromTerms;
@@ -1336,13 +1335,13 @@ exports.mgetMetricIdsFromTerms = mgetMetricIdsFromTerms;
 // Find the number of groups needed based on the --breakout options, then find out
 // what metric IDs belong in each group.
 getMetricGroupsFromBreakouts = function (url, sets) {
-  console.log("getMetricGroupsFromBreakouts(): " + sets.length + " sets");
+  //console.log("getMetricGroupsFromBreakouts(): " + sets.length + " sets");
   var metricGroupIdsByLabel = [];
   var indexjson = '{}\n';
   var index = JSON.parse(indexjson);
   var ndjson = "";
 
-  console.log(Math.floor(Date.now() / 1000) + " getMetricGroupsFromBreakouts(): getBreakoutAggregations");
+  //console.log(Math.floor(Date.now() / 1000) + " getMetricGroupsFromBreakouts(): getBreakoutAggregations");
   sets.forEach(set => {
     var result = getBreakoutAggregation(set.source, set.type, set.breakout);
     var aggs = JSON.parse(result);
@@ -1376,7 +1375,7 @@ getMetricGroupsFromBreakouts = function (url, sets) {
   });
   var resp = esRequest(url, "metric_desc/_doc/_msearch", ndjson);
   var data = JSON.parse(resp.getBody());
-  console.log(JSON.stringify(data, null, 2));
+  //console.log(JSON.stringify(data, null, 2));
 
   var metricGroupIdsByLabelSets = [];
   var metricGroupTermsSets = [];
@@ -1419,7 +1418,7 @@ exports.getMetricGroupsFromBreakout = getMetricGroupsFromBreakout;
 // metric_id in metricIds], and their respective (begin,end) are (0,500) and (501,2000),
 // then there are enough metric_data documents to compute the results.  
 getMetricDataFromIdsSets = function (url, sets, metricGroupIdsByLabelSets) {
-  console.log("metricGroupIdsByLabelSets:\n" + JSON.stringufy(metricGroupIdsByLabelSets, null, 2));
+  //console.log("metricGroupIdsByLabelSets:\n" + JSON.stringufy(metricGroupIdsByLabelSets, null, 2));
   var ndjson = "";
   for (var idx = 0; idx < metricGroupIdsByLabelSets.length; idx++) {
     Object.keys(metricGroupIdsByLabelSets[idx]).sort().forEach(function(label) {
