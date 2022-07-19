@@ -7,4 +7,4 @@ program
   .option('-u, --url <host:port>')
   .parse(process.argv);
 
-console.log(cdm.getPrimaryPeriodName(program.url, program.iteration));
+console.log(cdm.getPrimaryPeriodNames(program.url, program.iteration)[0]);

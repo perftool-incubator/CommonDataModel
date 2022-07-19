@@ -10,20 +10,27 @@ program
   .option('--url <host:port>')
   .parse(process.argv);
 
-var searchTerms = [];
+var termKeys = [];
+var values = [];
+
 if (!program.url) {
   program.url = "localhost:9200";
 }
 if (program.user) {
-  searchTerms.push({ "term": "run.name", "match": "eq", "value": program.user });
+  termKeys.push("run.name");
+  values.push([ program.user ]);
 }
 if (program.email) {
-  searchTerms.push({ "term": "run.email", "match": "eq", "value": program.email });
+  termKeys.push("run.email");
+  values.push([ program.email ]);
 }
-if (program.host) {
-  searchTerms.push({ "term": "run.host", "match": "eq", "value": program.host });
+if (program.run) {
+  termKeys.push("run.id");
+  values.push([ program.run ]);
 }
 if (program.harness) {
-  searchTerms.push({ "term": "run.harness", "match": "eq", "value": program.harness });
+  termKeys.push("run.harness");
+  values.push([ program.harness ]);
 }
-console.log(JSON.stringify(cdm.getRuns(program.url, searchTerms)));
+
+console.log(JSON.stringify(cdm.mSearch(program.url, "run", termKeys, values, "run.id", 1000)[0]));

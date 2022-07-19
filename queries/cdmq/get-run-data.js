@@ -7,8 +7,4 @@ program
   .option('--url <host:port>')
   .parse(process.argv);
 
-var searchTerms = [];
-if (program.run) {
-  searchTerms.push({ "term": "run.id", "match": "eq", "value": program.run });
-}
-console.log(JSON.stringify(cdm.getRunData(program.url, searchTerms), null, 2));
+console.log(JSON.stringify(cdm.getRunData(program.url, program.run), null, 2));
