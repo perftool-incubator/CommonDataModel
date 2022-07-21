@@ -1690,8 +1690,8 @@ exports.getMetricDataFromIdsSets = getMetricDataFromIdsSets;
 
 
 getMetricData = function(url, runId, periId, source, type, begin, end, resolution, breakout, filter) {
-var sets = []
-var thisSet = {
+  var sets = []
+  var thisSet = {
       "run": runId,
       "period": periId,
       "source": source,
@@ -1701,11 +1701,12 @@ var thisSet = {
       "resolution": resolution,
       "breakout" : breakout,
       "filter" : filter
+  };
+  sets.push(thisSet);
+  var dataSets = getMetricDataSets(url, sets);
+  return dataSets[0];
 };
-sets.push(thisSet);
-var dataSets = getMetricDataSets(url, sets);
-return dataSets[0];
-};
+exports.getMetricData = getMetricData;
 
 // Generates 1 or more values for 1 or more groups for a metric of a particular source
 // (tool or benchmark) and type (iops, l2-Gbps, ints/sec, etc).
