@@ -1721,6 +1721,55 @@ exports.getMetricData = getMetricData;
 //   *if* the metric is from a benchmark.  If you want to query for corresponding
 //   tool data, use the same begin and end as the benchmark-iteration-sample-period.
 getMetricDataSets = function(url, sets) {
+  for (i=0; i<sets.length; i++) {
+    // If a begin and end are not defined, get it from the period.begin & period.end.
+    // If a begin and/or end are not defined, and the period is not defined, error out.
+    // If a run is not defined, get it from the period.
+    // If a run and period are not defined, error out.
+    if (typeof(sets[i].run) == "undefined") {
+      if (typeof(sets[i].period) != "undefined") {
+        sets[i].run = getRunFromPeriod(url, sets[i].period);
+      } else {
+        console.log("ERROR: run and period was not defined");
+      }
+    }
+    var periodRange;
+    if (typeof(sets[i].begin) == "undefined") {
+      if (typeof(sets[i].period) != "undefined") {
+        periodRange = getPeriodRange(url, sets[i].period);
+        sets[i].begin = periodRange.begin;
+      } else {
+        console.log("ERROR: begin is not defined and a period was not defined");
+      }
+    }
+    if (typeof(sets[i].end) == "undefined") {
+      if (typeof(sets[i].period) != "undefined") {
+        if (typeof(periodRange) == "undefined") {
+          periodRange = getPeriodRange(url, sets[i].period);
+        }
+        sets[i].end = periodRange.end;
+      } else {
+        console.log("ERROR: end is not defined and a period was not defined");
+      }
+    }
+    // In order for all metric queries to work, we must remove the period ID.
+    // Not all metrics have a period associated with them.  Benchmark metrics do,
+    // because they have mulitple periods (one of them being the primaryPeriod) in
+    // which the data is collected.  Since tools run across all benchmark samples,
+    // their data is not attributed to a specific period.
+    //
+    // Note that users often include a period when querying for a tool metric.
+    // This is not because the metric has this period attributed to it.  It is simply
+    // a convenience to limit the metric data to a specific time period.  So, we
+    // will get calls to this function where a period is provided, but the metric desired
+    // will *not* be found if the period ID is used on the query.  Therefore we must
+    // always remove the period ID from each element in the input set.
+    //
+    // Perhaps eventually we can detect if the metric source & type are for a benchmark,
+    // and if so, allow the period ID to remain in the query.
+    delete sets[i].period;
+  }
+
   var metricGroupIdsByLabelSets = getMetricGroupsFromBreakouts(url, sets);
   var dataSets = getMetricDataFromIdsSets(url, sets, metricGroupIdsByLabelSets);
 
