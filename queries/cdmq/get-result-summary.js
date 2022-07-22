@@ -81,50 +81,60 @@ runIds.forEach(runId => {
   }
   var allParams = [];
   var allParamsCounts = [];
-  benchIterations.forEach(iterationId => {
-    var params = cdm.getParams(program.url, iterationId);
-    params.forEach(param => {
-      newParam = param.arg + "=" + param.val;
-      idx = allParams.indexOf(newParam)
-      if (idx == -1) {
-        allParams.push(newParam);
-        allParamsCounts.push(1);
-      } else {
-        allParamsCounts[idx] += 1
-      }
-    });
-  });
-  var commonParams = [];
-  for (var idx=0; idx<allParams.length; idx++) {
-    if (allParamsCounts[idx] == benchIterations.length) {
-      commonParams.push(allParams[idx]);
-    }
-  }
+
+  var iterParams = cdm.mgetParams(program.url, benchIterations);
+  var iterPrimaryMetrics = cdm.mgetPrimaryMetric(program.url, benchIterations);
+  var iterPrimaryPeriodNames = cdm.mgetPrimaryPeriodName(program.url, benchIterations);
+  var iterSamples = cdm.mgetSamples(program.url, benchIterations);
+  var iterPrimaryPeriodIds = cdm.mgetPrimaryPeriodId(program.url, iterSamples, iterPrimaryPeriodNames);
+  var iterPrimaryPeriodRanges = cdm.mgetPeriodRange(program.url, iterPrimaryPeriodIds);
+
+  var commonParams = intersectAllArrays(iterParams);
   commonParams.sort()
   var commonParamsStr = "  common params: ";
   commonParams.forEach(param => {
     commonParamsStr += param + " ";
   });
   logOutput(commonParamsStr, program.outputFormat);
+
   logOutput("  metrics:", program.outputFormat);
   var metricSources = cdm.getMetricSources(program.url, runId);
-  metricSources.forEach(metricSource => {
-    var metricTypes = cdm.getMetricTypes(program.url, runId, metricSource);
-    logOutput("    source: " + metricSource, program.outputFormat);
+  var metricTypes = cdm.mgetMetricTypes(program.url, metricSources);
+  for (var i=0; i<metricSources.length; i++) {
+    logOutput("    source: " + metricSources[i], program.outputFormat);
     var typeList = "      types: ";
-    metricTypes.forEach(type => {
+    for (var j=0; j<metricTypes[i].length; j++) {
       typeList += type + " ";
-    });
+    }
     logOutput(typeList, program.outputFormat);
-  });
+  }
+
+  // build the sets for the mega-query
+  var sets = [];
+  for (var i=0; i<benchIterations.length; i++) {
+    for (var j=0; j<iterSamples[i].length; j++) {
+      var set = { "run": runId
+                  "period": iterPrimaryPeriodIds[i][j],
+                  "source": benchName,
+                  "type": iterPrimaryMetric[i][j],
+                  "begin": iterPrimaryPeriodRanges[i][j].begin,
+                  "end": iterPrimaryPeriodRanges[i][j].end,
+                  "resolution": 1,
+                  "breakout": [] };
+      sets.push(set);
+    }
+  }
+
   logOutput("  iterations:", noHtml);
   var data = {};
   var numIter = {};
+  var iterations = [];
   benchIterations.forEach(iterationId => {
     var series = {};
+    var thisIter = {};
+    thisIter['id'] = iterationId;
     logOutput("    iteration-id: " + iterationId, noHtml);
     var params = cdm.getParams(program.url, [{ "term": "iteration.id", "match": "eq", "value": iterationId }]);
-    //var params = cdm.getParams(program.url, iterationId);
     params.sort((a, b) => a.arg < b.arg ? -1 : 1);
     var paramList = "      unique params: ";
     series['label'] = "";
@@ -139,8 +149,10 @@ runIds.forEach(runId => {
         }
       }
     });
+    thisIter['paramList'] = paramList;
     logOutput(paramList, noHtml);
     var primaryMetric = cdm.getPrimaryMetric(program.url, iterationId);
+    thisIter['primary-metric'] = primaryMetric;
     if ( typeof data[primaryMetric] == "undefined" ) {
       data[primaryMetric] = [];
       numIter[primaryMetric] = 0;
