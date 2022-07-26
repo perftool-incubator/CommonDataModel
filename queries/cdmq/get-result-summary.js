@@ -88,8 +88,13 @@ runIds.forEach(runId => {
   var iterPrimaryMetrics = cdm.mgetPrimaryMetric(program.url, benchIterations);
   //returns 1D array [iter]
   var iterPrimaryPeriodNames = cdm.mgetPrimaryPeriodName(program.url, benchIterations);
-  //returns 2D array [iter][samp]
+  //input: 1D array
+  //output: 2D array [iter][samp]
   var iterSampleIds = cdm.mgetSamples(program.url, benchIterations);
+  //input: 2D array iterSampleIds: [iter][samp]
+  //output: 2D array [iter][samp]
+  var iterSampleStatus  = cdm.mgetSampleStatus(program.url, iterSampleIds);
+  //console.log("sampleStatus:\n" + JSON.stringify(iterSampleStatus, null, 2));
   //needs 2D array iterSampleIds: [iter][samp] and 1D array iterPrimaryPeriodNames [iter]
   //returns 2D array [iter][samp]
   var iterPrimaryPeriodIds = cdm.mgetPrimaryPeriodId(program.url, iterSampleIds, iterPrimaryPeriodNames);
@@ -167,6 +172,7 @@ runIds.forEach(runId => {
   for (var i=0; i<benchIterations.length; i++) {
     var series = {};
     logOutput("    iteration-id: " + benchIterations[i], noHtml);
+
     var paramList = "      unique params: ";
     series['label'] = "";
     iterParams[i].sort((a, b) => a.arg < b.arg ? -1 : 1).forEach(param => {
@@ -180,6 +186,7 @@ runIds.forEach(runId => {
         }
       }
     });
+
     logOutput(paramList, noHtml);
     logOutput("      primary-period name: " + iterPrimaryPeriodNames[i], noHtml);
     var primaryMetric = iterPrimaryMetrics[i];
@@ -193,16 +200,43 @@ runIds.forEach(runId => {
     var msampleTotal = 0;
     var msampleVals = [];
     var msampleList = "";
+
+/*
+    samples.forEach(sample => {
+      if (cdm.getSampleStatus(program.url, sample) == "pass") {
+        logOutput("        sample-id: " + sample, noHtml);
+        var primaryPeriodId = cdm.getPrimaryPeriodId(program.url, sample, primaryPeriodName);
+        if (primaryPeriodId == undefined || primaryPeriodId == null) {
+          logOutput("          the primary perdiod-id for this sample is not valid, exiting\n", noHtml);
+          process.exit(1);
+        }
+        logOutput("          primary period-id: " + primaryPeriodId, noHtml);
+        var range = cdm.getPeriodRange(program.url, primaryPeriodId);
+        if (range == undefined || range == null) {
+          logOutput("          the range for the primary period is undefined, exiting", noHtml);
+          process.exit(1);
+        }
+        logOutput("          period range: begin: " + range.begin + " end: " + range.end, noHtml);
+        var breakout = []; // By default we do not break-out a benchmark metric, so this is empty
+        // Needed for getMetricDataSets further below:
+        var set = { "run": runId, "period": primaryPeriodId, "source": benchName, "type": primaryMetric, "begin": range.begin, "end": range.end, "resolution": 1, "breakout": [] };
+        sets.push(set);
+      }
+    });
+*/
+
     for (var j=0; j<iterSampleIds[i].length; j++) {
-      logOutput("        sample-id: " + iterSampleIds[i][j], noHtml);
-      logOutput("          primary period-id: " + iterPrimaryPeriodIds[i][j], noHtml);
-      logOutput("          period range: begin: " + iterPrimaryPeriodRanges[i][j].begin + " end: " + iterPrimaryPeriodRanges[i][j].end, noHtml);
-      msampleVal = parseFloat(metricDataSets[idx].values[""][0].value);
-      msampleVals.push(msampleVal);
-      msampleTotal += msampleVal;
-      var msampleFixed = msampleVal.toFixed(6);
-      msampleList += " " + msampleFixed;
-      msampleCount++;
+      if (iterSampleStatus[i][j] == "pass" && iterPrimaryPeriodRanges[i][j].begin !== undefined && iterPrimaryPeriodRanges[i][j].end !== undefined) {
+        logOutput("        sample-id: " + iterSampleIds[i][j], noHtml);
+        logOutput("          primary period-id: " + iterPrimaryPeriodIds[i][j], noHtml);
+        logOutput("          period range: begin: " + iterPrimaryPeriodRanges[i][j].begin + " end: " + iterPrimaryPeriodRanges[i][j].end, noHtml);
+        msampleVal = parseFloat(metricDataSets[idx].values[""][0].value);
+        msampleVals.push(msampleVal);
+        msampleTotal += msampleVal;
+        var msampleFixed = msampleVal.toFixed(6);
+        msampleList += " " + msampleFixed;
+        msampleCount++;
+      }
       idx++;
     }
     if (msampleCount > 0) {

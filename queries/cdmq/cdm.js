@@ -213,6 +213,38 @@ getMetricNames = function (url, runId, source, type) {
   return mgetMetricNames(url, [runId], [source], [type]);
 }
 
+mgetSampleStatus = function (url, Ids) {
+  var sampleIds = [];
+  var perSamplePeriNames = [];
+  var idx = 0;
+  for (i=0; i<Ids.length; i++) {
+    for (j=0; j<Ids[i].length; j++) {
+      sampleIds[idx] = Ids[i][j];
+      idx++;
+    }
+  }
+
+  var data =  mSearch(url, "sample", [ "sample.id" ], [ sampleIds ], "sample.status", null, 1);
+
+  var sampleStatus = []; // Will be 2D array of [iter][sampIds];
+  idx = 0;
+  for (i=0; i<Ids.length; i++) {
+    for (j=0; j<Ids[i].length; j++) {
+      if (typeof(sampleStatus[i]) == "undefined") {
+        sampleStatus[i] = [];
+      }
+      sampleStatus[i][j] = data[idx][0];
+      idx++;
+    }
+  }
+  return sampleStatus;
+}
+exports.mgetSampleStatus = mgetSampleStatus;
+getSampleStatus = function (url, sampId) {
+  return mgetSampleStatus(url, [ sampId ])[0][0];
+}
+exports.getSampleStatus = getSampleStatus;
+
 mgetPrimaryPeriodId = function (url, sampIds, periNames) {
   // needs 2D array iterSampleIds: [iter][samp] and 1D array iterPrimaryPeriodNames [iter]
   // returns 2D array [iter][samp]
@@ -374,14 +406,6 @@ getIterationDoc = function (url, iterId) {
   return mgetIterationDoc(url, [ iterId ])[0][0];
 }
 exports.getIterationDoc = getIterationDoc;;
-
-mgetSampleStatus = function (url, sampIds) {
-  return mSearch(url, "sample", [ "sample.id" ], [ sampIds ], "sample.status", null, 1);
-}
-getSampleStatus = function (url, sampId) {
-  return mgetSampleStatus(url, [ sampId ])[0][0];
-}
-exports.getSampleStatus = getSampleStatus;
 
 mgetBenchmarkNameFromIter = function (url, Ids) {
   return mSearch(url, "iteration", [ "iteration.id" ], [ Ids ], "run.benchmark", null, 1);
