@@ -104,6 +104,11 @@ mSearch = function (url, index, termKeys, values, source, size, sort) {
   var retData = [];
   for (var i = 0; i < data.responses.length; i++) {
     if (Array.isArray(data.responses[i].hits.hits) && data.responses[i].hits.hits.length > 0) {
+      if (data.responses[i].hits.total.value !== data.responses[i].hits.hits.length) {
+        console.log("WARNING! data.responses[" + i + "].hits.total.value (" + data.responses[i].hits.total.value +
+                    ") and data.responses[" + i + "].hits.hits.length (" + data.responses[i].hits.hits.length +
+                    ") are not equal, which means the retured data is probably incomplete");
+      }
       var ids = [];
       data.responses[i].hits.hits.forEach(element => {
         // A source of "x.y" <string> must be converted to reference the object
@@ -741,7 +746,7 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
           }
         },
         "_source": "run.id",
-        "size": 1000
+        "size": bigQuerySize
       };
   var base_q_json = JSON.stringify(base_q);
 
@@ -1112,7 +1117,7 @@ exports.getIters = getIters;
 
 exports.getMetricSources = function (url, runId) {
   var q = { 'query': { 'bool': { 'filter': [ {"term": {"run.id": runId}} ] }},
-            'aggs': { 'source': { 'terms': { 'field': 'metric_desc.source', "size": 10000 }}},
+            'aggs': { 'source': { 'terms': { 'field': 'metric_desc.source', "size": bigQuerySize }}},
             'size': 0 };
   var resp = esRequest(url, "metric_desc/_doc/_search", q);
   var data = JSON.parse(resp.getBody());
@@ -1127,7 +1132,7 @@ exports.getMetricSources = function (url, runId) {
 
 exports.getMetricTypes = function (url, runId, source) {
   var q = { 'query': { 'bool': { 'filter': [ {"term": {"run.id": runId}}, {"term": {"metric_desc.source": source}} ] }},
-            'aggs': { 'source': { 'terms': { 'field': 'metric_desc.type', "size": 10000 }}},
+            'aggs': { 'source': { 'terms': { 'field': 'metric_desc.type', "size": bigQuerySize }}},
             'size': 0 };
   var resp = esRequest(url, "metric_desc/_doc/_search", q);
   var data = JSON.parse(resp.getBody());
@@ -1518,6 +1523,7 @@ getMetricDataFromIdsSets = function (url, sets, metricGroupIdsByLabelSets) {
         // its end was after the time range.
         indexjson = '{"index": "' + getIndexBaseName() + 'metric_data' + '" }\n';
         reqjson  = '{';
+        reqjson += '  "size": ' + bigQuerySize + ',';
         reqjson += '  "query": {';
         reqjson += '    "bool": {';
         reqjson += '      "filter": [';
@@ -1537,6 +1543,7 @@ getMetricDataFromIdsSets = function (url, sets, metricGroupIdsByLabelSets) {
         var indexjson = '{"index": "' + getIndexBaseName() + 'metric_data' + '" }\n';
         var reqjson = '';
         reqjson += '{';
+        reqjson += '  "size": ' + bigQuerySize + ',';
         reqjson += '  "query": {';
         reqjson += '    "bool": {';
         reqjson += '      "filter": [';
@@ -1637,6 +1644,11 @@ getMetricDataFromIdsSets = function (url, sets, metricGroupIdsByLabelSets) {
         var k;
         for (k = 2; k < 4; k++) {
           //for my $j (@{ $$resp_ref{'responses'}[$count + $k]{'hits'}{'hits'} }) {
+          if (data.responses[count + k].hits.total.value !== data.responses[count + k].hits.hits.length) {
+            console.log("WARNING! data.responses[" + (count + k) + "].hits.total.value (" + data.responses[count + k].hits.total.value +
+                        ") and data.responses[" + (count + k) + "].hits.hits.length (" + data.responses[count + k].hits.hits.length +
+                        ") are not equal, which means the retured data is probably incomplete");
+          }
           data.responses[count + k].hits.hits.forEach(element => {
             //for my $key (keys %{ $$j{'_source'}{'metric_data'} }) {
             partialDocs[element._id] = {};
