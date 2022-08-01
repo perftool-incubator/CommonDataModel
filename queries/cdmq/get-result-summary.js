@@ -59,10 +59,7 @@ function logOutput(str, formats) {
   }
 }
 
-//console.log("termKeys:\n" + JSON.stringify(termKeys, null, 2));
-//console.log("values:\n" + JSON.stringify(values, null, 2));
 var runIds = cdm.mSearch(program.url, "run", termKeys, values, "run.id", null, 1000)[0];
-//console.log("runIds:\n" + JSON.stringify(runIds, null, 2));
 if (runIds == undefined || runIds.length == 0) {
   console.log("The run ID could not be found, exiting");
   process.exit(1);
@@ -86,25 +83,39 @@ runIds.forEach(runId => {
   }
 
 
-  var allParams = [];
-  var allParamsCounts = [];
 
   var iterParams = cdm.mgetParams(program.url, benchIterations);
   var iterPrimaryMetrics = cdm.mgetPrimaryMetric(program.url, benchIterations);
   //returns 1D array [iter]
   var iterPrimaryPeriodNames = cdm.mgetPrimaryPeriodName(program.url, benchIterations);
-  //console.log("iterPrimaryPeriodNames:\n" + JSON.stringify(iterPrimaryPeriodNames, null, 2));
   //returns 2D array [iter][samp]
   var iterSampleIds = cdm.mgetSamples(program.url, benchIterations);
-  //console.log("iterSampleIds:\n" + JSON.stringify(iterSampleIds, null, 2));
   //needs 2D array iterSampleIds: [iter][samp] and 1D array iterPrimaryPeriodNames [iter]
   //returns 2D array [iter][samp]
   var iterPrimaryPeriodIds = cdm.mgetPrimaryPeriodId(program.url, iterSampleIds, iterPrimaryPeriodNames);
-  //console.log("iterPrimaryPeriodIds: [iter][sample]\n" + JSON.stringify(iterPrimaryPeriodIds, null, 2));
   var iterPrimaryPeriodRanges = cdm.mgetPeriodRange(program.url, iterPrimaryPeriodIds);
-  //console.log("iterPrimaryPeriodRanges: [iter][sample]\n" + JSON.stringify(iterPrimaryPeriodRanges, null, 2));
 
-  var commonParams = intersectAllArrays(iterParams);
+  // Find the params which are the same in every iteration
+  var allParams = [];
+  var allParamsCounts = [];
+  iterParams.forEach(params => {
+  params.forEach(param => {
+      var newParam = param.arg + "=" + param.val;
+      idx = allParams.indexOf(newParam)
+      if (idx == -1) {
+        allParams.push(newParam);
+        allParamsCounts.push(1);
+      } else {
+        allParamsCounts[idx] += 1
+      }
+    });
+  });
+  var commonParams = [];
+  for (var idx=0; idx<allParams.length; idx++) {
+    if (allParamsCounts[idx] == benchIterations.length) {
+      commonParams.push(allParams[idx]);
+    }
+  }
   commonParams.sort()
   var commonParamsStr = "  common params: ";
   commonParams.forEach(param => {
@@ -118,9 +129,7 @@ runIds.forEach(runId => {
   for (var i=0; i<metricSources.length; i++) {
     runIds[i] = runId;
   }
-  //console.log("metricSources:\n" + JSON.stringify(metricSources, null, 2));
   var metricTypes = cdm.mgetMetricTypes(program.url, runIds, metricSources);
-  //console.log("metricTypes:\n" + JSON.stringify(metricTypes, null, 2));
 
   for (var i=0; i<metricSources.length; i++) {
     logOutput("    source: " + metricSources[i], program.outputFormat);
@@ -130,11 +139,6 @@ runIds.forEach(runId => {
     }
     logOutput(typeList, program.outputFormat);
   }
-
-  //console.log("num Iterations:" + benchIterations.length);
-  //console.log("iterPrimaryMetrics:\n" + JSON.stringify(iterPrimaryMetrics, null, 2));
-  //console.log("iterPrimaryPeriodRanges:\n" + JSON.stringify(iterPrimaryPeriodRanges, null, 2));
-  //process.exit(1);
 
   // build the sets for the mega-query
   var sets = [];
@@ -152,22 +156,20 @@ runIds.forEach(runId => {
     }
   }
 
-  //console.log("sets:\n" + JSON.stringify(sets, null, 2));
   // do the mega-query
   var metricDataSets = cdm.getMetricDataSets(program.url, sets);
 
-  //console.log("metricDataSets:\n", JSON.stringify(metricDataSets, null, 2));
 
   // output the results
-  var series = {};
   var data = {};
   var numIter = {};
   var idx = 0;
   for (var i=0; i<benchIterations.length; i++) {
+    var series = {};
     logOutput("    iteration-id: " + benchIterations[i], noHtml);
     var paramList = "      unique params: ";
     series['label'] = "";
-    iterParams[i].forEach(param => {
+    iterParams[i].sort((a, b) => a.arg < b.arg ? -1 : 1).forEach(param => {
       paramStr = param.arg + "=" + param.val;
       if (commonParams.indexOf(paramStr) == -1) {
         paramList += param.arg + "=" + param.val + " ";
@@ -185,6 +187,7 @@ runIds.forEach(runId => {
       data[primaryMetric] = [];
       numIter[primaryMetric] = 0;
     }
+    numIter[primaryMetric]++;
     logOutput("      samples:", noHtml);
     var msampleCount = 0;
     var msampleTotal = 0;

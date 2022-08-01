@@ -200,6 +200,19 @@ getSamples = function (url, iter) {
 }
 exports.getSamples = getSamples;
 
+// For a specific metric-source and metric-type,
+// find all the metadata names shared among all
+// found metric docs.  These names are what can be
+// used for "breakouts".
+mgetMetricNames = function (url, runIds, sources, types) {
+  return mSearch(url, "metric_desc", [ "run.id", "metric_desc.source", "metric_desc.type" ], [ runIds, sources, types ], "",
+                    { 'source': { 'terms': { 'field': 'metric_desc.names-list'}}}, 0);
+};
+exports.mgetMetricNames = mgetMetricNames;
+getMetricNames = function (url, runId, source, type) {
+  return mgetMetricNames(url, [runId], [source], [type]);
+}
+
 mgetPrimaryPeriodId = function (url, sampIds, periNames) {
   // needs 2D array iterSampleIds: [iter][samp] and 1D array iterPrimaryPeriodNames [iter]
   // returns 2D array [iter][samp]
@@ -1240,35 +1253,6 @@ exports.getMetricSources = function (url, runId) {
   }
 };
 
-// For a specific metric-source and metric-type,
-// find all the metadata names shared among all
-// found metric docs.  These names are what can be
-// used for "breakouts".
-getMetricNames = function (url, runId, periId, source, type) {
-  var q = { 'query': { 'bool': { 'filter': [ 
-                                             {"term": {"metric_desc.source": source}},
-                                             {"term": {"metric_desc.type": type}} ]
-                               }},
-            'aggs': { 'source': { 'terms': { 'field': 'metric_desc.names-list'}}},
-            'size': 0 };
-  if (periId != null) {
-    q.query.bool.filter.push(JSON.parse('{"term": {"period.id": "' + periId + '"}}'));
-  }
-  if (runId != null) {
-    q.query.bool.filter.push(JSON.parse('{"term": {"run.id": "' + runId + '"}}'));
-  }
-  var resp = esRequest(url, "metric_desc/_doc/_search", q);
-  var data = JSON.parse(resp.getBody());
-  var names = [];
-  if (Array.isArray(data.aggregations.source.buckets)) {
-    data.aggregations.source.buckets.forEach(element => {
-      names.push(element.key);
-    });
-  }
-  return names;
-};
-exports.getMetricNames = getMetricNames;
-
 exports.getDocCount = function (url, runId, docType) {
   var q = { 'query': { 'bool': { 'filter': [ {"term": {"run.id": runId}} ] }}};
   var resp = esRequest(url, docType + "/_doc/_count", q);
@@ -1442,13 +1426,11 @@ exports.mgetMetricIdsFromTerms = mgetMetricIdsFromTerms;
 // Find the number of groups needed based on the --breakout options, then find out
 // what metric IDs belong in each group.
 getMetricGroupsFromBreakouts = function (url, sets) {
-  //console.log("getMetricGroupsFromBreakouts(): " + sets.length + " sets");
   var metricGroupIdsByLabel = [];
   var indexjson = '{}\n';
   var index = JSON.parse(indexjson);
   var ndjson = "";
 
-  //console.log(Math.floor(Date.now() / 1000) + " getMetricGroupsFromBreakouts(): getBreakoutAggregations");
   sets.forEach(set => {
     var result = getBreakoutAggregation(set.source, set.type, set.breakout);
     var aggs = JSON.parse(result);
@@ -1886,6 +1868,17 @@ getMetricDataSets = function(url, sets) {
     return;
   }
 
+  // Rearrange data to call getMetricNames
+  var runIds = [];
+  var sources = [];
+  var types = [];
+  for (i=0; i<sets.length; i++) {
+    runIds[i] = sets[i].run;
+    sources[i] = sets[i].source;
+    types[i] = sets[i].type;
+  }
+  var setBreakouts = mgetMetricNames(url, runIds, sources, types);
+
   for (i=0; i<sets.length; i++) {
     // Rearrange the actual data into 'values' section
     Object.keys(dataSets[i]).forEach(label =>{
@@ -1896,8 +1889,6 @@ getMetricDataSets = function(url, sets) {
       delete dataSets[i][label];
     });
     // Build the label-decoder and the remaining breakouts
-    //var usedBreakouts = [];
-    var allBreakouts = getMetricNames(url, sets[i].runId, null, sets[i].source, sets[i].type);
     dataSets[i].usedBreakouts = sets[i].breakout;
     dataSets[i].valueSeriesLabelDecoder = "";
     var regExp = /([^\=]+)\=([^\=]+)/;
@@ -1912,7 +1903,7 @@ getMetricDataSets = function(url, sets) {
     });
     dataSets[i].valueSeriesLabelDecoder = dataSets[i].valueSeriesLabelDecoder.replace('-', '');
     // Breakouts already used should not show up in the list of avauilable breakouts
-    dataSets[i].remainingBreakouts = allBreakouts.filter(n => !dataSets[i].usedBreakouts.includes(n));
+    dataSets[i].remainingBreakouts = setBreakouts[i].filter(n => !dataSets[i].usedBreakouts.includes(n));
   }
 
   for (i=0; i<sets.length; i++) {
