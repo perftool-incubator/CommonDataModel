@@ -18,6 +18,7 @@ program
   .option('--output-format <fmt>, fmta[,fmtb]', 'one or more output formats: txt html', list, [])
   .parse(process.argv);
 
+//console.log("program.args:\n" + JSON.stringify(program, null, 2));
 var termKeys = [];
 var values = [];
 
@@ -58,8 +59,8 @@ function logOutput(str, formats) {
   }
 }
 
-var runIds = cdm.mSearch(program.url, "run", termKeys, values, "run.id", 1000)[0];
-if (runIds == undefined) {
+var runIds = cdm.mSearch(program.url, "run", termKeys, values, "run.id", null, 1000)[0];
+if (runIds == undefined || runIds.length == 0) {
   console.log("The run ID could not be found, exiting");
   process.exit(1);
 }
@@ -75,16 +76,36 @@ runIds.forEach(runId => {
   var benchName = cdm.getBenchmarkName(program.url, runId);
   logOutput("  benchmark: " + benchName, program.outputFormat);
   var benchIterations = cdm.getIterations(program.url, runId);
+  //console.log("benchIterations:\n" + JSON.stringify(benchIterations, null, 2));
   if (benchIterations.length == 0) {
     console.log("There were no iterations found, exiting");
     process.exit(1);
   }
+
+
+
+  var iterParams = cdm.mgetParams(program.url, benchIterations);
+  var iterPrimaryMetrics = cdm.mgetPrimaryMetric(program.url, benchIterations);
+  //returns 1D array [iter]
+  var iterPrimaryPeriodNames = cdm.mgetPrimaryPeriodName(program.url, benchIterations);
+  //input: 1D array
+  //output: 2D array [iter][samp]
+  var iterSampleIds = cdm.mgetSamples(program.url, benchIterations);
+  //input: 2D array iterSampleIds: [iter][samp]
+  //output: 2D array [iter][samp]
+  var iterSampleStatus  = cdm.mgetSampleStatus(program.url, iterSampleIds);
+  //console.log("sampleStatus:\n" + JSON.stringify(iterSampleStatus, null, 2));
+  //needs 2D array iterSampleIds: [iter][samp] and 1D array iterPrimaryPeriodNames [iter]
+  //returns 2D array [iter][samp]
+  var iterPrimaryPeriodIds = cdm.mgetPrimaryPeriodId(program.url, iterSampleIds, iterPrimaryPeriodNames);
+  var iterPrimaryPeriodRanges = cdm.mgetPeriodRange(program.url, iterPrimaryPeriodIds);
+
+  // Find the params which are the same in every iteration
   var allParams = [];
   var allParamsCounts = [];
-  benchIterations.forEach(iterationId => {
-    var params = cdm.getParams(program.url, iterationId);
-    params.forEach(param => {
-      newParam = param.arg + "=" + param.val;
+  iterParams.forEach(params => {
+  params.forEach(param => {
+      var newParam = param.arg + "=" + param.val;
       idx = allParams.indexOf(newParam)
       if (idx == -1) {
         allParams.push(newParam);
@@ -106,29 +127,55 @@ runIds.forEach(runId => {
     commonParamsStr += param + " ";
   });
   logOutput(commonParamsStr, program.outputFormat);
+
   logOutput("  metrics:", program.outputFormat);
   var metricSources = cdm.getMetricSources(program.url, runId);
-  metricSources.forEach(metricSource => {
-    var metricTypes = cdm.getMetricTypes(program.url, runId, metricSource);
-    logOutput("    source: " + metricSource, program.outputFormat);
+  var runIds = [];
+  for (var i=0; i<metricSources.length; i++) {
+    runIds[i] = runId;
+  }
+  var metricTypes = cdm.mgetMetricTypes(program.url, runIds, metricSources);
+
+  for (var i=0; i<metricSources.length; i++) {
+    logOutput("    source: " + metricSources[i], program.outputFormat);
     var typeList = "      types: ";
-    metricTypes.forEach(type => {
-      typeList += type + " ";
-    });
+    for (var j=0; j<metricTypes[i].length; j++) {
+      typeList += metricTypes[i][j] + " ";
+    }
     logOutput(typeList, program.outputFormat);
-  });
-  logOutput("  iterations:", noHtml);
+  }
+
+  // build the sets for the mega-query
+  var sets = [];
+  for (var i=0; i<benchIterations.length; i++) {
+    for (var j=0; j<iterSampleIds[i].length; j++) {
+      var set = { "run": runId,
+                  "period": iterPrimaryPeriodIds[i][j],
+                  "source": benchName,
+                  "type": iterPrimaryMetrics[i],
+                  "begin": iterPrimaryPeriodRanges[i][j].begin,
+                  "end": iterPrimaryPeriodRanges[i][j].end,
+                  "resolution": 1,
+                  "breakout": [] };
+      sets.push(set);
+    }
+  }
+
+  // do the mega-query
+  var metricDataSets = cdm.getMetricDataSets(program.url, sets);
+
+
+  // output the results
   var data = {};
   var numIter = {};
-  benchIterations.forEach(iterationId => {
+  var idx = 0;
+  for (var i=0; i<benchIterations.length; i++) {
     var series = {};
-    logOutput("    iteration-id: " + iterationId, noHtml);
-    var params = cdm.getParams(program.url, [{ "term": "iteration.id", "match": "eq", "value": iterationId }]);
-    //var params = cdm.getParams(program.url, iterationId);
-    params.sort((a, b) => a.arg < b.arg ? -1 : 1);
+    logOutput("    iteration-id: " + benchIterations[i], noHtml);
+
     var paramList = "      unique params: ";
     series['label'] = "";
-    params.forEach(param => {
+    iterParams[i].sort((a, b) => a.arg < b.arg ? -1 : 1).forEach(param => {
       paramStr = param.arg + "=" + param.val;
       if (commonParams.indexOf(paramStr) == -1) {
         paramList += param.arg + "=" + param.val + " ";
@@ -139,26 +186,22 @@ runIds.forEach(runId => {
         }
       }
     });
+
     logOutput(paramList, noHtml);
-    var primaryMetric = cdm.getPrimaryMetric(program.url, iterationId);
+    logOutput("      primary-period name: " + iterPrimaryPeriodNames[i], noHtml);
+    var primaryMetric = iterPrimaryMetrics[i];
     if ( typeof data[primaryMetric] == "undefined" ) {
       data[primaryMetric] = [];
       numIter[primaryMetric] = 0;
     }
     numIter[primaryMetric]++;
-    var primaryPeriodName = cdm.getPrimaryPeriodName(program.url, iterationId);
-    if (primaryPeriodName == undefined) {
-      console.log("      the primary period-name for this iteration is undefined, exiting\n");
-      process.exit(1);
-    }
-    logOutput("      primary-period name: " + primaryPeriodName, noHtml);
-    var samples = cdm.getSamples(program.url, iterationId);
-    var sampleTotal = 0;
-    var sampleCount = 0;
-    var sampleVals = [];
-    var sampleList = "";
-    var sets = [];
     logOutput("      samples:", noHtml);
+    var msampleCount = 0;
+    var msampleTotal = 0;
+    var msampleVals = [];
+    var msampleList = "";
+
+/*
     samples.forEach(sample => {
       if (cdm.getSampleStatus(program.url, sample) == "pass") {
         logOutput("        sample-id: " + sample, noHtml);
@@ -180,47 +223,44 @@ runIds.forEach(runId => {
         sets.push(set);
       }
     });
- 
-    if (sets.length > 0) {
-      var metricDataSets = cdm.getMetricDataSets(program.url, sets);
-      //console.log("metricDataSets:\n" + JSON.stringify(metricDataSets, null, 2));
-      var msampleCount = 0;
-      var msampleVals = [];
-      var msampleTotal = 0;
-      var msampleList = "";
-      metricDataSets.forEach(metricData => {
-        var msampleVal = metricData.values[""];
-        if (msampleVal && msampleVal[0] && msampleVal[0].value) {
-          msampleVal = parseFloat(msampleVal[0].value);
-          msampleVals.push(msampleVal);
-          msampleTotal += msampleVal;
-          var msampleFixed = msampleVal.toFixed(6);
-          msampleList += " " + msampleFixed;
-          msampleCount++;
-        }
-      });
-      if (msampleCount > 0) {
-        var mean = msampleTotal / msampleCount;
-        var diff = 0;
-        msampleVals.forEach(val => {
-          diff += (mean - val) * (mean - val);
-        });
-        diff /= (msampleCount - 1);
-        var mstddev = Math.sqrt(diff);
-        var mstddevpct = 100 * mstddev / mean;
-        logOutput("        result: (" + primaryMetric + ") samples:" + msampleList +
-                    " mean: " + parseFloat(mean).toFixed(6) +
-                    " min: " + parseFloat(Math.min(...msampleVals)).toFixed(6) +
-                    " max: " + parseFloat(Math.max(...msampleVals)).toFixed(6) +
-                    " stddev: " + parseFloat(mstddev).toFixed(6) +
-                    " stddevpct: " + parseFloat(mstddevpct).toFixed(6), noHtml);
-        series['mean'] = mean;
-        series['min'] = Math.min(...msampleVals);
-        series['max'] = Math.max(...msampleVals);
+*/
+
+    for (var j=0; j<iterSampleIds[i].length; j++) {
+      if (iterSampleStatus[i][j] == "pass" && iterPrimaryPeriodRanges[i][j].begin !== undefined && iterPrimaryPeriodRanges[i][j].end !== undefined) {
+        logOutput("        sample-id: " + iterSampleIds[i][j], noHtml);
+        logOutput("          primary period-id: " + iterPrimaryPeriodIds[i][j], noHtml);
+        logOutput("          period range: begin: " + iterPrimaryPeriodRanges[i][j].begin + " end: " + iterPrimaryPeriodRanges[i][j].end, noHtml);
+        msampleVal = parseFloat(metricDataSets[idx].values[""][0].value);
+        msampleVals.push(msampleVal);
+        msampleTotal += msampleVal;
+        var msampleFixed = msampleVal.toFixed(6);
+        msampleList += " " + msampleFixed;
+        msampleCount++;
       }
-      data[primaryMetric].push(series);
+      idx++;
     }
-  });
+    if (msampleCount > 0) {
+      var mean = msampleTotal / msampleCount;
+      var diff = 0;
+      msampleVals.forEach(val => {
+        diff += (mean - val) * (mean - val);
+      });
+      diff /= (msampleCount - 1);
+      var mstddev = Math.sqrt(diff);
+      var mstddevpct = 100 * mstddev / mean;
+      logOutput("        result: (" + primaryMetric + ") samples:" + msampleList +
+                  " mean: " + parseFloat(mean).toFixed(6) +
+                  " min: " + parseFloat(Math.min(...msampleVals)).toFixed(6) +
+                  " max: " + parseFloat(Math.max(...msampleVals)).toFixed(6) +
+                  " stddev: " + parseFloat(mstddev).toFixed(6) +
+                  " stddevpct: " + parseFloat(mstddevpct).toFixed(6), noHtml);
+      series['mean'] = mean;
+      series['min'] = Math.min(...msampleVals);
+      series['max'] = Math.max(...msampleVals);
+    }
+    data[primaryMetric].push(series);
+  }
+
   html_summary += '</pre>\n';
   var html_resources = '<!-- Resources -->\n' +
                        '<script src="https://cdn.amcharts.com/lib/5/index.js"></script>\n' +
@@ -269,5 +309,7 @@ runIds.forEach(runId => {
       console.log(err);
     }
   }
+
+
 });
 
