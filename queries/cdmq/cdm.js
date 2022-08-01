@@ -41,7 +41,7 @@ function consolidateAllArrays(a) {
 };
 
 // Return intersection of two 1-dimensional arrays
-function intersectTwoArrays(a1, a2) {
+intersectTwoArrays = function(a1, a2) {
    const a3 = [];
    a1.forEach(element => {
       if(!a2.includes(element)){
@@ -51,15 +51,17 @@ function intersectTwoArrays(a1, a2) {
    });
    return a3;
 };
+exports.intersectTwoArrays = intersectTwoArrays
 
 // Return intersection of many 1-dimensional arrays found in 2-dimensional array
-function intersectAllArrays(a2D) {
+intersectAllArrays = function(a2D) {
    var intersectArray = a2D[0];
    a2D.forEach(a1D => {
       intersectArray = intersectTwoArrays(intersectArray, a1D);
    });
    return intersectArray;
 };
+exports.intersectAllArrays = intersectAllArrays
 
 function esRequest(host, idx, q) {
   var url = 'http://' + host + '/' + getIndexBaseName() + idx;
@@ -79,13 +81,13 @@ function esRequest(host, idx, q) {
 // of http requests.
 // Note: termKeys is a 1D array, while values is a 2D array.
 // termKeys[x] uses list of values from values[x]
-mSearch = function (url, index, termKeys, values, source, size, sort) {
+mSearch = function (url, index, termKeys, values, source, aggs, size, sort) {
   if (typeof(termKeys) !==  typeof([])) return;
   if (typeof(values) !==  typeof([])) return;
   var ndjson = "";
   for (var i = 0; i < values[0].length; i++) {
     var req = { 'query': { 'bool': { 'filter': [] }}};
-    if (source !== "") {
+    if (source !== "" && source !== null) {
       req._source = source;
     }
     for (var x = 0; x < termKeys.length; x++) {
@@ -94,16 +96,32 @@ mSearch = function (url, index, termKeys, values, source, size, sort) {
       if (typeof(size) !== "undefined") req.size = size;
       if (typeof(sort) !== "undefined") req.sort = sort;
     }
+    // aggs is not an array, and is used the same for all queries
+    if (aggs !== null) {
+      req['aggs'] = aggs;
+    }
+    //console.log("Q:\n" + JSON.stringify(req, null, 2));
     ndjson += '{}\n' + JSON.stringify(req) + "\n";
   }
   //console.log("ndjson:\n" + ndjson);
   var resp = esRequest(url, index + "/_doc/_msearch", ndjson);
   var data = JSON.parse(resp.getBody());
+  //console.log("data:\n" + JSON.stringify(data, null, 2));
 
   // Unpack response and organize in array of arrays
   var retData = [];
   for (var i = 0; i < data.responses.length; i++) {
-    if (Array.isArray(data.responses[i].hits.hits) && data.responses[i].hits.hits.length > 0) {
+    // For queries with aggregation
+    if (typeof(data.responses[i].aggregations) !== "undefined" && Array.isArray(data.responses[i].aggregations.source.buckets)) {
+      // Assemble the keys from the bucket for this query (i)
+      var keys = [];
+      data.responses[i].aggregations.source.buckets.forEach(element => {
+        keys.push(element.key);
+      });
+      retData[i] = keys;
+    
+    // For queries without aggregation
+    } else if (Array.isArray(data.responses[i].hits.hits) && data.responses[i].hits.hits.length > 0) {
       if (data.responses[i].hits.total.value !== data.responses[i].hits.hits.length) {
         console.log("WARNING! data.responses[" + i + "].hits.total.value (" + data.responses[i].hits.total.value +
                     ") and data.responses[" + i + "].hits.hits.length (" + data.responses[i].hits.hits.length +
@@ -114,7 +132,7 @@ mSearch = function (url, index, termKeys, values, source, size, sort) {
         // A source of "x.y" <string> must be converted to reference the object
         // For example, a source (string) of "metric_desc.id" needs to reference metric_desc[id]
         var obj = element._source;
-        if (source !== "") {  // a blank source assumes you want everything returned
+        if (source !== "" && source !== null) {  // a blank source assumes you want everything returned
           source.split('.').forEach(thisObj => {
             if (typeof(obj[thisObj]) == "undefined" ) {
               console.log("WARNING: the requested source for this query [" + source + "] does not exist in the returned data:\n");
@@ -142,15 +160,30 @@ exports.mSearch = mSearch;
 // all query functions use msearch, even if there is a single query.
 
 mgetPrimaryMetric = function (url, iterations) {
-  return mSearch(url, "iteration", [ "iteration.id" ], [ iterations ], "iteration.primary-metric");
+  var metrics = mSearch(url, "iteration", [ "iteration.id" ], [ iterations ], "iteration.primary-metric");
+  // mSearch returns a list of values for each query, so 2D array.  We only have exactly 1 primary-metric
+  // for each iteration, so collapse the 2D array into a 1D array, 1 element per iteration.
+  var primaryMetrics = [];
+  for (var i=0; i<metrics.length; i++) {
+    primaryMetrics[i] = metrics[i][0];
+  }
+  return primaryMetrics;
 }
+exports.mgetPrimaryMetric = mgetPrimaryMetric;
 getPrimaryMetric = function (url, iteration) {
   return mgetPrimaryMetric(url, [ iteration ])[0][0];
 };
 exports.getPrimaryMetric = getPrimaryMetric;
 
 mgetPrimaryPeriodName = function (url, iterations) {
-  return mSearch(url, "iteration", [ "iteration.id" ], [ iterations ], "iteration.primary-period");
+  var data = mSearch(url, "iteration", [ "iteration.id" ], [ iterations ], "iteration.primary-period");
+  // There can be only 1 period-name er iteration, therefore no need for a period name per period [of the same iteration]
+  // Therefore, we do not need to return a 2D array
+  var periodNames = [];
+  for (i=0; i<data.length; i++) {
+    periodNames[i] = data[i][0];
+  }
+  return periodNames;
 }
 exports.mgetPrimaryPeriodName = mgetPrimaryPeriodName;
 getPrimaryPeriodName = function (url, iteration) {
@@ -168,11 +201,39 @@ getSamples = function (url, iter) {
 exports.getSamples = getSamples;
 
 mgetPrimaryPeriodId = function (url, sampIds, periNames) {
+  // needs 2D array iterSampleIds: [iter][samp] and 1D array iterPrimaryPeriodNames [iter]
+  // returns 2D array [iter][samp]
   if (periNames.length == 1) {
     // Only 1 primary-period-name provided, so assume all sample IDs have same primary-period-name
     for (i = 1; i < sampIds.length; i ++) periNames[i] = periNames[0];
   }
-  return mSearch(url, "period", [ "sample.id", "period.name" ], [ sampIds, periNames ], "period.id", 1);
+  // Need to convert to 1D array for sampleIds, with 1 periName for each, in order to call mSearch()
+  var sampleIds = [];
+  var perSamplePeriNames = [];
+  var idx = 0;
+  for (i=0; i<sampIds.length; i++) {
+    for (j=0; j<sampIds[i].length; j++) {
+      sampleIds[idx] = sampIds[i][j];
+      perSamplePeriNames[idx] = periNames[i];
+      idx++;
+    }
+  }
+  var data = mSearch(url, "period", [ "sample.id", "period.name" ], [ sampleIds, perSamplePeriNames ], "period.id", null, 1);
+  // mSearch returns a 2D array, in other words, a list of values (inner array) for each query (outer array)
+  // In this case, the queries are 1 per sampleId/periodName (for all iterations ordered), and the list of values
+  // happens to be exactly 1 value, the primaryPeriodId.
+  var periodIds = []; // Will be 2D array of [iter][periIds];
+  idx = 0;
+  for (i=0; i<sampIds.length; i++) {
+    for (j=0; j<sampIds[i].length; j++) {
+      if (typeof(periodIds[i]) == "undefined") {
+        periodIds[i] = [];
+      }
+      periodIds[i][j] = data[idx][0];
+      idx++;
+    }
+  }
+  return periodIds;
 };
 exports.mgetPrimaryPeriodId = mgetPrimaryPeriodId;
 getPrimaryPeriodId = function (url, sampId, periName) {
@@ -180,8 +241,50 @@ getPrimaryPeriodId = function (url, sampId, periName) {
 }
 exports.getPrimaryPeriodId = getPrimaryPeriodId;
 
+mgetPeriodRange = function (url, periodIds) {
+  // needs 2D array periodIds: [iter][peri]
+  // returns 2D array [iter][samp] of { "begin": x, "end": y }
+  
+  // Need to collapse [iter][sample] to 1D array of periodIds, in order to call mSearch()
+  var Ids = [];
+  var idx = 0;
+  for (i=0; i<periodIds.length; i++) {
+    for (j=0; j<periodIds[i].length; j++) {
+      Ids[idx] = periodIds[i][j];
+      idx++;
+    }
+  }
+  //console.log("Ids:\n" + JSON.stringify(Ids, null, 2));
+  var data = mSearch(url, "period", [ "period.id" ], [ Ids ], "period", null, 1);
+  //console.log("data:\n" + JSON.stringify(data, null, 2));
+  // mSearch returns a 2D array, in other words, a list of values (inner array) for each query (outer array)
+  // In this case, the queries are 1 per sampleId/periodName (for all iterations ordered), and the list of values
+  // happens to be exactly 1 value, the primaryPeriodId.
+  var ranges = []; // Will be 2D array of [iter][periIds];
+  idx = 0;
+  for (i=0; i<periodIds.length; i++) {
+    if (typeof(ranges[i]) == "undefined") {
+      ranges[i] = [];
+    }
+    for (j=0; j<periodIds[i].length; j++) {
+        if (typeof(ranges[i][j]) == "undefined") {
+          ranges[i][j] = {};
+        }
+      ranges[i][j]['begin'] = data[idx][0]['begin'];
+      ranges[i][j]['end'] = data[idx][0]['end'];
+      idx++;
+    }
+  }
+  return ranges;
+}
+exports.mgetPeriodRange = mgetPeriodRange;
+getPeriodRange = function (url, periId) {
+  return mgetPeriodRange(url, [ periId ])[0][0];
+}
+exports.getPeriodRange = getPeriodRange;
+
 mgetMetricDescs = function (url, runIds) {
-  return mSearch(url, "metric_desc", [ "run.id" ], [ runIds ], "metric_desc.id", bigQuerySize);
+  return mSearch(url, "metric_desc", [ "run.id" ], [ runIds ], "metric_desc.id", null, bigQuerySize);
 }
 getMetricDescs = function (url, runId) {
   return mgetMetricDescs(url, [ runId ])[0];
@@ -189,15 +292,27 @@ getMetricDescs = function (url, runId) {
 exports.getMetricDescs = getMetricDescs;
 
 mgetMetricDataDocs = function (url, metricIds) {
-  return mSearch(url, "metric_data", [ "metric_desc.id" ], [ metricIds ], "", bigQuerySize);
+  return mSearch(url, "metric_data", [ "metric_desc.id" ], [ metricIds ], "", null, bigQuerySize);
 }
 getMetricDataDocs = function (url, metricId) {
   return mgetMetricDataDocs(url, [ metricId ])[0];
 };
 exports.getMetricDataDocs = getMetricDataDocs;
 
+mgetMetricTypes = function (url, runIds, metricSources) {
+  return mSearch(url, "metric_desc", [ "run.id", "metric_desc.source" ], [ runIds, metricSources ],
+                 null,
+                 { 'source': { 'terms': { 'field': 'metric_desc.type', "size": 10000 }}},
+                 0);
+}
+exports.mgetMetricTypes = mgetMetricTypes;
+getMetricTypes = function (url, runId, metricSource) {
+  return mgetMetricTypes(url, [ runId ], [ metricSources ])[0];
+}
+exports.getMetricTypes = getMetricTypes;
+
 mgetIterations = function (url, runIds) {
-  return mSearch(url, "iteration", [ "run.id" ], [ runIds ], "iteration.id", 1000,
+  return mSearch(url, "iteration", [ "run.id" ], [ runIds ], "iteration.id", null, 1000,
                 [ { "iteration.num": { "order": "asc", "numeric_type": "long" }} ]);
 }
 getIterations = function (url, runId) {
@@ -206,7 +321,7 @@ getIterations = function (url, runId) {
 exports.getIterations = getIterations;
 
 mgetTags = function (url, runIds) {
-  return mSearch(url, "tag", [ "run.id" ], [ runIds ], "tag", 1000);
+  return mSearch(url, "tag", [ "run.id" ], [ runIds ], "tag", null, 1000);
 }
 getTags = function (url, runId) {
   return mgetTags(url, [ runId ])[0];
@@ -214,7 +329,7 @@ getTags = function (url, runId) {
 exports.getTags = getTags;
 
 mgetRunFromIter = function (url, iterIds) {
-  return mSearch(url, "iteration", [ "iteration.id" ], [ iterIds ], "run.id", 1000);
+  return mSearch(url, "iteration", [ "iteration.id" ], [ iterIds ], "run.id", null, 1000);
 }
 getRunFromIter = function (url, iterId) {
   return mgetRunFromIter(url, [ iterId ])[0][0];
@@ -222,7 +337,7 @@ getRunFromIter = function (url, iterId) {
 exports.getRunFromIter = getRunFromIter;
 
 mgetRunFromPeriod = function (url, periIds) {
-  return mSearch(url, "period", [ "period.id" ], [ periIds ], "run.id", 1);
+  return mSearch(url, "period", [ "period.id" ], [ periIds ], "run.id", null, 1);
 }
 getRunFromPeriod = function (url, periId) {
   return mgetRunFromPeriod(url, [ periId ])[0][0];
@@ -230,23 +345,17 @@ getRunFromPeriod = function (url, periId) {
 exports.getRunFromPeriod = getRunFromPeriod;
 
 mgetParams = function (url, iterIds) {
-  return mSearch(url, "param", [ "iteration.id" ], [ iterIds ], "param", 1000);
+  return mSearch(url, "param", [ "iteration.id" ], [ iterIds ], "param", null, 1000);
 }
+exports.mgetParams = mgetParams;
 getParams = function (url, iterId) {
   return mgetParams(url, [ iterId ])[0];
 }
 exports.getParams = getParams;
 
-mgetPeriodRange = function (url, periIds) {
-  return mSearch(url, "period", [ "period.id" ], [ periIds ], "period", 1);
-}
-getPeriodRange = function (url, periId) {
-  return mgetPeriodRange(url, [ periId ])[0][0];
-}
-exports.getPeriodRange = getPeriodRange;
 
 mgetIterationDoc = function (url, iterIds) {
-  return mSearch(url, "iteration", [ "iteration.id" ], [ iterIds ], "", 1000);
+  return mSearch(url, "iteration", [ "iteration.id" ], [ iterIds ], "", null, 1000);
 }
 getIterationDoc = function (url, iterId) {
   return mgetIterationDoc(url, [ iterId ])[0][0];
@@ -254,7 +363,7 @@ getIterationDoc = function (url, iterId) {
 exports.getIterationDoc = getIterationDoc;;
 
 mgetSampleStatus = function (url, sampIds) {
-  return mSearch(url, "sample", [ "sample.id" ], [ sampIds ], "sample.status", 1);
+  return mSearch(url, "sample", [ "sample.id" ], [ sampIds ], "sample.status", null, 1);
 }
 getSampleStatus = function (url, sampId) {
   return mgetSampleStatus(url, [ sampId ])[0][0];
@@ -262,7 +371,7 @@ getSampleStatus = function (url, sampId) {
 exports.getSampleStatus = getSampleStatus;
 
 mgetBenchmarkNameFromIter = function (url, Ids) {
-  return mSearch(url, "iteration", [ "iteration.id" ], [ Ids ], "run.benchmark", 1);
+  return mSearch(url, "iteration", [ "iteration.id" ], [ Ids ], "run.benchmark", null, 1);
 }
 getBenchmarkNameFromIter = function (url, Id) {
   return mgetBenchmarkNameFromIter(url, [ Id ])[0][0];
@@ -270,7 +379,7 @@ getBenchmarkNameFromIter = function (url, Id) {
 exports.getBenchmarkNameFromIter = getBenchmarkNameFromIter;
 
 mgetBenchmarkName = function (url, runIds) {
-  return mSearch(url, "run", [ "run.id" ], [ runIds ], "run.benchmark", 1);
+  return mSearch(url, "run", [ "run.id" ], [ runIds ], "run.benchmark", null, 1);
 }
 getBenchmarkName = function (url, runId) {
   return mgetBenchmarkName(url, [ runId ])[0][0];
@@ -278,7 +387,7 @@ getBenchmarkName = function (url, runId) {
 exports.getBenchmarkName = getBenchmarkName;
 
 mgetRunData = function (url, runIds) {
-  return mSearch(url, "run", [ "run.id" ], [ runIds ], "", 1000);
+  return mSearch(url, "run", [ "run.id" ], [ runIds ], "", null, 1000);
 }
 getRunData = function (url, runId) {
   return mgetRunData(url, [ runId ]);
@@ -417,7 +526,7 @@ mgetIterMetrics = function(url, iterationIds) {
   //console.log(JSON.stringify(thisResult));
   results[iter] = thisResult;
   //console.log("results length is now: " + Object.keys(results).length);
-  console.log("mgetIterMetrics complete");
+  //console.log("mgetIterMetrics complete");
   return results;
 }
 exports.mgetIterMetrics = mgetIterMetrics;
@@ -1109,7 +1218,7 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
   var results = mgetIterMetrics(url, allIterIds);
   //console.log("results:\n" + JSON.stringify(results, null, 2));
 
-  console.log("Build iterTree");
+  //console.log("Build iterTree");
   iterTree = buildIterTree(url, results, params, tags, paramValueByIterAndArg, tagValueByIterAndName, allIterIds, dontBreakoutTags, dontBreakoutParams, omitParams, breakoutOrderTags, breakoutOrderParams);
   return iterTree;
 }
@@ -1119,6 +1228,7 @@ exports.getMetricSources = function (url, runId) {
   var q = { 'query': { 'bool': { 'filter': [ {"term": {"run.id": runId}} ] }},
             'aggs': { 'source': { 'terms': { 'field': 'metric_desc.source', "size": bigQuerySize }}},
             'size': 0 };
+  //console.log("Q:\n" + JSON.stringify(q, null, 2));
   var resp = esRequest(url, "metric_desc/_doc/_search", q);
   var data = JSON.parse(resp.getBody());
   if (Array.isArray(data.aggregations.source.buckets)) {
@@ -1127,21 +1237,6 @@ exports.getMetricSources = function (url, runId) {
       sources.push(element.key);
     });
     return sources;
-  }
-};
-
-exports.getMetricTypes = function (url, runId, source) {
-  var q = { 'query': { 'bool': { 'filter': [ {"term": {"run.id": runId}}, {"term": {"metric_desc.source": source}} ] }},
-            'aggs': { 'source': { 'terms': { 'field': 'metric_desc.type', "size": bigQuerySize }}},
-            'size': 0 };
-  var resp = esRequest(url, "metric_desc/_doc/_search", q);
-  var data = JSON.parse(resp.getBody());
-  if (Array.isArray(data.aggregations.source.buckets)) {
-    var types = [];
-    data.aggregations.source.buckets.forEach(element => {
-      types.push(element.key);
-    });
-    return types;
   }
 };
 
@@ -1385,6 +1480,7 @@ getMetricGroupsFromBreakouts = function (url, sets) {
     ndjson += JSON.stringify(index) + "\n";
     ndjson += JSON.stringify(q) + "\n";
   });
+  //console.log("getMetricGroupsFromBreakouts() Q:\n" + ndjson);
   var resp = esRequest(url, "metric_desc/_doc/_msearch", ndjson);
   var data = JSON.parse(resp.getBody());
   //console.log(JSON.stringify(data, null, 2));
