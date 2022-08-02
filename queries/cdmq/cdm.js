@@ -180,7 +180,7 @@ mgetPrimaryPeriodName = function (url, iterations) {
   // There can be only 1 period-name er iteration, therefore no need for a period name per period [of the same iteration]
   // Therefore, we do not need to return a 2D array
   var periodNames = [];
-  for (i=0; i<data.length; i++) {
+  for (var i=0; i<data.length; i++) {
     periodNames[i] = data[i][0];
   }
   return periodNames;
@@ -217,7 +217,7 @@ mgetSampleStatus = function (url, Ids) {
   var sampleIds = [];
   var perSamplePeriNames = [];
   var idx = 0;
-  for (i=0; i<Ids.length; i++) {
+  for (var i=0; i<Ids.length; i++) {
     for (j=0; j<Ids[i].length; j++) {
       sampleIds[idx] = Ids[i][j];
       idx++;
@@ -228,7 +228,7 @@ mgetSampleStatus = function (url, Ids) {
 
   var sampleStatus = []; // Will be 2D array of [iter][sampIds];
   idx = 0;
-  for (i=0; i<Ids.length; i++) {
+  for (var i=0; i<Ids.length; i++) {
     for (j=0; j<Ids[i].length; j++) {
       if (typeof(sampleStatus[i]) == "undefined") {
         sampleStatus[i] = [];
@@ -256,7 +256,7 @@ mgetPrimaryPeriodId = function (url, sampIds, periNames) {
   var sampleIds = [];
   var perSamplePeriNames = [];
   var idx = 0;
-  for (i=0; i<sampIds.length; i++) {
+  for (var i=0; i<sampIds.length; i++) {
     for (j=0; j<sampIds[i].length; j++) {
       sampleIds[idx] = sampIds[i][j];
       perSamplePeriNames[idx] = periNames[i];
@@ -269,7 +269,7 @@ mgetPrimaryPeriodId = function (url, sampIds, periNames) {
   // happens to be exactly 1 value, the primaryPeriodId.
   var periodIds = []; // Will be 2D array of [iter][periIds];
   idx = 0;
-  for (i=0; i<sampIds.length; i++) {
+  for (var i=0; i<sampIds.length; i++) {
     for (j=0; j<sampIds[i].length; j++) {
       if (typeof(periodIds[i]) == "undefined") {
         periodIds[i] = [];
@@ -293,7 +293,7 @@ mgetPeriodRange = function (url, periodIds) {
   // Need to collapse [iter][sample] to 1D array of periodIds, in order to call mSearch()
   var Ids = [];
   var idx = 0;
-  for (i=0; i<periodIds.length; i++) {
+  for (var i=0; i<periodIds.length; i++) {
     for (j=0; j<periodIds[i].length; j++) {
       Ids[idx] = periodIds[i][j];
       idx++;
@@ -307,7 +307,7 @@ mgetPeriodRange = function (url, periodIds) {
   // happens to be exactly 1 value, the primaryPeriodId.
   var ranges = []; // Will be 2D array of [iter][periIds];
   idx = 0;
-  for (i=0; i<periodIds.length; i++) {
+  for (var i=0; i<periodIds.length; i++) {
     if (typeof(ranges[i]) == "undefined") {
       ranges[i] = [];
     }
@@ -324,7 +324,7 @@ mgetPeriodRange = function (url, periodIds) {
 }
 exports.mgetPeriodRange = mgetPeriodRange;
 getPeriodRange = function (url, periId) {
-  return mgetPeriodRange(url, [ periId ])[0][0];
+  return mgetPeriodRange(url, [[ periId ]])[0][0];
 }
 exports.getPeriodRange = getPeriodRange;
 
@@ -1085,7 +1085,7 @@ getIters = function (url, filterByAge, filterByTags, filterByParams, dontBreakou
     // Need to consolidate multiple params with same arg but different values
     var paramIdx = {};
     var l = params.length
-    for (i=0; i<l; i++) {
+    for (var i=0; i<l; i++) {
       var arg = params[i].arg;
       if (typeof(paramIdx[arg]) !== "undefined") {
         // This param arg was already found, combine this value with exiting param
@@ -1835,7 +1835,7 @@ exports.getMetricData = getMetricData;
 //   *if* the metric is from a benchmark.  If you want to query for corresponding
 //   tool data, use the same begin and end as the benchmark-iteration-sample-period.
 getMetricDataSets = function(url, sets) {
-  for (i=0; i<sets.length; i++) {
+  for (var i=0; i<sets.length; i++) {
     // If a begin and end are not defined, get it from the period.begin & period.end.
     // If a begin and/or end are not defined, and the period is not defined, error out.
     // If a run is not defined, get it from the period.
@@ -1851,7 +1851,7 @@ getMetricDataSets = function(url, sets) {
     if (typeof(sets[i].begin) == "undefined") {
       if (typeof(sets[i].period) != "undefined") {
         periodRange = getPeriodRange(url, sets[i].period);
-        sets[i].begin = periodRange.begin;
+        sets[i]['begin'] = periodRange['begin'];
       } else {
         console.log("ERROR: begin is not defined and a period was not defined");
       }
@@ -1896,14 +1896,14 @@ getMetricDataSets = function(url, sets) {
   var runIds = [];
   var sources = [];
   var types = [];
-  for (i=0; i<sets.length; i++) {
+  for (var i=0; i<sets.length; i++) {
     runIds[i] = sets[i].run;
     sources[i] = sets[i].source;
     types[i] = sets[i].type;
   }
   var setBreakouts = mgetMetricNames(url, runIds, sources, types);
 
-  for (i=0; i<sets.length; i++) {
+  for (var i=0; i<sets.length; i++) {
     // Rearrange the actual data into 'values' section
     Object.keys(dataSets[i]).forEach(label =>{
       if (typeof(dataSets[i].values) == "undefined") {
@@ -1930,7 +1930,7 @@ getMetricDataSets = function(url, sets) {
     dataSets[i].remainingBreakouts = setBreakouts[i].filter(n => !dataSets[i].usedBreakouts.includes(n));
   }
 
-  for (i=0; i<sets.length; i++) {
+  for (var i=0; i<sets.length; i++) {
     var reg = /(\w+)\:([-+]?[0-9]*\.?[0-9]+)/;
     var m = reg.exec(sets[i].filter);
     if (sets[i].filter != null && m) {
