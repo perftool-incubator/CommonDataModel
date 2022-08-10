@@ -138,8 +138,40 @@ saveSourceTypes();
 
 console.log("timePeriods:\n" + JSON.stringify(timePeriods, null, 2));
 
-metric_data = cdm.getMetricData(program.url, program.run, program.period, program.source, program.type,
-                                program.begin, program.end, program.resolution, program.breakout, program.filter);
+// Convert the time periods to 'sets' for getMetricDataSets
+var sets = [];
+var count = 0;
+for (var i=0; i<timePeriods.length; i++) {
+  console.log("i: " + i);
+  for (var j=0; j<timePeriods[i].sourceTypes.length; j++) {
+    sets[count] = {};
+    console.log("j: " + j);
+    var timePeriodKeys = ['run', 'period', 'begin', 'end'];
+    timePeriodKeys.forEach(thisKey =>{
+      if (timePeriods[i][thisKey] != null) {
+        sets[count][thisKey] = timePeriods[i][thisKey];
+      }
+    });
+    var thisSet = {};
+    var sourceTypeKeys = ['source', 'type', 'breakout'];
+    console.log("timePeriods[" + i + "].sourceTypes[" + j + "]:\n" + JSON.stringify(timePeriods[i].sourceTypes[j], null, 2));
+    sourceTypeKeys.forEach(thisKey =>{
+      console.log("thisKey: " + thisKey);
+      if (timePeriods[i].sourceTypes[j][thisKey] != null) {
+        sets[count][thisKey] = timePeriods[i].sourceTypes[j][thisKey];
+      } else if (thisKey == "breakout") {
+        sets[count]['breakout'] = [];
+      }
+    });
+    count++;
+  }
+}
+        
+console.log("sets:\n" + JSON.stringify(sets, null, 2));
+
+metric_data = cdm.getMetricDataSets(program.url, sets);
+//metric_data = cdm.getMetricData(program.url, program.run, program.period, program.source, program.type,
+                                //program.begin, program.end, program.resolution, program.breakout, program.filter);
 
 if (Object.keys(metric_data.values).length == 0) {
     console.log("There were no metrics found, exiting");
