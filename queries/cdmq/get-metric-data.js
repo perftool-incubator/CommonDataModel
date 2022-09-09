@@ -131,32 +131,36 @@ program
   .option('--output-dir <path>', 'Output directory.  If specified, output is written to a file metric-data.[json|txt|html+js].')
   .parse(process.argv);
 
-
 saveTimePeriodArgs();
 saveSourceTypeArgs();
 saveSourceTypes();
 
-console.log("timePeriods:\n" + JSON.stringify(timePeriods, null, 2));
+if (program.resolution == null) {
+  program.resolution = 1;
+}
+
+//console.log("timePeriods:\n" + JSON.stringify(timePeriods, null, 2));
 
 // Convert the time periods to 'sets' for getMetricDataSets
 var sets = [];
 var count = 0;
 for (var i=0; i<timePeriods.length; i++) {
-  console.log("i: " + i);
+  //console.log("i: " + i);
   for (var j=0; j<timePeriods[i].sourceTypes.length; j++) {
     sets[count] = {};
-    console.log("j: " + j);
+    //console.log("j: " + j);
     var timePeriodKeys = ['run', 'period', 'begin', 'end'];
     timePeriodKeys.forEach(thisKey =>{
       if (timePeriods[i][thisKey] != null) {
         sets[count][thisKey] = timePeriods[i][thisKey];
       }
+    sets[count]['resolution'] = program.resolution;
     });
     var thisSet = {};
-    var sourceTypeKeys = ['source', 'type', 'breakout'];
-    console.log("timePeriods[" + i + "].sourceTypes[" + j + "]:\n" + JSON.stringify(timePeriods[i].sourceTypes[j], null, 2));
+    var sourceTypeKeys = ['source', 'type', 'breakout', 'filter'];
+    //console.log("timePeriods[" + i + "].sourceTypes[" + j + "]:\n" + JSON.stringify(timePeriods[i].sourceTypes[j], null, 2));
     sourceTypeKeys.forEach(thisKey =>{
-      console.log("thisKey: " + thisKey);
+      //console.log("thisKey: " + thisKey);
       if (timePeriods[i].sourceTypes[j][thisKey] != null) {
         sets[count][thisKey] = timePeriods[i].sourceTypes[j][thisKey];
       } else if (thisKey == "breakout") {
@@ -167,16 +171,13 @@ for (var i=0; i<timePeriods.length; i++) {
   }
 }
         
-console.log("sets:\n" + JSON.stringify(sets, null, 2));
+//console.log("sets:\n" + JSON.stringify(sets, null, 2));
 
 metric_data = cdm.getMetricDataSets(program.url, sets);
 //metric_data = cdm.getMetricData(program.url, program.run, program.period, program.source, program.type,
                                 //program.begin, program.end, program.resolution, program.breakout, program.filter);
 
-if (Object.keys(metric_data.values).length == 0) {
-    console.log("There were no metrics found, exiting");
-    process.exit(1);
-}
+console.log(JSON.stringify(metric_data, null, 2));
 
 const fs = require('fs');
 if (program.outputFormat.includes("json")) {
@@ -197,7 +198,7 @@ if (program.outputFormat.includes("table")) {
   var table_txt = "";
 }
 if (program.outputFormat.includes("amchart")) {
-  var title = program.source + "::" + program.type;
+  var title = sets[0].source + "::" + sets[0].type;
   var data = {};
   var js = "";
   var html_resources =
@@ -222,10 +223,10 @@ if (program.outputFormat.includes("amchart")) {
 
 
   // write a amchart compatible data struct
-  Object.keys(metric_data.values).forEach(thisDataSeries =>{
+  Object.keys(metric_data[0].values).forEach(thisDataSeries =>{
     var newDataSeries = [];
     var prevEnd;
-    metric_data.values[thisDataSeries].forEach(thisDataSample => {
+    metric_data[0].values[thisDataSeries].forEach(thisDataSample => {
       if (prevEnd != null) {
         newDataSeries.push({ "date": (prevEnd + 1), "value": thisDataSample['value'] });
       }

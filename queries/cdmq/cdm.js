@@ -1532,7 +1532,8 @@ exports.getMetricGroupsFromBreakout = getMetricGroupsFromBreakout;
 // metric_id in metricIds], and their respective (begin,end) are (0,500) and (501,2000),
 // then there are enough metric_data documents to compute the results.  
 getMetricDataFromIdsSets = function (url, sets, metricGroupIdsByLabelSets) {
-  //console.log("metricGroupIdsByLabelSets:\n" + JSON.stringufy(metricGroupIdsByLabelSets, null, 2));
+  //console.log("\nsets:\n" + JSON.stringify(sets, null, 2));
+  //console.log("\nmetricGroupIdsByLabelSets:\n" + JSON.stringify(metricGroupIdsByLabelSets, null, 2));
   var ndjson = "";
   for (var idx = 0; idx < metricGroupIdsByLabelSets.length; idx++) {
     Object.keys(metricGroupIdsByLabelSets[idx]).sort().forEach(function(label) {
@@ -1593,6 +1594,7 @@ getMetricDataFromIdsSets = function (url, sets, metricGroupIdsByLabelSets) {
         reqjson += '  }';
         reqjson += '}';
         var index = JSON.parse(indexjson);
+        //console.log("\nweighted average, but does not include the documents\nwhich are partially outside the time range we need reqjson:\n" + reqjson);
         var req = JSON.parse(reqjson);
         ndjson += JSON.stringify(index) + "\n";
         ndjson += JSON.stringify(req) + "\n";
@@ -1618,6 +1620,7 @@ getMetricDataFromIdsSets = function (url, sets, metricGroupIdsByLabelSets) {
         reqjson += '  }';
         reqjson += '}\n';
         index = JSON.parse(indexjson);
+        //console.log("\ntotal weight of the previous weighted average request reqjson:\n" + reqjson);
         req = JSON.parse(reqjson);
         ndjson += JSON.stringify(index) + "\n";
         ndjson += JSON.stringify(req) + "\n";
@@ -1637,6 +1640,7 @@ getMetricDataFromIdsSets = function (url, sets, metricGroupIdsByLabelSets) {
         reqjson += '  }';
         reqjson += '}';
         index = JSON.parse(indexjson);
+        //console.log("\ndocuments that had its begin during or before the time range,\nbut its end was after the time range reqjson:\n" + reqjson);
         req = JSON.parse(reqjson);
         ndjson += JSON.stringify(index) + "\n";
         ndjson += JSON.stringify(req) + "\n";
@@ -1657,6 +1661,7 @@ getMetricDataFromIdsSets = function (url, sets, metricGroupIdsByLabelSets) {
         reqjson += '  }';
         reqjson += '}\n';
         index = JSON.parse(indexjson);
+        //console.log("\ndocuments that had its begin before the time range,\nbut its end was during or after the time range reqjson:\n" + reqjson);
         req = JSON.parse(reqjson);
         ndjson += JSON.stringify(index) + "\n"; //ensures JSON is exactly 1 line
         ndjson += JSON.stringify(req) + "\n"; //ensures JSON is exactly 1 line
