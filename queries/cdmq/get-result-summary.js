@@ -74,6 +74,7 @@ runIds.forEach(runId => {
   });
   logOutput(tagList, program.outputFormat);
   var benchName = cdm.getBenchmarkName(program.url, runId);
+  var benchmarks = list(benchName);
   logOutput("  benchmark: " + benchName, program.outputFormat);
   var benchIterations = cdm.getIterations(program.url, runId);
   //console.log("benchIterations:\n" + JSON.stringify(benchIterations, null, 2));
@@ -149,19 +150,22 @@ runIds.forEach(runId => {
   var sets = [];
   for (var i=0; i<benchIterations.length; i++) {
     for (var j=0; j<iterSampleIds[i].length; j++) {
-      var set = { "run": runId,
-                  "period": iterPrimaryPeriodIds[i][j],
-                  "source": benchName,
-                  "type": iterPrimaryMetrics[i],
-                  "begin": iterPrimaryPeriodRanges[i][j].begin,
-                  "end": iterPrimaryPeriodRanges[i][j].end,
-                  "resolution": 1,
-                  "breakout": [] };
-      sets.push(set);
+      for (var k=0; k<benchmarks.length; k++) {
+        var set = { "run": runId,
+                    "period": iterPrimaryPeriodIds[i][j],
+                    "source": benchmarks[k],
+                    "type": iterPrimaryMetrics[i],
+                    "begin": iterPrimaryPeriodRanges[i][j].begin,
+                    "end": iterPrimaryPeriodRanges[i][j].end,
+                    "resolution": 1,
+                    "breakout": [] };
+        sets.push(set);
+      }
     }
   }
 
   // do the mega-query
+  console.log(JSON.stringify(sets, null, 2));
   var metricDataSets = cdm.getMetricDataSets(program.url, sets);
 
 
@@ -225,38 +229,62 @@ runIds.forEach(runId => {
     });
 */
 
+    var allBenchMsampleVals = [];
+    var allBenchMsampleTotal = [];
+    var allBenchMsampleFixedList = [];
+    var allBenchMsampleCount = [];
     for (var j=0; j<iterSampleIds[i].length; j++) {
       if (iterSampleStatus[i][j] == "pass" && iterPrimaryPeriodRanges[i][j].begin !== undefined && iterPrimaryPeriodRanges[i][j].end !== undefined) {
         logOutput("        sample-id: " + iterSampleIds[i][j], noHtml);
         logOutput("          primary period-id: " + iterPrimaryPeriodIds[i][j], noHtml);
         logOutput("          period range: begin: " + iterPrimaryPeriodRanges[i][j].begin + " end: " + iterPrimaryPeriodRanges[i][j].end, noHtml);
-        msampleVal = parseFloat(metricDataSets[idx].values[""][0].value);
-        msampleVals.push(msampleVal);
-        msampleTotal += msampleVal;
-        var msampleFixed = msampleVal.toFixed(6);
-        msampleList += " " + msampleFixed;
-        msampleCount++;
+        for (var k=0; k<benchmarks.length; k++) {
+          msampleVal = parseFloat(metricDataSets[idx].values[""][0].value);
+          if (allBenchMsampleVals[k] == null) {
+            allBenchMsampleVals[k] = [];
+          }
+          allBenchMsampleVals[k].push(msampleVal);
+
+          if (allBenchMsampleTotal[k] == null) {
+            allBenchMsampleTotal[k] = 0;
+          }
+          allBenchMsampleTotal[k] += msampleVal;
+
+          msampleFixed = msampleVal.toFixed(6);
+
+          if (allBenchMsampleFixedList[k] == null) {
+            allBenchMsampleFixedList[k] = "";
+          }
+          allBenchMsampleFixedList[k] += " " + msampleFixed;
+
+          if (allBenchMsampleCount[k] == null) {
+            allBenchMsampleCount[k] = 0;
+          }
+          allBenchMsampleCount[k]++;
+          idx++;
+        }
       }
-      idx++;
     }
-    if (msampleCount > 0) {
-      var mean = msampleTotal / msampleCount;
-      var diff = 0;
-      msampleVals.forEach(val => {
-        diff += (mean - val) * (mean - val);
-      });
-      diff /= (msampleCount - 1);
-      var mstddev = Math.sqrt(diff);
-      var mstddevpct = 100 * mstddev / mean;
-      logOutput("        result: (" + primaryMetric + ") samples:" + msampleList +
-                  " mean: " + parseFloat(mean).toFixed(6) +
-                  " min: " + parseFloat(Math.min(...msampleVals)).toFixed(6) +
-                  " max: " + parseFloat(Math.max(...msampleVals)).toFixed(6) +
-                  " stddev: " + parseFloat(mstddev).toFixed(6) +
-                  " stddevpct: " + parseFloat(mstddevpct).toFixed(6), noHtml);
-      series['mean'] = mean;
-      series['min'] = Math.min(...msampleVals);
-      series['max'] = Math.max(...msampleVals);
+    for (var k=0; k<benchmarks.length; k++) {
+      if (allBenchMsampleCount[k] > 0) {
+        var mean = allBenchMsampleTotal[k] / allBenchMsampleCount[k];
+        var diff = 0;
+        allBenchMsampleVals[k].forEach(val => {
+          diff += (mean - val) * (mean - val);
+        });
+        diff /= (allBenchMsampleCount[k] - 1);
+        var mstddev = Math.sqrt(diff);
+        var mstddevpct = 100 * mstddev / mean;
+        logOutput("        result: (" + benchmarks[k] + " " + primaryMetric + ") samples:" + msampleList +
+                    " mean: " + parseFloat(mean).toFixed(6) +
+                    " min: " + parseFloat(Math.min(...allBenchMsampleVals[k])).toFixed(6) +
+                    " max: " + parseFloat(Math.max(...allBenchMsampleVals[k])).toFixed(6) +
+                    " stddev: " + parseFloat(mstddev).toFixed(6) +
+                    " stddevpct: " + parseFloat(mstddevpct).toFixed(6), noHtml);
+        series['mean'] = mean;
+        series['min'] = Math.min(...allBenchMsampleVals[k]);
+        series['max'] = Math.max(...allBenchMsampleVals[k]);
+      }
     }
     data[primaryMetric].push(series);
   }
