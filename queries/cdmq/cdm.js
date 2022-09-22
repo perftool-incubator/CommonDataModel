@@ -93,7 +93,13 @@ mSearch = function (url, index, termKeys, values, source, aggs, size, sort) {
     for (var x = 0; x < termKeys.length; x++) {
       var termStr = '{ "term": { "' + termKeys[x] + '": "' + values[x][i] + '"}}';
       req['query']['bool']['filter'].push(JSON.parse(termStr));
-      if (typeof(size) !== "undefined") req.size = size;
+
+      if (typeof(size) !== "undefined") {
+        req.size = size;
+      } else {
+        req.size = bigQuerySize;
+      }
+
       if (typeof(sort) !== "undefined") req.sort = sort;
     }
     // aggs is not an array, and is used the same for all queries
@@ -122,8 +128,8 @@ mSearch = function (url, index, termKeys, values, source, aggs, size, sort) {
     
     // For queries without aggregation
     } else if (Array.isArray(data.responses[i].hits.hits) && data.responses[i].hits.hits.length > 0) {
-      if (data.responses[i].hits.total.value !== data.responses[i].hits.hits.length) {
-        console.log("WARNING! data.responses[" + i + "].hits.total.value (" + data.responses[i].hits.total.value +
+      if (data.responses[i].hits.total.value !== data.responses[i].hits.hits.length && req.size != data.responses[i].hits.hits.length) {
+        console.log("WARNING! msearch(size: " + size + ") data.responses[" + i + "].hits.total.value (" + data.responses[i].hits.total.value +
                     ") and data.responses[" + i + "].hits.hits.length (" + data.responses[i].hits.hits.length +
                     ") are not equal, which means the retured data is probably incomplete");
       }
@@ -1411,6 +1417,10 @@ mgetMetricIdsFromTerms = function (url, termsSets) {
     console.log("mgetMetricIdsFromTerms(): ERROR, number of _msearch responses did not match number of requests");
     return;
   }
+  if (data.responses == null) {
+    console.log("ERROR: data.responses is null");
+    return;
+  }
 
   //console.log("data:\n" + JSON.stringify(data, null, 2));
   // Process the responses and assemble metric IDs into array
@@ -1424,9 +1434,26 @@ mgetMetricIdsFromTerms = function (url, termsSets) {
       //console.log("mgetMetricIdsFromTerms():  label: " + label);
       //console.log("mgetMetricIdsFromTerms():  count: " + count);
       thisMetricIds[label] = [];
+      if (data.responses[i] == null) {
+        console.log("ERROR: data.responses[" + i + "] is null");
+        console.log("data.responses.length:" + data.responses.length);
+        console.log("data.responses:\n" + JSON.stringify(data.responses, null, 2));
+        console.log("termsSets.length: " + termsSets.length);
+        console.log("totalReqs: " + totalReqs);
+        console.log("query:\n" + ndjson);
+        process.exit(1);
+      }
+      if (data.responses[i].hits == null) {
+        console.log("ERROR: data.responses[" + i + "].hits is null");
+        console.log("data.responses[" + i + "]:\n" + JSON.stringify(data.responses[i], null, 2));
+        console.log("termsSets.length: " + termsSets.length);
+        console.log("totalReqs: " + totalReqs);
+        console.log("query:\n" + ndjson);
+        process.exit(1);
+      }
       if (data.responses[i].hits.total.value >= bigQuerySize || data.responses[i].hits.hits.length >= bigQuerySize) {
-        //console.log("ERROR: hits from returned query exceeded max size of " + bigQuerySize);
-        return;
+        console.log("ERROR: hits from returned query exceeded max size of " + bigQuerySize);
+        process.exit(1);
       }
       //console.log("mgetMetricIdsFromTerms():  data.responses[" + count + "]:\n" + JSON.stringify(data.responses[count], null, 2));
       //console.log("mgetMetricIdsFromTerms():  data.responses[" + count + "].hits.hits.length: " + data.responses[count].hits.hits.length);
@@ -1747,7 +1774,7 @@ getMetricDataFromIdsSets = function (url, sets, metricGroupIdsByLabelSets) {
         for (k = 2; k < 4; k++) {
           //for my $j (@{ $$resp_ref{'responses'}[$count + $k]{'hits'}{'hits'} }) {
           if (data.responses[count + k].hits.total.value !== data.responses[count + k].hits.hits.length) {
-            console.log("WARNING! data.responses[" + (count + k) + "].hits.total.value (" + data.responses[count + k].hits.total.value +
+            console.log("WARNING! getMetricDataFromIdsSets() data.responses[" + (count + k) + "].hits.total.value (" + data.responses[count + k].hits.total.value +
                         ") and data.responses[" + (count + k) + "].hits.hits.length (" + data.responses[count + k].hits.hits.length +
                         ") are not equal, which means the retured data is probably incomplete");
           }

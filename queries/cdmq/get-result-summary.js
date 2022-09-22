@@ -150,11 +150,13 @@ runIds.forEach(runId => {
   var sets = [];
   for (var i=0; i<benchIterations.length; i++) {
     for (var j=0; j<iterSampleIds[i].length; j++) {
-      for (var k=0; k<benchmarks.length; k++) {
+      var primaryMetrics = list(iterPrimaryMetrics[i]);
+      for (var k=0; k<primaryMetrics.length; k++) {
+        var sourceType = primaryMetrics[k].split("::");
         var set = { "run": runId,
                     "period": iterPrimaryPeriodIds[i][j],
-                    "source": benchmarks[k],
-                    "type": iterPrimaryMetrics[i],
+                    "source": sourceType[0],
+                    "type": sourceType[1],
                     "begin": iterPrimaryPeriodRanges[i][j].begin,
                     "end": iterPrimaryPeriodRanges[i][j].end,
                     "resolution": 1,
@@ -165,7 +167,6 @@ runIds.forEach(runId => {
   }
 
   // do the mega-query
-  console.log(JSON.stringify(sets, null, 2));
   var metricDataSets = cdm.getMetricDataSets(program.url, sets);
 
 
@@ -238,7 +239,10 @@ runIds.forEach(runId => {
         logOutput("        sample-id: " + iterSampleIds[i][j], noHtml);
         logOutput("          primary period-id: " + iterPrimaryPeriodIds[i][j], noHtml);
         logOutput("          period range: begin: " + iterPrimaryPeriodRanges[i][j].begin + " end: " + iterPrimaryPeriodRanges[i][j].end, noHtml);
-        for (var k=0; k<benchmarks.length; k++) {
+        //for (var k=0; k<benchmarks.length; k++) {
+        var primaryMetrics = list(iterPrimaryMetrics[i]);
+        for (var k=0; k<primaryMetrics.length; k++) {
+          var sourceType = primaryMetrics[k].split("::");
           msampleVal = parseFloat(metricDataSets[idx].values[""][0].value);
           if (allBenchMsampleVals[k] == null) {
             allBenchMsampleVals[k] = [];
@@ -265,7 +269,9 @@ runIds.forEach(runId => {
         }
       }
     }
-    for (var k=0; k<benchmarks.length; k++) {
+    var primaryMetrics = list(iterPrimaryMetrics[i]);
+    for (var k=0; k<primaryMetrics.length; k++) {
+      var sourceType = primaryMetrics[k].split("::");
       if (allBenchMsampleCount[k] > 0) {
         var mean = allBenchMsampleTotal[k] / allBenchMsampleCount[k];
         var diff = 0;
@@ -275,7 +281,7 @@ runIds.forEach(runId => {
         diff /= (allBenchMsampleCount[k] - 1);
         var mstddev = Math.sqrt(diff);
         var mstddevpct = 100 * mstddev / mean;
-        logOutput("        result: (" + benchmarks[k] + " " + primaryMetric + ") samples:" + msampleList +
+        logOutput("            result: (" + sourceType[0] + "::" + sourceType[1] + ") samples:" + allBenchMsampleFixedList[k] +
                     " mean: " + parseFloat(mean).toFixed(6) +
                     " min: " + parseFloat(Math.min(...allBenchMsampleVals[k])).toFixed(6) +
                     " max: " + parseFloat(Math.max(...allBenchMsampleVals[k])).toFixed(6) +
