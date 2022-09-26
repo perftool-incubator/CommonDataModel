@@ -1,0 +1,16 @@
+name: faux-crucible-ci
+
+on:
+  pull_request:
+    branches: [ master ]
+    paths:
+    - LICENSE
+    - '**.md'
+    - .github/workflows/faux-crucible-ci.yaml
+    - 'docs/**'
+
+jobs:
+  crucible-ci-complete:
+    runs-on: ubuntu-latest
+    steps:
+    - run: 'echo "No build required" '
