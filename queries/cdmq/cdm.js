@@ -109,7 +109,6 @@ mSearch = function (url, index, termKeys, values, source, aggs, size, sort) {
     //console.log("Q:\n" + JSON.stringify(req, null, 2));
     ndjson += '{}\n' + JSON.stringify(req) + "\n";
   }
-  //console.log("ndjson:\n" + ndjson);
   var resp = esRequest(url, index + "/_doc/_msearch", ndjson);
   var data = JSON.parse(resp.getBody());
   //console.log("data:\n" + JSON.stringify(data, null, 2));
@@ -1513,10 +1512,8 @@ getMetricGroupsFromBreakouts = function (url, sets) {
     ndjson += JSON.stringify(index) + "\n";
     ndjson += JSON.stringify(q) + "\n";
   });
-  //console.log("getMetricGroupsFromBreakouts() Q:\n" + ndjson);
   var resp = esRequest(url, "metric_desc/_doc/_msearch", ndjson);
   var data = JSON.parse(resp.getBody());
-  //console.log(JSON.stringify(data, null, 2));
 
   var metricGroupIdsByLabelSets = [];
   var metricGroupTermsSets = [];

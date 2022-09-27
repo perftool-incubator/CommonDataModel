@@ -147,16 +147,31 @@ runIds.forEach(runId => {
   }
 
   // build the sets for the mega-query
+  var benchmarks = benchName.split(",");
   var sets = [];
   for (var i=0; i<benchIterations.length; i++) {
     for (var j=0; j<iterSampleIds[i].length; j++) {
       var primaryMetrics = list(iterPrimaryMetrics[i]);
       for (var k=0; k<primaryMetrics.length; k++) {
+        var source = "";
+        var type = "";
         var sourceType = primaryMetrics[k].split("::");
+        if (sourceType.length == 1) {
+          // Older runs have only 1 benchmark and only have "type" in primaryMetrics
+          source = benchmarks[0];
+          type = primaryMetrics[k];
+        } else if (sourceType.length == 2) {
+          // Newer run data embeds source and type for primaryMetric
+          source = sourceType[0];
+          type = sourceType[1];
+        } else {
+          console.log("sourceType array is an unexpected length, " + sourceType.length);
+          process.exit(1);
+        }
         var set = { "run": runId,
                     "period": iterPrimaryPeriodIds[i][j],
-                    "source": sourceType[0],
-                    "type": sourceType[1],
+                    "source": source,
+                    "type": type,
                     "begin": iterPrimaryPeriodRanges[i][j].begin,
                     "end": iterPrimaryPeriodRanges[i][j].end,
                     "resolution": 1,
