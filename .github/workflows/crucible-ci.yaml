@@ -19,13 +19,13 @@ jobs:
       self_hosted_scenarios: ${{ steps.get-scenarios-self.outputs.scenarios }}
     steps:
     - name: checkout crucible-ci
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         repository: perftool-incubator/crucible-ci
         ref: main
         path: crucible-ci
     - name: checkout rickshaw
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         repository: perftool-incubator/rickshaw
         ref: master
@@ -72,11 +72,11 @@ jobs:
         echo "benchmark=${{ matrix.scenario.benchmark }}"
         echo "userenv=${{ matrix.userenv }}"
     - name: checkout CommonDataModel
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         path: CommonDataModel
     - name: checkout crucible-ci
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         repository: perftool-incubator/crucible-ci
         ref: main
@@ -120,11 +120,11 @@ jobs:
         echo "benchmark=${{ matrix.scenario.benchmark }}"
         echo "userenv=${{ matrix.userenv }}"
     - name: checkout CommonDataModel
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         path: CommonDataModel
     - name: checkout crucible-ci
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         repository: perftool-incubator/crucible-ci
         ref: main
