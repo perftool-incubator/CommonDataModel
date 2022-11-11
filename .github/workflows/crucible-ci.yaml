@@ -94,12 +94,10 @@ jobs:
       if: ${{ matrix.scenario.enabled }}
       uses: ./crucible-ci/.github/actions/integration-tests
       with:
-        artifact_tag: "crucible-ci-github-runners__${{ matrix.scenario.endpoint }}-${{ matrix.scenario.benchmark }}-${{ matrix.userenv }}"
+        artifact_tag: "CommonDataModel__github-runners__${{ matrix.scenario.endpoint }}-${{ matrix.scenario.benchmark }}-${{ matrix.userenv }}"
         ci_endpoint: "${{ matrix.scenario.endpoint }}"
         scenarios: "${{ matrix.scenario.benchmark }}"
         userenvs: "${{ matrix.userenv }}"
-        run_samples: 3
-        repeat_runs: "yes"
         ci_target: "CommonDataModel"
         ci_target_dir: ${{ github.workspace }}/CommonDataModel
     - name: skip crucible-ci->integration-tests
@@ -142,12 +140,10 @@ jobs:
       if: ${{ matrix.scenario.enabled }}
       uses: ./crucible-ci/.github/actions/integration-tests
       with:
-        artifact_tag: "crucible-ci-self-hosted-runners__${{ matrix.scenario.endpoint }}-${{ matrix.scenario.benchmark }}-${{ matrix.userenv }}"
+        artifact_tag: "CommonDataModel__self-hosted-runners__${{ matrix.scenario.endpoint }}-${{ matrix.scenario.benchmark }}-${{ matrix.userenv }}"
         ci_endpoint: "${{ matrix.scenario.endpoint }}"
         scenarios: "${{ matrix.scenario.benchmark }}"
         userenvs: "${{ matrix.userenv }}"
-        run_samples: 3
-        repeat_runs: "yes"
         ci_target: "CommonDataModel"
         ci_target_dir: ${{ github.workspace }}/CommonDataModel
     - name: skip crucible-ci->integration-tests
