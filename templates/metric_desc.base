@@ -100,6 +100,7 @@
                   "sport": { "type": "keyword" },
                   "dport": { "type": "keyword" },
                   "mark": { "type": "keyword" },
+                  "output": { "type": "keyword" },
                   "use": { "type": "keyword" }
                 }
               },
