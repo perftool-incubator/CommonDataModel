@@ -86,7 +86,6 @@ runIds.forEach(runId => {
 
 
   var iterParams = cdm.mgetParams(program.url, benchIterations);
-  var iterPrimaryMetrics = cdm.mgetPrimaryMetric(program.url, benchIterations);
   //returns 1D array [iter]
   var iterPrimaryPeriodNames = cdm.mgetPrimaryPeriodName(program.url, benchIterations);
   //input: 1D array
@@ -102,32 +101,37 @@ runIds.forEach(runId => {
   var iterPrimaryPeriodRanges = cdm.mgetPeriodRange(program.url, iterPrimaryPeriodIds);
 
   // Find the params which are the same in every iteration
-  var allParams = [];
-  var allParamsCounts = [];
-  iterParams.forEach(params => {
-  params.forEach(param => {
-      var newParam = param.arg + "=" + param.val;
-      idx = allParams.indexOf(newParam)
-      if (idx == -1) {
-        allParams.push(newParam);
-        allParamsCounts.push(1);
-      } else {
-        allParamsCounts[idx] += 1
-      }
+  var iterPrimaryMetrics = cdm.mgetPrimaryMetric(program.url, benchIterations);
+  var primaryMetrics = list(iterPrimaryMetrics[0]);
+  // For now only dump params when 1 primary metric is used
+  if (primaryMetrics.length == 1) {
+    var allParams = [];
+    var allParamsCounts = [];
+    iterParams.forEach(params => {
+    params.forEach(param => {
+        var newParam = param.arg + "=" + param.val;
+        idx = allParams.indexOf(newParam)
+        if (idx == -1) {
+          allParams.push(newParam);
+          allParamsCounts.push(1);
+        } else {
+          allParamsCounts[idx] += 1
+        }
+      });
     });
-  });
-  var commonParams = [];
-  for (var idx=0; idx<allParams.length; idx++) {
-    if (allParamsCounts[idx] == benchIterations.length) {
-      commonParams.push(allParams[idx]);
+    var commonParams = [];
+    for (var idx=0; idx<allParams.length; idx++) {
+      if (allParamsCounts[idx] == benchIterations.length) {
+        commonParams.push(allParams[idx]);
+      }
     }
+    commonParams.sort()
+    var commonParamsStr = "  common params: ";
+    commonParams.forEach(param => {
+      commonParamsStr += param + " ";
+    });
+    logOutput(commonParamsStr, program.outputFormat);
   }
-  commonParams.sort()
-  var commonParamsStr = "  common params: ";
-  commonParams.forEach(param => {
-    commonParamsStr += param + " ";
-  });
-  logOutput(commonParamsStr, program.outputFormat);
 
   logOutput("  metrics:", program.outputFormat);
   var metricSources = cdm.getMetricSources(program.url, runId);
@@ -190,24 +194,27 @@ runIds.forEach(runId => {
   var numIter = {};
   var idx = 0;
   for (var i=0; i<benchIterations.length; i++) {
+    var primaryMetrics = list(iterPrimaryMetrics[i]);
     var series = {};
     logOutput("    iteration-id: " + benchIterations[i], noHtml);
 
-    var paramList = "      unique params: ";
-    series['label'] = "";
-    iterParams[i].sort((a, b) => a.arg < b.arg ? -1 : 1).forEach(param => {
-      paramStr = param.arg + "=" + param.val;
-      if (commonParams.indexOf(paramStr) == -1) {
-        paramList += param.arg + "=" + param.val + " ";
-        if (series['label'] == "") {
-          series['label'] = param.arg + "=" + param.val;
-        } else {
-          series['label'] += "," + param.arg + "=" + param.val;
+    if (primaryMetrics.length == 1) {
+      var paramList = "      unique params: ";
+      series['label'] = "";
+      iterParams[i].sort((a, b) => a.arg < b.arg ? -1 : 1).forEach(param => {
+        paramStr = param.arg + "=" + param.val;
+        if (commonParams.indexOf(paramStr) == -1) {
+          paramList += param.arg + "=" + param.val + " ";
+          if (series['label'] == "") {
+            series['label'] = param.arg + "=" + param.val;
+          } else {
+            series['label'] += "," + param.arg + "=" + param.val;
+          }
         }
-      }
-    });
-
+      });
     logOutput(paramList, noHtml);
+    }
+
     logOutput("      primary-period name: " + iterPrimaryPeriodNames[i], noHtml);
     var primaryMetric = iterPrimaryMetrics[i];
     if ( typeof data[primaryMetric] == "undefined" ) {
@@ -284,7 +291,6 @@ runIds.forEach(runId => {
         }
       }
     }
-    var primaryMetrics = list(iterPrimaryMetrics[i]);
     for (var k=0; k<primaryMetrics.length; k++) {
       var sourceType = primaryMetrics[k].split("::");
       if (allBenchMsampleCount[k] > 0) {
