@@ -10,7 +10,7 @@
   "license": "ISC",
   "dependencies": {
     "commander": "^2.20.3",
-    "printf": "^0.6.1",
+    "sprintf-js": "^1.1.2",
     "sync-request": "^6.1.0"
   }
 }
