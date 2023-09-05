@@ -11,8 +11,6 @@
 
 var cdm = require('./cdm');
 var program = require('commander');
-//var extsprintf = require('extsprintf');
-//console.log(extsprintf.sprintf('hello %25s', 'world'));
 var sprintf = require('sprintf-js').sprintf
 
 function list(val) {
@@ -42,6 +40,7 @@ if (Object.keys(metric_data.values).length == 0) {
 }
 
 var dateFormat = "default";
+//var dateFormat = "epoch_ms";
 var decimalPlaces = 2;
 console.log("Available breakouts:  " + metric_data.remainingBreakouts + "\n");
 var dataColumnLengths = [];
@@ -94,9 +93,9 @@ Object.keys(metric_data.values).sort((a, b) => {
         if (row == dataStartRow) {
             var date = new Date(element.end);
             if (dateFormat == "epoch_ms") {
-                vals[0][col] = Math.trunc(element.end / 1000000000000) % 1000000;
-                vals[1][col] = Math.trunc(element.end / 1000000) % 1000000;
-                vals[2][col] = sprintf("%03d", element.end % 1000000);
+                vals[0][col] = "";
+                vals[1][col] = sprintf("%d", element.end);
+                vals[2][col] = "";
             } else {
                 vals[0][col] = sprintf("%02d", date.getUTCDate()) + "-" +
                                sprintf("%02d", date.getUTCMonth()) + "-" +
@@ -114,6 +113,7 @@ Object.keys(metric_data.values).sort((a, b) => {
 })
 
 // Adjust column widths according to longest string per column
+// (this should become a function)
 for (row=0; row<vals.length; row++) {
     for (col=0; col<vals[row].length; col++) {
         var length = vals[row][col].length;
@@ -132,7 +132,6 @@ for (row=0; row<labels.length; row++) {
         
     }
 }
-//console.log(labels);
 
 for (row=0; row<vals.length; row++) {
     //console.log("row is " + row);
@@ -154,5 +153,3 @@ for (row=0; row<vals.length; row++) {
 
     console.log(line);
 }
-
-//console.log(JSON.stringify(metric_data, null, 2));
