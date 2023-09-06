@@ -1,6 +1,5 @@
 //# vim: autoindent tabstop=2 shiftwidth=2 expandtab softtabstop=2 filetype=javascript
 var request = require('sync-request');
-var printf = require('printf');
 var bigQuerySize = 262144;
 
 
@@ -795,7 +794,7 @@ reportIters = function(iterTree, indent, count) {
         tagStr += separator + tag.name + ":" + tag.val;
       });
     }
-    tagStr = printf("%-" + midPoint + "s", indent + tagStr);
+    tagStr = sprintf("%-" + midPoint + "s", indent + tagStr);
     if (len < tagStr.length) {
       len = tagStr.length;
     }
@@ -821,7 +820,7 @@ reportIters = function(iterTree, indent, count) {
         paramStr += separator + param.arg + ":" + param.val;
       });
     }
-    paramStr = printf("%-" + midPoint + "s", indent + paramStr);
+    paramStr = sprintf("%-" + midPoint + "s", indent + paramStr);
     if (len < paramStr.length) {
       len = paramStr.length;
     }
@@ -833,7 +832,7 @@ reportIters = function(iterTree, indent, count) {
 
   // Print the headers if this is the first call to reportIters
   if (typeof(indent) == "undefined" || indent == "") {  // print the row names after all common tags/params are printed
-    var header = printf("\n%" + midPoint + "s" + " %10s %10s %36s", "label", "mean", "stddevpct", "iter-id");
+    var header = sprintf("\n%" + midPoint + "s" + " %10s %10s %36s", "label", "mean", "stddevpct", "iter-id");
     console.log(header);
     indent = "";
   }
@@ -857,7 +856,7 @@ reportIters = function(iterTree, indent, count) {
     const sorted = iterTree.iterations.sort((a, b) => (a.labels.localeCompare(b.labels , undefined, {numeric: true, sensitivity: 'base' })));
     sorted.forEach(i => {
       count++;
-      var metrics = printf("%" + midPoint + "s" + " %10.4f %10.4f %36s", i["labels"], i["mean"], i["stddevpct"], i["id"]);
+      var metrics = sprintf("%" + midPoint + "s" + " %10.4f %10.4f %36s", i["labels"], i["mean"], i["stddevpct"], i["id"]);
       console.log(metrics);
     });
     return count;
