@@ -2,6 +2,8 @@ name: CI
 
 # Controls when the action will run.
 on:
+  push:
+    branches: [ ci-style ]
   # Triggers the workflow on pull request events but only for the master branch
   # ignore pull requests that only change documentation/license files
   pull_request:
