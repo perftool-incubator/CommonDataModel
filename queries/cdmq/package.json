@@ -14,11 +14,6 @@
         "sync-request": "^6.1.0"
     },
     "devDependencies": {
-        "eslint": "^8.50.0",
-        "eslint-config-standard": "^17.1.0",
-        "eslint-plugin-import": "^2.28.1",
-        "eslint-plugin-n": "^16.1.0",
-        "eslint-plugin-promise": "^6.1.1",
         "lint-staged": "^14.0.1",
         "mrm": "^2.6.2",
         "prettier": "^3.0.3"
