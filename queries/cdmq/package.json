@@ -1,19 +1,27 @@
 {
-  "name": "cdmq",
-  "version": "1.0.0",
-  "description": "Query Utils for Common Data Model",
-  "main": "index.js",
-  "scripts": {
-    "test": "cdmq"
-  },
-  "author": "Andrew Theurer",
-  "license": "ISC",
-  "dependencies": {
-    "commander": "^2.20.3",
-    "sprintf-js": "^1.1.2",
-    "sync-request": "^6.1.0"
-  },
-  "devDependencies": {
-    "standard": "^17.1.0"
-  }
+    "name": "cdmq",
+    "version": "1.0.0",
+    "description": "Query Utils for Common Data Model",
+    "main": "index.js",
+    "scripts": {
+        "test": "cdmq"
+    },
+    "author": "Andrew Theurer",
+    "license": "ISC",
+    "dependencies": {
+        "commander": "^2.20.3",
+        "sprintf-js": "^1.1.2",
+        "sync-request": "^6.1.0"
+    },
+    "devDependencies": {
+        "eslint": "^8.50.0",
+        "eslint-config-standard": "^17.1.0",
+        "eslint-plugin-import": "^2.28.1",
+        "eslint-plugin-n": "^16.1.0",
+        "eslint-plugin-promise": "^6.1.1",
+        "prettier": "^3.0.3"
+    },
+    "engines": {
+        "node": "20.7.0"
+    }
 }
