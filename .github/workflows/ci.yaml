@@ -35,8 +35,8 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           node-version: "20.7.0"
-      - name: prettier apply formatting to javscript files
-        run: npx prettier --write **/*.js
+      - name: fail if javascript files are not formatted
+        run: npx prettier **/*.js --check
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
