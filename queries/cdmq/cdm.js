@@ -82,7 +82,15 @@ function esRequest(host, idx, q) {
 // of http requests.
 // Note: termKeys is a 1D array, while values is a 2D array.
 // termKeys[x] uses list of values from values[x]
-const mSearch = function (url, index,termKeys,values,source,aggs,size,sort
+const mSearch = function (
+    url,
+    index,
+    termKeys,
+    values,
+    source,
+    aggs,
+    size,
+    sort
 ) {
     if (typeof termKeys !== typeof []) return
     if (typeof values !== typeof []) return
