@@ -28,14 +28,14 @@ cd CommonDataModel/queries/cdmq
 npm install
 ```
 
-4. Check current code style if changes are required with [prettier](https://prettier.io/docs/en/cli.html).
+4. Check current code style if changes are required with [prettier](https://prettier.io/docs/en/cli.html) using [npx](https://docs.npmjs.com/cli/v7/commands/npx).
 
 ```shell
-prettier *.js --check
+npx prettier *.js --check
 ```
 
 5. Apply code style changes.
 
 ```shell
-prettier *.js --write
+npx prettier *.js --write
 ```
