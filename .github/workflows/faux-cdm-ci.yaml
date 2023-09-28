@@ -1,0 +1,17 @@
+name: faux-cdm-ci
+
+on:
+  pull_request:
+    branches: [ master ]
+    paths:
+    - LICENSE
+    - '**.md'
+    - .github/workflows/faux-crucible-ci.yaml
+    - .github/workflows/faux-cdm-ci.yaml
+    - 'docs/**'
+
+jobs:
+  cdm-ci:
+    runs-on: ubuntu-latest
+    steps:
+    - run: 'echo "No build required" '
