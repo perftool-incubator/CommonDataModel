@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   # Job to test installation
-  formatting:
+  cdm-ci:
     # Job will run on github-hosted runner
     runs-on: ubuntu-latest
 
