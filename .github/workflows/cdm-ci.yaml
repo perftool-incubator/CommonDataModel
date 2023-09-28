@@ -1,4 +1,4 @@
-name: CI
+name: cdm-ci
 
 # Controls when the action will run.
 on:
@@ -10,7 +10,7 @@ on:
       - LICENSE
       - '**.md'
       - .github/workflows/faux-crucible-ci.yaml
-      - .github/workflows/faux-ci.yaml
+      - .github/workflows/faux-cdm-ci.yaml
       - 'docs/**'
 
   # Allows you to run this workflow manually from the Actions tab
