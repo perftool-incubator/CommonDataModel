@@ -1,10 +1,10 @@
 //# vim: autoindent tabstop=2 shiftwidth=2 expandtab softtabstop=2 filetype=javascript
 
-var cdm = require('./cdm')
-var program = require('commander')
+var cdm = require('./cdm');
+var program = require('commander');
 
 function list(val) {
-  return val.split(',')
+  return val.split(',');
 }
 
 program
@@ -26,30 +26,15 @@ program
     list,
     []
   )
-  .option(
-    '--add-runs <ids>, id1[,id2]',
-    'Add all iterations from these run IDs (not subject to filters)',
-    list,
-    []
-  )
-  .option(
-    '--add-iterations <ids>, id1[,id2]',
-    'Add these iteraqtion IDs (not subject to filters)',
-    list,
-    []
-  )
+  .option('--add-runs <ids>, id1[,id2]', 'Add all iterations from these run IDs (not subject to filters)', list, [])
+  .option('--add-iterations <ids>, id1[,id2]', 'Add these iteraqtion IDs (not subject to filters)', list, [])
   .option(
     '--dont-breakout-tags <tags>, tag1[,tagN]',
     'Do not break out these tags (because of different values per iteration) into different clusters of iterations.  These tag values will show up in the label for the result instead',
     list,
     []
   )
-  .option(
-    '--omit-tags <tags>, tag1[,tagN]',
-    'If these tags are found, just pretend they never existed',
-    list,
-    []
-  )
+  .option('--omit-tags <tags>, tag1[,tagN]', 'If these tags are found, just pretend they never existed', list, [])
   .option(
     '--dont-breakout-params <tags>, tag1[,tagN]',
     'Do not break out these params (because of different values per iteration) into different clusters of iterations.  These param values will show up in the label for the result instead',
@@ -74,28 +59,28 @@ program
     list,
     []
   )
-  .parse(process.argv)
+  .parse(process.argv);
 
-program.url = 'localhost:9200'
+program.url = 'localhost:9200';
 
 if (typeof program.dontBreakoutParams == 'undefined') {
-  console.log('Setting program.dontBreakoutParams to empty array')
-  program.dontBreakoutParams = []
+  console.log('Setting program.dontBreakoutParams to empty array');
+  program.dontBreakoutParams = [];
 }
 
 if (typeof program.dontBreakoutTags == 'undefined') {
-  console.log('Setting program.dontBreakoutTags to empty array')
-  program.dontBreakoutTags = []
+  console.log('Setting program.dontBreakoutTags to empty array');
+  program.dontBreakoutTags = [];
 }
 
 if (typeof program.breakoutOrderTags == 'undefined') {
-  console.log('Setting program.breakoutOrderTags to empty array')
-  program.breakoutOrderTags = []
+  console.log('Setting program.breakoutOrderTags to empty array');
+  program.breakoutOrderTags = [];
 }
 
 if (typeof program.breakoutOrderParams == 'undefined') {
-  console.log('Setting program.breakoutOrderParams to empty array')
-  program.breakoutOrderParams = []
+  console.log('Setting program.breakoutOrderParams to empty array');
+  program.breakoutOrderParams = [];
 }
 
 var iterTree = getIters(
@@ -111,6 +96,6 @@ var iterTree = getIters(
   program.breakoutOrderParams,
   program.addRuns,
   program.addIterations
-)
-console.log('\n')
-reportIters(iterTree)
+);
+console.log('\n');
+reportIters(iterTree);

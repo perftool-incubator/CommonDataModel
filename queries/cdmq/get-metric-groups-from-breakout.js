@@ -9,40 +9,26 @@
 //
 //# vim: autoindent tabstop=2 shiftwidth=2 expandtab softtabstop=2 filetype=javascript
 
-var cdm = require('./cdm')
-var program = require('commander')
+var cdm = require('./cdm');
+var program = require('commander');
 
 function list(val) {
-  return val.split(',')
+  return val.split(',');
 }
 
 program
   .version('0.1.0')
-  .option(
-    '--url <host:port>',
-    'The host and port of the Elasticsearch instance'
-  )
+  .option('--url <host:port>', 'The host and port of the Elasticsearch instance')
   .option('--period <period ID>', 'The UUID of the period document')
   .option('--source <metric source>', 'A metric source, like iostat or fio')
   .option('--type  <metric type>', 'A metric type, like iops or Gbps')
-  .option(
-    '--breakout <label1,label2,labelN>',
-    'break-out metric by these labels',
-    list,
-    []
-  )
-  .parse(process.argv)
+  .option('--breakout <label1,label2,labelN>', 'break-out metric by these labels', list, [])
+  .parse(process.argv);
 
 console.log(
   JSON.stringify(
-    cdm.getMetricGroupsFromBreakout(
-      program.url,
-      program.period,
-      program.source,
-      program.type,
-      program.breakout
-    ),
+    cdm.getMetricGroupsFromBreakout(program.url, program.period, program.source, program.type, program.breakout),
     null,
     2
   )
-)
+);

@@ -9,36 +9,22 @@
 //
 //# vim: autoindent tabstop=2 shiftwidth=2 expandtab softtabstop=2 filetype=javascript
 
-var cdm = require('./cdm')
-var program = require('commander')
+var cdm = require('./cdm');
+var program = require('commander');
 
 function list(val) {
-  return val.split(',')
+  return val.split(',');
 }
 
 program
   .version('0.1.0')
-  .option(
-    '--url <host:port>',
-    'The host and port of the Elasticsearch instance'
-  )
+  .option('--url <host:port>', 'The host and port of the Elasticsearch instance')
   .option('--begin [uint]', 'Timestamp in epochtime_ms')
   .option('--end [uint]', 'Timestamp in epochtime_ms')
-  .option(
-    '--resolution [uint]',
-    'The number of datapoints to produce in a data-series'
-  )
+  .option('--resolution [uint]', 'The number of datapoints to produce in a data-series')
   .option('--ids <id1,id2,id3...>', 'list of metric IDs', list, [])
-  .parse(process.argv)
+  .parse(process.argv);
 
 console.log(
-  JSON.stringify(
-    cdm.getMetricDataFromIds(
-      program.url,
-      program.begin,
-      program.end,
-      program.resolution,
-      program.ids
-    )
-  )
-)
+  JSON.stringify(cdm.getMetricDataFromIds(program.url, program.begin, program.end, program.resolution, program.ids))
+);
