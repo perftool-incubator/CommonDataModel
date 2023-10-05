@@ -1,10 +1,6 @@
 var cdm = require('./cdm');
 var program = require('commander');
 
-program
-  .version('0.1.0')
-  .option('-i --sample <sample-ID>')
-  .option('-u, --url <host:port>')
-  .parse(process.argv);
+program.version('0.1.0').option('-i --sample <sample-ID>').option('-u, --url <host:port>').parse(process.argv);
 
-console.log(cdm.getSampleStatus(program.url, program.sample,));
+console.log(cdm.getSampleStatus(program.url, program.sample));

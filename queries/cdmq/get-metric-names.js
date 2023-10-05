@@ -12,4 +12,16 @@ program
   .option('-u, --url <host:port>')
   .parse(process.argv);
 
-console.log(JSON.stringify(cdm.getMetricNames(program.url, program.run, program.period, program.source, program.type, program.begin, program.end)));
+console.log(
+  JSON.stringify(
+    cdm.getMetricNames(
+      program.url,
+      program.run,
+      program.period,
+      program.source,
+      program.type,
+      program.begin,
+      program.end
+    )
+  )
+);

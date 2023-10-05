@@ -23,30 +23,30 @@ var termKeys = [];
 var values = [];
 
 if (program.user) {
-  termKeys.push("run.name");
-  values.push([ program.user ]);
+  termKeys.push('run.name');
+  values.push([program.user]);
 }
 if (program.email) {
-  termKeys.push("run.email");
-  values.push([ program.email ]);
+  termKeys.push('run.email');
+  values.push([program.email]);
 }
 if (program.run) {
-  termKeys.push("run.id");
-  values.push([ program.run ]);
+  termKeys.push('run.id');
+  values.push([program.run]);
 }
 if (program.harness) {
-  termKeys.push("run.harness");
-  values.push([ program.harness ]);
+  termKeys.push('run.harness');
+  values.push([program.harness]);
 }
 if (!program.url) {
-  program.url = "localhost:9200";
+  program.url = 'localhost:9200';
 }
 
 if (!program.outputDir) {
-  program.outputDir = "";
+  program.outputDir = '';
 }
 if (!program.outputFormat) {
-  program.outputFormat = [""];
+  program.outputFormat = [''];
 }
 var noHtml = subtractTwoArrays(program.outputFormat, ['html']);
 var txt_summary = '';
@@ -59,31 +59,29 @@ function logOutput(str, formats) {
   }
 }
 
-var runIds = cdm.mSearch(program.url, "run", termKeys, values, "run.id", null, 1000)[0];
+var runIds = cdm.mSearch(program.url, 'run', termKeys, values, 'run.id', null, 1000)[0];
 if (runIds == undefined || runIds.length == 0) {
-  console.log("The run ID could not be found, exiting");
+  console.log('The run ID could not be found, exiting');
   process.exit(1);
 }
-runIds.forEach(runId => {
-  logOutput("\nrun-id: " + runId, program.outputFormat);
+runIds.forEach((runId) => {
+  logOutput('\nrun-id: ' + runId, program.outputFormat);
   var tags = cdm.getTags(program.url, runId);
-  tags.sort((a, b) => a.name < b.name ? -1 : 1)
-  var tagList = "  tags: ";
-  tags.forEach(tag => {
-    tagList += tag.name + "=" + tag.val + " ";
+  tags.sort((a, b) => (a.name < b.name ? -1 : 1));
+  var tagList = '  tags: ';
+  tags.forEach((tag) => {
+    tagList += tag.name + '=' + tag.val + ' ';
   });
   logOutput(tagList, program.outputFormat);
   var benchName = cdm.getBenchmarkName(program.url, runId);
   var benchmarks = list(benchName);
-  logOutput("  benchmark: " + benchName, program.outputFormat);
+  logOutput('  benchmark: ' + benchName, program.outputFormat);
   var benchIterations = cdm.getIterations(program.url, runId);
   //console.log("benchIterations:\n" + JSON.stringify(benchIterations, null, 2));
   if (benchIterations.length == 0) {
-    console.log("There were no iterations found, exiting");
+    console.log('There were no iterations found, exiting');
     process.exit(1);
   }
-
-
 
   var iterParams = cdm.mgetParams(program.url, benchIterations);
   //returns 1D array [iter]
@@ -93,7 +91,7 @@ runIds.forEach(runId => {
   var iterSampleIds = cdm.mgetSamples(program.url, benchIterations);
   //input: 2D array iterSampleIds: [iter][samp]
   //output: 2D array [iter][samp]
-  var iterSampleStatus  = cdm.mgetSampleStatus(program.url, iterSampleIds);
+  var iterSampleStatus = cdm.mgetSampleStatus(program.url, iterSampleIds);
   //console.log("sampleStatus:\n" + JSON.stringify(iterSampleStatus, null, 2));
   //needs 2D array iterSampleIds: [iter][samp] and 1D array iterPrimaryPeriodNames [iter]
   //returns 2D array [iter][samp]
@@ -107,59 +105,59 @@ runIds.forEach(runId => {
   if (primaryMetrics.length == 1) {
     var allParams = [];
     var allParamsCounts = [];
-    iterParams.forEach(params => {
-    params.forEach(param => {
-        var newParam = param.arg + "=" + param.val;
-        idx = allParams.indexOf(newParam)
+    iterParams.forEach((params) => {
+      params.forEach((param) => {
+        var newParam = param.arg + '=' + param.val;
+        idx = allParams.indexOf(newParam);
         if (idx == -1) {
           allParams.push(newParam);
           allParamsCounts.push(1);
         } else {
-          allParamsCounts[idx] += 1
+          allParamsCounts[idx] += 1;
         }
       });
     });
     var commonParams = [];
-    for (var idx=0; idx<allParams.length; idx++) {
+    for (var idx = 0; idx < allParams.length; idx++) {
       if (allParamsCounts[idx] == benchIterations.length) {
         commonParams.push(allParams[idx]);
       }
     }
-    commonParams.sort()
-    var commonParamsStr = "  common params: ";
-    commonParams.forEach(param => {
-      commonParamsStr += param + " ";
+    commonParams.sort();
+    var commonParamsStr = '  common params: ';
+    commonParams.forEach((param) => {
+      commonParamsStr += param + ' ';
     });
     logOutput(commonParamsStr, program.outputFormat);
   }
 
-  logOutput("  metrics:", program.outputFormat);
+  logOutput('  metrics:', program.outputFormat);
   var metricSources = cdm.getMetricSources(program.url, runId);
   var runIds = [];
-  for (var i=0; i<metricSources.length; i++) {
+  for (var i = 0; i < metricSources.length; i++) {
     runIds[i] = runId;
   }
   var metricTypes = cdm.mgetMetricTypes(program.url, runIds, metricSources);
 
-  for (var i=0; i<metricSources.length; i++) {
-    logOutput("    source: " + metricSources[i], program.outputFormat);
-    var typeList = "      types: ";
-    for (var j=0; j<metricTypes[i].length; j++) {
-      typeList += metricTypes[i][j] + " ";
+  for (var i = 0; i < metricSources.length; i++) {
+    logOutput('    source: ' + metricSources[i], program.outputFormat);
+    var typeList = '      types: ';
+    for (var j = 0; j < metricTypes[i].length; j++) {
+      typeList += metricTypes[i][j] + ' ';
     }
     logOutput(typeList, program.outputFormat);
   }
 
   // build the sets for the mega-query
-  var benchmarks = benchName.split(",");
+  var benchmarks = benchName.split(',');
   var sets = [];
-  for (var i=0; i<benchIterations.length; i++) {
-    for (var j=0; j<iterSampleIds[i].length; j++) {
+  for (var i = 0; i < benchIterations.length; i++) {
+    for (var j = 0; j < iterSampleIds[i].length; j++) {
       var primaryMetrics = list(iterPrimaryMetrics[i]);
-      for (var k=0; k<primaryMetrics.length; k++) {
-        var source = "";
-        var type = "";
-        var sourceType = primaryMetrics[k].split("::");
+      for (var k = 0; k < primaryMetrics.length; k++) {
+        var source = '';
+        var type = '';
+        var sourceType = primaryMetrics[k].split('::');
         if (sourceType.length == 1) {
           // Older runs have only 1 benchmark and only have "type" in primaryMetrics
           source = benchmarks[0];
@@ -169,17 +167,19 @@ runIds.forEach(runId => {
           source = sourceType[0];
           type = sourceType[1];
         } else {
-          console.log("sourceType array is an unexpected length, " + sourceType.length);
+          console.log('sourceType array is an unexpected length, ' + sourceType.length);
           process.exit(1);
         }
-        var set = { "run": runId,
-                    "period": iterPrimaryPeriodIds[i][j],
-                    "source": source,
-                    "type": type,
-                    "begin": iterPrimaryPeriodRanges[i][j].begin,
-                    "end": iterPrimaryPeriodRanges[i][j].end,
-                    "resolution": 1,
-                    "breakout": [] };
+        var set = {
+          run: runId,
+          period: iterPrimaryPeriodIds[i][j],
+          source: source,
+          type: type,
+          begin: iterPrimaryPeriodRanges[i][j].begin,
+          end: iterPrimaryPeriodRanges[i][j].end,
+          resolution: 1,
+          breakout: []
+        };
         sets.push(set);
       }
     }
@@ -188,47 +188,48 @@ runIds.forEach(runId => {
   // do the mega-query
   var metricDataSets = cdm.getMetricDataSets(program.url, sets);
 
-
   // output the results
   var data = {};
   var numIter = {};
   var idx = 0;
-  for (var i=0; i<benchIterations.length; i++) {
+  for (var i = 0; i < benchIterations.length; i++) {
     var primaryMetrics = list(iterPrimaryMetrics[i]);
     var series = {};
-    logOutput("    iteration-id: " + benchIterations[i], noHtml);
+    logOutput('    iteration-id: ' + benchIterations[i], noHtml);
 
     if (primaryMetrics.length == 1) {
-      var paramList = "      unique params: ";
-      series['label'] = "";
-      iterParams[i].sort((a, b) => a.arg < b.arg ? -1 : 1).forEach(param => {
-        paramStr = param.arg + "=" + param.val;
-        if (commonParams.indexOf(paramStr) == -1) {
-          paramList += param.arg + "=" + param.val + " ";
-          if (series['label'] == "") {
-            series['label'] = param.arg + "=" + param.val;
-          } else {
-            series['label'] += "," + param.arg + "=" + param.val;
+      var paramList = '      unique params: ';
+      series['label'] = '';
+      iterParams[i]
+        .sort((a, b) => (a.arg < b.arg ? -1 : 1))
+        .forEach((param) => {
+          paramStr = param.arg + '=' + param.val;
+          if (commonParams.indexOf(paramStr) == -1) {
+            paramList += param.arg + '=' + param.val + ' ';
+            if (series['label'] == '') {
+              series['label'] = param.arg + '=' + param.val;
+            } else {
+              series['label'] += ',' + param.arg + '=' + param.val;
+            }
           }
-        }
-      });
-    logOutput(paramList, noHtml);
+        });
+      logOutput(paramList, noHtml);
     }
 
-    logOutput("      primary-period name: " + iterPrimaryPeriodNames[i], noHtml);
+    logOutput('      primary-period name: ' + iterPrimaryPeriodNames[i], noHtml);
     var primaryMetric = iterPrimaryMetrics[i];
-    if ( typeof data[primaryMetric] == "undefined" ) {
+    if (typeof data[primaryMetric] == 'undefined') {
       data[primaryMetric] = [];
       numIter[primaryMetric] = 0;
     }
     numIter[primaryMetric]++;
-    logOutput("      samples:", noHtml);
+    logOutput('      samples:', noHtml);
     var msampleCount = 0;
     var msampleTotal = 0;
     var msampleVals = [];
-    var msampleList = "";
+    var msampleList = '';
 
-/*
+    /*
     samples.forEach(sample => {
       if (cdm.getSampleStatus(program.url, sample) == "pass") {
         logOutput("        sample-id: " + sample, noHtml);
@@ -256,16 +257,26 @@ runIds.forEach(runId => {
     var allBenchMsampleTotal = [];
     var allBenchMsampleFixedList = [];
     var allBenchMsampleCount = [];
-    for (var j=0; j<iterSampleIds[i].length; j++) {
-      if (iterSampleStatus[i][j] == "pass" && iterPrimaryPeriodRanges[i][j].begin !== undefined && iterPrimaryPeriodRanges[i][j].end !== undefined) {
-        logOutput("        sample-id: " + iterSampleIds[i][j], noHtml);
-        logOutput("          primary period-id: " + iterPrimaryPeriodIds[i][j], noHtml);
-        logOutput("          period range: begin: " + iterPrimaryPeriodRanges[i][j].begin + " end: " + iterPrimaryPeriodRanges[i][j].end, noHtml);
+    for (var j = 0; j < iterSampleIds[i].length; j++) {
+      if (
+        iterSampleStatus[i][j] == 'pass' &&
+        iterPrimaryPeriodRanges[i][j].begin !== undefined &&
+        iterPrimaryPeriodRanges[i][j].end !== undefined
+      ) {
+        logOutput('        sample-id: ' + iterSampleIds[i][j], noHtml);
+        logOutput('          primary period-id: ' + iterPrimaryPeriodIds[i][j], noHtml);
+        logOutput(
+          '          period range: begin: ' +
+            iterPrimaryPeriodRanges[i][j].begin +
+            ' end: ' +
+            iterPrimaryPeriodRanges[i][j].end,
+          noHtml
+        );
         //for (var k=0; k<benchmarks.length; k++) {
         var primaryMetrics = list(iterPrimaryMetrics[i]);
-        for (var k=0; k<primaryMetrics.length; k++) {
-          var sourceType = primaryMetrics[k].split("::");
-          msampleVal = parseFloat(metricDataSets[idx].values[""][0].value);
+        for (var k = 0; k < primaryMetrics.length; k++) {
+          var sourceType = primaryMetrics[k].split('::');
+          msampleVal = parseFloat(metricDataSets[idx].values[''][0].value);
           if (allBenchMsampleVals[k] == null) {
             allBenchMsampleVals[k] = [];
           }
@@ -279,9 +290,9 @@ runIds.forEach(runId => {
           msampleFixed = msampleVal.toFixed(6);
 
           if (allBenchMsampleFixedList[k] == null) {
-            allBenchMsampleFixedList[k] = "";
+            allBenchMsampleFixedList[k] = '';
           }
-          allBenchMsampleFixedList[k] += " " + msampleFixed;
+          allBenchMsampleFixedList[k] += ' ' + msampleFixed;
 
           if (allBenchMsampleCount[k] == null) {
             allBenchMsampleCount[k] = 0;
@@ -291,23 +302,36 @@ runIds.forEach(runId => {
         }
       }
     }
-    for (var k=0; k<primaryMetrics.length; k++) {
-      var sourceType = primaryMetrics[k].split("::");
+    for (var k = 0; k < primaryMetrics.length; k++) {
+      var sourceType = primaryMetrics[k].split('::');
       if (allBenchMsampleCount[k] > 0) {
         var mean = allBenchMsampleTotal[k] / allBenchMsampleCount[k];
         var diff = 0;
-        allBenchMsampleVals[k].forEach(val => {
+        allBenchMsampleVals[k].forEach((val) => {
           diff += (mean - val) * (mean - val);
         });
-        diff /= (allBenchMsampleCount[k] - 1);
+        diff /= allBenchMsampleCount[k] - 1;
         var mstddev = Math.sqrt(diff);
-        var mstddevpct = 100 * mstddev / mean;
-        logOutput("            result: (" + sourceType[0] + "::" + sourceType[1] + ") samples:" + allBenchMsampleFixedList[k] +
-                    " mean: " + parseFloat(mean).toFixed(6) +
-                    " min: " + parseFloat(Math.min(...allBenchMsampleVals[k])).toFixed(6) +
-                    " max: " + parseFloat(Math.max(...allBenchMsampleVals[k])).toFixed(6) +
-                    " stddev: " + parseFloat(mstddev).toFixed(6) +
-                    " stddevpct: " + parseFloat(mstddevpct).toFixed(6), noHtml);
+        var mstddevpct = (100 * mstddev) / mean;
+        logOutput(
+          '            result: (' +
+            sourceType[0] +
+            '::' +
+            sourceType[1] +
+            ') samples:' +
+            allBenchMsampleFixedList[k] +
+            ' mean: ' +
+            parseFloat(mean).toFixed(6) +
+            ' min: ' +
+            parseFloat(Math.min(...allBenchMsampleVals[k])).toFixed(6) +
+            ' max: ' +
+            parseFloat(Math.max(...allBenchMsampleVals[k])).toFixed(6) +
+            ' stddev: ' +
+            parseFloat(mstddev).toFixed(6) +
+            ' stddevpct: ' +
+            parseFloat(mstddevpct).toFixed(6),
+          noHtml
+        );
         series['mean'] = mean;
         series['min'] = Math.min(...allBenchMsampleVals[k]);
         series['max'] = Math.max(...allBenchMsampleVals[k]);
@@ -317,21 +341,19 @@ runIds.forEach(runId => {
   }
 
   html_summary += '</pre>\n';
-  var html_resources = '<!-- Resources -->\n' +
-                       '<script src="https://cdn.amcharts.com/lib/5/index.js"></script>\n' +
-                       '<script src="https://cdn.amcharts.com/lib/5/xy.js"></script>\n' +
-                       '<script src="https://cdn.amcharts.com/lib/5/themes/Animated.js"></script>\n' +
-                       '<script src="data.js"></script>\n' +
-                       '<script src="chart.js"></script>\n';
-  var html_styles = '<!-- Styles -->\n' + 
-                    '<style>\n';;
+  var html_resources =
+    '<!-- Resources -->\n' +
+    '<script src="https://cdn.amcharts.com/lib/5/index.js"></script>\n' +
+    '<script src="https://cdn.amcharts.com/lib/5/xy.js"></script>\n' +
+    '<script src="https://cdn.amcharts.com/lib/5/themes/Animated.js"></script>\n' +
+    '<script src="data.js"></script>\n' +
+    '<script src="chart.js"></script>\n';
+  var html_styles = '<!-- Styles -->\n' + '<style>\n';
   var html_div = '';
-  Object.keys(numIter).forEach(pri =>{
+  Object.keys(numIter).forEach((pri) => {
     html_div += '<div id="' + pri + '"></div>\n';
-    html_styles += '#' + pri + ' {\n' +
-                   '  width: 1000px;\n' +
-                   '  height: ' + (120 + 25*numIter[pri]) + 'px;\n' +
-                   '}\n';
+    html_styles +=
+      '#' + pri + ' {\n' + '  width: 1000px;\n' + '  height: ' + (120 + 25 * numIter[pri]) + 'px;\n' + '}\n';
   });
   html_styles += '</style>\n';
   var html = html_styles + html_resources + html_summary + html_div;
@@ -342,29 +364,26 @@ runIds.forEach(runId => {
   const fs = require('fs');
   if (program.outputFormat.includes('txt')) {
     try {
-      fs.writeFileSync(program.outputDir + "/" + 'result-summary.txt', txt_summary);
+      fs.writeFileSync(program.outputDir + '/' + 'result-summary.txt', txt_summary);
     } catch (err) {
       console.error(err);
     }
   }
   if (program.outputFormat.includes('html')) {
     try {
-      fs.writeFileSync(program.outputDir + "/" + 'data.js', 'var data = ' + JSON.stringify(data, null, 2));
+      fs.writeFileSync(program.outputDir + '/' + 'data.js', 'var data = ' + JSON.stringify(data, null, 2));
     } catch (err) {
       console.error(err);
     }
     try {
-      fs.writeFileSync(program.outputDir + "/" + 'result-summary.html', html);
+      fs.writeFileSync(program.outputDir + '/' + 'result-summary.html', html);
     } catch (err) {
       console.error(err);
     }
     try {
-      fs.copyFileSync("chart.js", program.outputDir + "/" + 'chart.js');
+      fs.copyFileSync('chart.js', program.outputDir + '/' + 'chart.js');
     } catch (err) {
       console.log(err);
     }
   }
-
-
 });
-

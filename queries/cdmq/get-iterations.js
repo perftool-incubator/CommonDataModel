@@ -10,9 +10,9 @@ program
 
 var searchTerms = [];
 if (program.run) {
-  searchTerms.push({ "term": { "run.id": program.run }});
+  searchTerms.push({ term: { 'run.id': program.run } });
 }
 if (program.email) {
-  searchTerms.push({ "term": { "run.user.email": program.email }});
+  searchTerms.push({ term: { 'run.user.email': program.email } });
 }
 console.log(JSON.stringify(cdm.getIterations(program.url, searchTerms)));

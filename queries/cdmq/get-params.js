@@ -10,9 +10,17 @@ program
 
 var searchTerms = [];
 if (program.iteration) {
-  searchTerms.push({ "term": "iteration.id", "match": "eq", "value": program.iteration });
+  searchTerms.push({
+    term: 'iteration.id',
+    match: 'eq',
+    value: program.iteration
+  });
 }
 if (program.email) {
-  searchTerms.push({ "term": "run.user.email", "match": "eq", "value": program.email });
+  searchTerms.push({
+    term: 'run.user.email',
+    match: 'eq',
+    value: program.email
+  });
 }
 console.log(JSON.stringify(cdm.getParams(program.url, searchTerms)));
