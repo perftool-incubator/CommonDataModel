@@ -4,7 +4,8 @@
   "description": "Query Utils for Common Data Model",
   "main": "index.js",
   "scripts": {
-    "test": "jest"
+    "test": "jest",
+    "prettier": "prettier"
   },
   "author": "Andrew Theurer",
   "license": "ISC",
