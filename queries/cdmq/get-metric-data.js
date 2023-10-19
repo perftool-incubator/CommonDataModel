@@ -178,7 +178,7 @@ Object.keys(metric_data.values)
           vals[0][col] =
             sprintf('%02d', date.getUTCDate()) +
             '-' +
-            sprintf('%02d', date.getUTCMonth()) +
+            sprintf('%02d', date.getUTCMonth() + 1) +
             '-' +
             sprintf('%04d', date.getUTCFullYear());
           vals[1][col] =
@@ -191,7 +191,7 @@ Object.keys(metric_data.values)
           vals[0][col] =
             sprintf('%02d', date.getUTCDate()) +
             '-' +
-            sprintf('%02d', date.getUTCMonth()) +
+            sprintf('%02d', date.getUTCMonth() + 1) +
             '-' +
             sprintf('%04d', date.getUTCFullYear()) +
             '/' +
