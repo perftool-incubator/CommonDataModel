@@ -98,7 +98,7 @@ for i in `/bin/ls *.json | sed -e s/\.json//`; do
     if [ ! -z "$older_indices" ]; then
         for this_older_index in $older_indices; do
             older_ver=`echo $this_older_index | sed -e s/^cdm// | awk -F- '{print $1}'`
-            echo -n "  found older version ($older_ver) of this index, deleteing..."
+            echo -n "  found older version ($older_ver) of this index, deleting..."
             qresult=$(${curl_cmd} -X DELETE $es_url/$this_older_index)
             if echo "${qresult}" | grep -q  '"acknowledged":true'; then
                 echo "success"
