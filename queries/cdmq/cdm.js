@@ -132,7 +132,7 @@ mSearch = function (url, index, termKeys, values, source, aggs, size, sort) {
       // For queries without aggregation
     } else {
       if (data.responses[i].hits == null) {
-        console.log( 'WARNING! msearch returned data.responses[' + i + '].hits is NULL');
+        console.log('WARNING! msearch returned data.responses[' + i + '].hits is NULL');
         console.log(JSON.stringify(data.responses[i], null, 2));
         return;
       }

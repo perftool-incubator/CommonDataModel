@@ -120,7 +120,7 @@ Object.keys(metric_data.values)
     labels[row] = [];
     labels[row][0] = program.source;
     labels[row][1] = program.type;
-    var subKeys = key.replace(/^</, "").replace(/>$/, "").split('>-<'); // key is the string with breakouts, for example,  "client-2-10" for <cstype>-<csid>-<num> for source: mpstat type: Busy-CPU
+    var subKeys = key.replace(/^</, '').replace(/>$/, '').split('>-<'); // key is the string with breakouts, for example,  "client-2-10" for <cstype>-<csid>-<num> for source: mpstat type: Busy-CPU
     if (subKeys.length == 1 && subKeys[0] == '') {
       subKeys = [];
     }
