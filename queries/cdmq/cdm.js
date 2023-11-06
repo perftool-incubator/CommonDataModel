@@ -3,7 +3,7 @@ var request = require('sync-request');
 var bigQuerySize = 262144;
 
 function getIndexBaseName() {
-  return 'cdmv6dev-';
+  return 'cdmv7dev-';
 }
 
 // Return subtraction of two 1-dimensional arrays
@@ -130,49 +130,56 @@ mSearch = function (url, index, termKeys, values, source, aggs, size, sort) {
       retData[i] = keys;
 
       // For queries without aggregation
-    } else if (Array.isArray(data.responses[i].hits.hits) && data.responses[i].hits.hits.length > 0) {
-      if (
-        data.responses[i].hits.total.value !== data.responses[i].hits.hits.length &&
-        req.size != data.responses[i].hits.hits.length
-      ) {
-        console.log(
-          'WARNING! msearch(size: ' +
-            size +
-            ') data.responses[' +
-            i +
-            '].hits.total.value (' +
-            data.responses[i].hits.total.value +
-            ') and data.responses[' +
-            i +
-            '].hits.hits.length (' +
-            data.responses[i].hits.hits.length +
-            ') are not equal, which means the retured data is probably incomplete'
-        );
-      }
-      var ids = [];
-      data.responses[i].hits.hits.forEach((element) => {
-        // A source of "x.y" <string> must be converted to reference the object
-        // For example, a source (string) of "metric_desc.id" needs to reference metric_desc[id]
-        var obj = element._source;
-        if (source !== '' && source !== null) {
-          // a blank source assumes you want everything returned
-          source.split('.').forEach((thisObj) => {
-            if (typeof obj[thisObj] == 'undefined') {
-              console.log(
-                'WARNING: the requested source for this query [' + source + '] does not exist in the returned data:\n'
-              );
-              console.log(JSON.stringify(obj.null, 2));
-              return;
-            }
-            obj = obj[thisObj];
-          });
-        }
-        ids.push(obj);
-      });
-      retData[i] = ids;
     } else {
-      retData[i] = [];
-      //console.log("WARNING: no hits for request:\nquery:\n" + ndjson + "\nresponse:\n" + JSON.stringify(data));
+      if (data.responses[i].hits == null) {
+        console.log('WARNING! msearch returned data.responses[' + i + '].hits is NULL');
+        console.log(JSON.stringify(data.responses[i], null, 2));
+        return;
+      }
+      if (Array.isArray(data.responses[i].hits.hits) && data.responses[i].hits.hits.length > 0) {
+        if (
+          data.responses[i].hits.total.value !== data.responses[i].hits.hits.length &&
+          req.size != data.responses[i].hits.hits.length
+        ) {
+          console.log(
+            'WARNING! msearch(size: ' +
+              size +
+              ') data.responses[' +
+              i +
+              '].hits.total.value (' +
+              data.responses[i].hits.total.value +
+              ') and data.responses[' +
+              i +
+              '].hits.hits.length (' +
+              data.responses[i].hits.hits.length +
+              ') are not equal, which means the retured data is probably incomplete'
+          );
+        }
+        var ids = [];
+        data.responses[i].hits.hits.forEach((element) => {
+          // A source of "x.y" <string> must be converted to reference the object
+          // For example, a source (string) of "metric_desc.id" needs to reference metric_desc[id]
+          var obj = element._source;
+          if (source !== '' && source !== null) {
+            // a blank source assumes you want everything returned
+            source.split('.').forEach((thisObj) => {
+              if (typeof obj[thisObj] == 'undefined') {
+                console.log(
+                  'WARNING: the requested source for this query [' + source + '] does not exist in the returned data:\n'
+                );
+                console.log(JSON.stringify(obj.null, 2));
+                return;
+              }
+              obj = obj[thisObj];
+            });
+          }
+          ids.push(obj);
+        });
+        retData[i] = ids;
+      } else {
+        retData[i] = [];
+        //console.log("WARNING: no hits for request:\nquery:\n" + ndjson + "\nresponse:\n" + JSON.stringify(data));
+      }
     }
   }
   return retData;
