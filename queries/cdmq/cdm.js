@@ -107,12 +107,10 @@ mSearch = function (url, index, termKeys, values, source, aggs, size, sort) {
     if (aggs !== null) {
       req['aggs'] = aggs;
     }
-    //console.log("Q:\n" + JSON.stringify(req, null, 2));
     ndjson += '{}\n' + JSON.stringify(req) + '\n';
   }
   var resp = esRequest(url, index + '/_doc/_msearch', ndjson);
   var data = JSON.parse(resp.getBody());
-  //console.log("data:\n" + JSON.stringify(data, null, 2));
 
   // Unpack response and organize in array of arrays
   var retData = [];
@@ -122,6 +120,12 @@ mSearch = function (url, index, termKeys, values, source, aggs, size, sort) {
       typeof data.responses[i].aggregations !== 'undefined' &&
       Array.isArray(data.responses[i].aggregations.source.buckets)
     ) {
+      console.log(JSON.stringify(data.responses[i].aggregations, null, 2));
+      if (data.responses[i].aggregations.source.sum_other_doc_count > 0) {
+        console.log(
+          'WARNING! msearch aggregation returned sum_other_doc_count > 0, which means not all terms were returned.  This query needs a larger "size"'
+        );
+      }
       // Assemble the keys from the bucket for this query (i)
       var keys = [];
       data.responses[i].aggregations.source.buckets.forEach((element) => {
@@ -243,7 +247,7 @@ mgetMetricNames = function (url, runIds, sources, types) {
     ['run.id', 'metric_desc.source', 'metric_desc.type'],
     [runIds, sources, types],
     '',
-    { source: { terms: { field: 'metric_desc.names-list' } } },
+    { source: { terms: { field: 'metric_desc.names-list', size: bigQuerySize } } },
     0
   );
 };
