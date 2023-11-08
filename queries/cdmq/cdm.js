@@ -120,7 +120,6 @@ mSearch = function (url, index, termKeys, values, source, aggs, size, sort) {
       typeof data.responses[i].aggregations !== 'undefined' &&
       Array.isArray(data.responses[i].aggregations.source.buckets)
     ) {
-      console.log(JSON.stringify(data.responses[i].aggregations, null, 2));
       if (data.responses[i].aggregations.source.sum_other_doc_count > 0) {
         console.log(
           'WARNING! msearch aggregation returned sum_other_doc_count > 0, which means not all terms were returned.  This query needs a larger "size"'
