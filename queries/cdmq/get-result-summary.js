@@ -272,6 +272,12 @@ runIds.forEach((runId) => {
             iterPrimaryPeriodRanges[i][j].end,
           noHtml
         );
+        logOutput(
+          '          period length: ' +
+            (iterPrimaryPeriodRanges[i][j].end - iterPrimaryPeriodRanges[i][j].begin) / 1000 +
+            ' seconds',
+          noHtml
+        );
         //for (var k=0; k<benchmarks.length; k++) {
         var primaryMetrics = list(iterPrimaryMetrics[i]);
         for (var k = 0; k < primaryMetrics.length; k++) {
