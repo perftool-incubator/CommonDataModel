@@ -109,7 +109,7 @@ mSearch = function (url, index, termKeys, values, source, aggs, size, sort) {
     }
     ndjson += '{}\n' + JSON.stringify(req) + '\n';
   }
-  var resp = esRequest(url, index + '/_doc/_msearch', ndjson);
+  var resp = esRequest(url, index + '/_msearch', ndjson);
   var data = JSON.parse(resp.getBody());
 
   // Unpack response and organize in array of arrays
@@ -638,7 +638,7 @@ getIterMetrics = function (url, iterId) {
 deleteDocs = function (url, docTypes, q) {
   docTypes.forEach((docType) => {
     //console.log("deleteDocs() query:\n" + JSON.stringify(q, null, 2));
-    var resp = esRequest(url, docType + '/_doc/_delete_by_query', q);
+    var resp = esRequest(url, docType + '/_delete_by_query', q);
     var data = JSON.parse(resp.getBody());
   });
 };
@@ -1063,7 +1063,7 @@ getIters = function (
   });
 
   if (ndjson != '') {
-    var resp = esRequest(url, 'tag/_doc/_msearch', ndjson);
+    var resp = esRequest(url, 'tag/_msearch', ndjson);
     var data = JSON.parse(resp.getBody());
     var runIds = [];
     data.responses.forEach((response) => {
@@ -1076,7 +1076,7 @@ getIters = function (
     var intersectedRunIds = intersectAllArrays(runIds);
 
     if (ndjson2 != '') {
-      var resp2 = esRequest(url, 'tag/_doc/_msearch', ndjson2);
+      var resp2 = esRequest(url, 'tag/_msearch', ndjson2);
       var data2 = JSON.parse(resp2.getBody());
       data2.responses.forEach((response) => {
         response.hits.hits.forEach((run) => {
@@ -1129,7 +1129,7 @@ getIters = function (
 
   var iterIdsFromParam = [];
   if (ndjson != '') {
-    var resp = esRequest(url, 'param/_doc/_msearch', ndjson);
+    var resp = esRequest(url, 'param/_msearch', ndjson);
     var data = JSON.parse(resp.getBody());
     var iterationIds = [];
     data.responses.forEach((response) => {
@@ -1142,7 +1142,7 @@ getIters = function (
     iterIdsFromParam = intersectAllArrays(iterationIds);
 
     if (ndjson2 != '') {
-      var resp2 = esRequest(url, 'tag/_doc/_msearch', ndjson2);
+      var resp2 = esRequest(url, 'tag/_msearch', ndjson2);
       var data2 = JSON.parse(resp2.getBody());
       data2.responses.forEach((response) => {
         response.hits.hits.forEach((hit) => {
@@ -1443,7 +1443,7 @@ exports.getMetricSources = function (url, runId) {
     size: 0
   };
   //console.log("Q:\n" + JSON.stringify(q, null, 2));
-  var resp = esRequest(url, 'metric_desc/_doc/_search', q);
+  var resp = esRequest(url, 'metric_desc/_search', q);
   var data = JSON.parse(resp.getBody());
   if (Array.isArray(data.aggregations.source.buckets)) {
     var sources = [];
@@ -1456,7 +1456,7 @@ exports.getMetricSources = function (url, runId) {
 
 exports.getDocCount = function (url, runId, docType) {
   var q = { query: { bool: { filter: [{ term: { 'run.id': runId } }] } } };
-  var resp = esRequest(url, docType + '/_doc/_count', q);
+  var resp = esRequest(url, docType + '/_count', q);
   var data = JSON.parse(resp.getBody());
   return data.count;
 };
@@ -1595,7 +1595,7 @@ mgetMetricIdsFromTerms = function (url, termsSets) {
       });
   }
   //console.log("mgetMetricIdsFromTerms(): ndjson:\n" + ndjson + "\n");
-  var resp = esRequest(url, 'metric_desc/_doc/_msearch', ndjson);
+  var resp = esRequest(url, 'metric_desc/_msearch', ndjson);
   var data = JSON.parse(resp.getBody());
   if (totalReqs != data.responses.length) {
     console.log('mgetMetricIdsFromTerms(): ERROR, number of _msearch responses did not match number of requests');
@@ -1701,7 +1701,7 @@ getMetricGroupsFromBreakouts = function (url, sets) {
     ndjson += JSON.stringify(index) + '\n';
     ndjson += JSON.stringify(q) + '\n';
   });
-  var resp = esRequest(url, 'metric_desc/_doc/_msearch', ndjson);
+  var resp = esRequest(url, 'metric_desc/_msearch', ndjson);
   var data = JSON.parse(resp.getBody());
 
   var metricGroupIdsByLabelSets = [];
@@ -1895,7 +1895,7 @@ getMetricDataFromIdsSets = function (url, sets, metricGroupIdsByLabelSets) {
       });
   }
 
-  var resp = esRequest(url, 'metric_data/_doc/_msearch', ndjson);
+  var resp = esRequest(url, 'metric_data/_msearch', ndjson);
   var data = JSON.parse(resp.getBody());
   var elements = data.responses.length;
 
