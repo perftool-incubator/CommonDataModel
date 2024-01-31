@@ -18,7 +18,7 @@ function list(val) {
 
 program
   .version('0.1.0')
-  .option('--url <host:port>', 'The host and port of the Elasticsearch instance')
+  .option('--url <host:port>', 'The host and port of the OpenSearch instance')
   .option('--begin [uint]', 'Timestamp in epochtime_ms')
   .option('--end [uint]', 'Timestamp in epochtime_ms')
   .option('--resolution [uint]', 'The number of datapoints to produce in a data-series')

@@ -4,7 +4,7 @@ var program = require('commander');
 program
   .version('0.1.0')
   .option('--run <run ID>')
-  .option('--url <host:port>', 'The host and port of the Elasticsearch instance', 'localhost:9200')
+  .option('--url <host:port>', 'The host and port of the OpenSearch instance', 'localhost:9200')
   .parse(process.argv);
 
 async function waitFor(docTypes) {
@@ -16,7 +16,7 @@ async function waitFor(docTypes) {
     });
     let result = await promise;
 
-    console.log('\nConfirming all documents are in deleted elasticsearch (attempt #' + numAttempts + ')');
+    console.log('\nConfirming all documents are in deleted OpenSearch (attempt #' + numAttempts + ')');
     for (let i = 0; i < docTypes.length; i++) {
       var thisNumDocs = cdm.getDocCount(program.url, program.run, docTypes[i]);
       console.log('  ' + docTypes[i] + ': doc count: ' + thisNumDocs);
