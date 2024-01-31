@@ -1,9 +1,9 @@
 # cdmq
 
 ## Introduction
-The contents of this directory contain a collection of scripts in Javascript intended to be executed with [node.js](https://nodejs.org).  These scripts get data from an elasticsearch instance.  The data must be in Common Data Format. which is documented in this project under [templates](../templates).  The scripts here are meant to help inspect, compare, and export data from benchmarks and performance & resource-utilization tools, in order to report and investigate performance.
+The contents of this directory contain a collection of scripts in Javascript intended to be executed with [node.js](https://nodejs.org).  These scripts get data from an OpenSearch instance.  The data must be in Common Data Format. which is documented in this project under [templates](../templates).  The scripts here are meant to help inspect, compare, and export data from benchmarks and performance & resource-utilization tools, in order to report and investigate performance.
 
-In order to generate this data, you must run a benchmark via automation framework which uses the Common Data Format and index that data into elasticsearch.  One of those automation frameworks is the [crucible](https://github.com/perftool-incubator/crucible) project.  A subproject of crucible, [crucible-examples](https://github.com/perftool-incubator/crucible-examples), includes scenarios to run some of these benchmarks.
+In order to generate this data, you must run a benchmark via automation framework which uses the Common Data Format and index that data into OpenSearch.  One of those automation frameworks is the [crucible](https://github.com/perftool-incubator/crucible) project.  A subproject of crucible, [crucible-examples](https://github.com/perftool-incubator/crucible-examples), includes scenarios to run some of these benchmarks.
 
 ## Terms
 Many of the scripts refer to different terms we associate with either running a benchmark or examining the resulting data, and these terms are not always universally known or agreed upon for specific benchmarks (like uperf and fio), or even benchmark automation frameworks,  Nevertheless, the CommonDataModel project has adopted the following terms, which originate from the crucible project.  You will need to become familiar with these terms in order to use these scripts:
@@ -228,7 +228,7 @@ So, let's use `type`, which breaks out the Gbps by virtual and physical interfac
 
     # node ./get-metric-data.js --period 4F1014D6-AD33-11EC-94E3-ADE96E3275F7 --source sar-net --type L2-Gbps --breakout csid,cstype,type
     Checking for httpd...appears to be running
-    Checking for elasticsearch...appears to be running
+    Checking for OpenSearch...appears to be running
     {
       "name": "sar-net",
       "type": "L2-Gbps",
@@ -387,7 +387,7 @@ So far all of the metrics have been represented as a single value for a specific
 
     # node ./get-metric-data.js --period 4F1014D6-AD33-11EC-94E3-ADE96E3275F7 --source sar-net --type L2-Gbps --breakout csid=1,cstype=worker,type=physical,direction=tx,dev --filter gt:0.01 --resolution 10
     Checking for httpd...appears to be running
-    Checking for elasticsearch...appears to be running
+    Checking for OpenSearch...appears to be running
     {
       "name": "sar-net",
       "type": "L2-Gbps",

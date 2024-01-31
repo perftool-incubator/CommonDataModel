@@ -19,7 +19,7 @@ function list(val) {
 
 program
   .version('0.1.0')
-  .option('--url <host:port>', 'The host and port of the Elasticsearch instance', 'localhost:9200')
+  .option('--url <host:port>', 'The host and port of the OpenSearch instance', 'localhost:9200')
   .option('--run <uuid>', 'The UUID from the run')
   .option('--period <uuid>', 'The UUID from the benchmark-iteration-sample-period')
   .option('--source <name>', 'The metric source, like a tool or benchmark name (sar, fio)')

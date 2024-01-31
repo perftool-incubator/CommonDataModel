@@ -6,7 +6,7 @@ When contributing, apply this project's JavaScript standard style, otherwise it 
 
 - NodeJS 20.7.0
 - NPM
-- ElasticSearch 7.17
+- OpenSearch 2.x
 
 ## Standardizing JavaScript Style
 

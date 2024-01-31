@@ -18,7 +18,7 @@ function list(val) {
 
 program
   .version('0.1.0')
-  .option('--url <host:port>', 'The host and port of the Elasticsearch instance')
+  .option('--url <host:port>', 'The host and port of the OpenSearch instance')
   .option('--period <period ID>', 'The UUID of the period document')
   .option('--source <metric source>', 'A metric source, like iostat or fio')
   .option('--type  <metric type>', 'A metric type, like iops or Gbps')
