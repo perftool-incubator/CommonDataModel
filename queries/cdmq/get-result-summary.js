@@ -148,7 +148,6 @@ runIds.forEach((runId) => {
     logOutput(typeList, program.outputFormat);
   }
 
-
   // build the sets for the mega-query
   var metricDataSetsChunks = [];
   var batchedQuerySize = 10;
@@ -200,9 +199,6 @@ runIds.forEach((runId) => {
     chunkNum++;
     sets = [];
   }
-
-//  // do the mega-query
-//  var metricDataSets = cdm.getMetricDataSets(program.url, sets);
 
   // output the results
   var data = {};
