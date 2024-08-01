@@ -148,9 +148,13 @@ runIds.forEach((runId) => {
     logOutput(typeList, program.outputFormat);
   }
 
+
   // build the sets for the mega-query
+  var metricDataSetsChunks = [];
+  var batchedQuerySize = 10;
   var benchmarks = benchName.split(',');
   var sets = [];
+  var chunkNum = 0;
   for (var i = 0; i < benchIterations.length; i++) {
     for (var j = 0; j < iterSampleIds[i].length; j++) {
       var primaryMetrics = list(iterPrimaryMetrics[i]);
@@ -181,12 +185,24 @@ runIds.forEach((runId) => {
           breakout: []
         };
         sets.push(set);
+        if (sets.length == batchedQuerySize) {
+          // Submit a chunk of the query and save the result
+          metricDataSetsChunks[chunkNum] = cdm.getMetricDataSets(program.url, sets);
+          chunkNum++;
+          sets = [];
+        }
       }
     }
   }
+  if (sets.length > 0) {
+    // Submit a chunk of the query and save the result
+    metricDataSetsChunks[chunkNum] = cdm.getMetricDataSets(program.url, sets);
+    chunkNum++;
+    sets = [];
+  }
 
-  // do the mega-query
-  var metricDataSets = cdm.getMetricDataSets(program.url, sets);
+//  // do the mega-query
+//  var metricDataSets = cdm.getMetricDataSets(program.url, sets);
 
   // output the results
   var data = {};
@@ -282,7 +298,9 @@ runIds.forEach((runId) => {
         var primaryMetrics = list(iterPrimaryMetrics[i]);
         for (var k = 0; k < primaryMetrics.length; k++) {
           var sourceType = primaryMetrics[k].split('::');
-          msampleVal = parseFloat(metricDataSets[idx].values[''][0].value);
+          var thisChunk = Math.floor(idx / batchedQuerySize);
+          var thisIdx = idx % batchedQuerySize;
+          msampleVal = parseFloat(metricDataSetsChunks[thisChunk][thisIdx].values[''][0].value);
           if (allBenchMsampleVals[k] == null) {
             allBenchMsampleVals[k] = [];
           }
