@@ -1822,9 +1822,9 @@ getMetricDataFromIdsSets = function (url, sets, metricGroupIdsByLabelSets) {
           var index = JSON.parse(indexjson);
           var req = JSON.parse(reqjson);
           ndjson[ndIdx] += JSON.stringify(index) + '\n';
-	  ndjsonLineNum++;
+          ndjsonLineNum++;
           ndjson[ndIdx] += JSON.stringify(req) + '\n';
-	  ndjsonLineNum++;
+          ndjsonLineNum++;
           // This second request is for the total weight of the previous weighted average request.
           // We need this because we are going to recompute the weighted average by adding
           // a few more documents that are partially outside the time domain.
@@ -1849,9 +1849,9 @@ getMetricDataFromIdsSets = function (url, sets, metricGroupIdsByLabelSets) {
           index = JSON.parse(indexjson);
           req = JSON.parse(reqjson);
           ndjson[ndIdx] += JSON.stringify(index) + '\n';
-	  ndjsonLineNum++;
+          ndjsonLineNum++;
           ndjson[ndIdx] += JSON.stringify(req) + '\n';
-	  ndjsonLineNum++;
+          ndjsonLineNum++;
           // This third request is for documents that had its begin during or before the time range, but
           // its end was after the time range.
           indexjson = '{"index": "' + getIndexBaseName() + 'metric_data' + '" }\n';
