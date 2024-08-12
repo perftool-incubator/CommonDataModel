@@ -61,48 +61,43 @@ intersectAllArrays = function (a2D) {
 };
 exports.intersectAllArrays = intersectAllArrays;
 
-
 function esJsonArrRequest(host, idx, jsonArr) {
   var url = 'http://' + host + '/' + getIndexBaseName() + idx;
   var max = 16384;
   var idx = 0;
   var req_count = 0;
   var q_count = 0;
-  var ndjson = "";
+  var ndjson = '';
   var responses = [];
   // Process queries in chunks no larger than 'max' chars
   while (idx < jsonArr.length) {
     // Add two jsons/lines at a time, as the first json is the index and the second is the query
-    if ((ndjson.length + jsonArr[idx].length + jsonArr[idx+1].length) < max) {
+    if (ndjson.length + jsonArr[idx].length + jsonArr[idx + 1].length < max) {
       q_count++;
-      ndjson += jsonArr[idx] + '\n' +jsonArr[idx+1] + '\n';
+      ndjson += jsonArr[idx] + '\n' + jsonArr[idx + 1] + '\n';
       idx += 2;
     } else {
       req_count++;
       q_count = 0;
-      var resp = request('POST', url,
-        {
-          body: ndjson,
-          headers: { 'Content-Type': 'application/json' }
-        }
-        );
-      var data = JSON.parse(resp.getBody());
-      responses.push(...data.responses);
-      ndjson = "";
-    }
-  }
-  if (ndjson != "") {
-    req_count++;
-    q_count = 0;
-    var resp = request('POST', url,
-      {
+      var resp = request('POST', url, {
         body: ndjson,
         headers: { 'Content-Type': 'application/json' }
-      }
-      );
+      });
+      var data = JSON.parse(resp.getBody());
+      responses.push(...data.responses);
+      ndjson = '';
+    }
+  }
+  if (ndjson != '') {
+    req_count++;
+    q_count = 0;
+    var resp = request('POST', url, {
+      body: ndjson,
+      headers: { 'Content-Type': 'application/json' }
+    });
     var data = JSON.parse(resp.getBody());
     responses.push(...data.responses);
-    ndjson = "";
+    ndjson = '';
   }
   return responses;
 }
@@ -162,10 +157,7 @@ mSearch = function (url, index, termKeys, values, source, aggs, size, sort) {
   var retData = [];
   for (var i = 0; i < responses.length; i++) {
     // For queries with aggregation
-    if (
-      typeof responses[i].aggregations !== 'undefined' &&
-      Array.isArray(responses[i].aggregations.source.buckets)
-    ) {
+    if (typeof responses[i].aggregations !== 'undefined' && Array.isArray(responses[i].aggregations.source.buckets)) {
       if (responses[i].aggregations.source.sum_other_doc_count > 0) {
         console.log(
           'WARNING! msearch aggregation returned sum_other_doc_count > 0, which means not all terms were returned.  This query needs a larger "size"'
@@ -1640,7 +1632,13 @@ mgetMetricIdsFromTerms = function (url, termsSets) {
   //console.log("jsonArr.length: " + jsonArr.length);
   var responses = esJsonArrRequest(url, 'metric_desc/_msearch', jsonArr);
   if (totalReqs != responses.length) {
-    console.log('mgetMetricIdsFromTerms(): ERROR, number of _msearch responses (' + responses.length + ') did not match number of requests (' + totalReqs + ')');
+    console.log(
+      'mgetMetricIdsFromTerms(): ERROR, number of _msearch responses (' +
+        responses.length +
+        ') did not match number of requests (' +
+        totalReqs +
+        ')'
+    );
     return;
   }
   if (responses == null) {
