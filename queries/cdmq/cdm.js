@@ -71,8 +71,16 @@ function esJsonArrRequest(host, idx, jsonArr) {
   var responses = [];
   // Process queries in chunks no larger than 'max' chars
   while (idx < jsonArr.length) {
-    // Add two jsons/lines at a time, as the first json is the index and the second is the query
-    if (ndjson.length + jsonArr[idx].length + jsonArr[idx + 1].length < max) {
+    // Add the first request (2 lines) even if it exceeds our limit (we don't really have a choice)
+    // The limit we have is likely much lower than what can be handled, but if this becomes a
+    // problem, we'll have to look at either an alternate way to submit a huge request, or we will
+    // have to break up the request into mulitple requests with fewer metric_id's, then sum the
+    // responses.
+    q_count++;
+    ndjson += jsonArr[idx] + '\n' + jsonArr[idx + 1] + '\n';
+    idx += 2;
+    // Add more requests if are any left and the max will not be exceeded
+    if (idx < jsonArr.length && ndjson.length + jsonArr[idx].length + jsonArr[idx + 1].length < max) {
       q_count++;
       ndjson += jsonArr[idx] + '\n' + jsonArr[idx + 1] + '\n';
       idx += 2;
@@ -88,6 +96,7 @@ function esJsonArrRequest(host, idx, jsonArr) {
       ndjson = '';
     }
   }
+  // Max was not exceeded but there are some requests that have not been submitted
   if (ndjson != '') {
     req_count++;
     q_count = 0;
