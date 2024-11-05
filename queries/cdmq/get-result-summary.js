@@ -31,7 +31,7 @@ if (program.email) {
   values.push([program.email]);
 }
 if (program.run) {
-  termKeys.push('run.id');
+  termKeys.push('run.run-uuid');
   values.push([program.run]);
 }
 if (program.harness) {
@@ -59,7 +59,7 @@ function logOutput(str, formats) {
   }
 }
 
-var runIds = cdm.mSearch(program.url, 'run', termKeys, values, 'run.id', null, 1000)[0];
+var runIds = cdm.mSearch(program.url, 'run', termKeys, values, 'run.run-uuid', null, 1000)[0];
 if (runIds == undefined || runIds.length == 0) {
   console.log('The run ID could not be found, exiting');
   process.exit(1);
@@ -77,7 +77,6 @@ runIds.forEach((runId) => {
   var benchmarks = list(benchName);
   logOutput('  benchmark: ' + benchName, program.outputFormat);
   var benchIterations = cdm.getIterations(program.url, runId);
-  //console.log("benchIterations:\n" + JSON.stringify(benchIterations, null, 2));
   if (benchIterations.length == 0) {
     console.log('There were no iterations found, exiting');
     process.exit(1);

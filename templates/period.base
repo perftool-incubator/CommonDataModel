@@ -1,6 +1,6 @@
           "period": {
             "properties": {
-              "id" : { "type": "keyword" },
+              "period-uuid" : { "type": "keyword" },
               "begin" : { "type" : "date" },
               "end" : { "type" : "date" },
               "name" : { "type": "keyword" },

@@ -1,7 +1,9 @@
           "param": {
             "properties": {
+              "param-uuid": { "type": "keyword" },
               "id": { "type": "keyword" },
               "arg": { "type": "keyword" },
+              "role": { "type": "keyword" },
               "val": { "type": "keyword" }
             }
           },
