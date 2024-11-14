@@ -1110,7 +1110,7 @@ getIters = function (
     responses.forEach((response) => {
       var theseRunIds = [];
       response.hits.hits.forEach((run) => {
-        theseRunIds.push(run._source.run.run-uuid);
+        theseRunIds.push(run._source.run['run-uuid']);
       });
       runIds.push(theseRunIds);
     });
@@ -1120,8 +1120,8 @@ getIters = function (
       var responses2 = esJsonArrRequest(url, 'tag/_msearch', jsonArr2);
       responses2.forEach((response) => {
         response.hits.hits.forEach((run) => {
-          if (intersectedRunIds.includes(run._source.run.run-uuid)) {
-            var index = intersectedRunIds.indexOf(run._source.run.run-uuid);
+          if (intersectedRunIds.includes(run._source.run['run-uuid'])) {
+            var index = intersectedRunIds.indexOf(run._source.run['run-uuid']);
             if (index != -1) {
               intersectedRunIds.splice(index, 1);
             }
@@ -1175,7 +1175,7 @@ getIters = function (
     responses.forEach((response) => {
       var theseIterationIds = [];
       response.hits.hits.forEach((iteration) => {
-        theseIterationIds.push(iteration._source.iteration.iteration-uuid);
+        theseIterationIds.push(iteration._source.iteration['iteration-uuid']);
       });
       iterationIds.push(theseIterationIds);
     });
@@ -1186,8 +1186,8 @@ getIters = function (
       var responses2 = JSON.parse(resp2.getBody());
       responses2.forEach((response) => {
         response.hits.hits.forEach((hit) => {
-          if (iterIdsFromParam.includes(hit._source.iteration.iteration-uuid)) {
-            var index = iterIdsFromParam.indexOf(hit._source.iteration.iteration-uuid);
+          if (iterIdsFromParam.includes(hit._source.iteration['iteration-uuid'])) {
+            var index = iterIdsFromParam.indexOf(hit._source.iteration['iteration-uuid']);
             if (index !== -1) {
               iterIdsFromParam.splice(index, 1);
             }
@@ -1221,7 +1221,6 @@ getIters = function (
   // Now we can add any iterations from --add-runs and --add-iterations.
   // These options are not subject to the tags and params filters.
   if (typeof addRuns != 'undefined' && addRuns != []) {
-    //var ids = getIterations(url, [{ "terms": { "run.run-uuid": addRuns }}]);
     var ids = getIterations(url, addRuns);
     ids.forEach((id) => {
       if (!allIterIds.includes(id)) {
