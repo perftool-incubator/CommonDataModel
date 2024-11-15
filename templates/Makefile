@@ -23,7 +23,7 @@ metric_desc.json	: run.base iteration.base sample.base period.base metric_desc.b
 		  ./build.sh `cat ../VERSION` metric_desc period sample iteration run
 
 metric_data.json	: metric_data.base
-		  ./build.sh `cat ../VERSION` metric_data
+		  ./build.sh `cat ../VERSION` metric_data run_micro
 
-clean		: 
+clean		:
 		  /bin/rm -f *.json

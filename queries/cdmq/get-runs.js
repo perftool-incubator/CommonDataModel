@@ -25,7 +25,7 @@ if (program.email) {
   values.push([program.email]);
 }
 if (program.run) {
-  termKeys.push('run.id');
+  termKeys.push('run.run-uuid');
   values.push([program.run]);
 }
 if (program.harness) {
@@ -33,4 +33,4 @@ if (program.harness) {
   values.push([program.harness]);
 }
 
-console.log(JSON.stringify(cdm.mSearch(program.url, 'run', termKeys, values, 'run.id', 1000)[0]));
+console.log(JSON.stringify(cdm.mSearch(program.url, 'run', termKeys, values, 'run.run-uuid', 1000)[0]));

@@ -1,6 +1,6 @@
         "run": {
           "properties": {
-            "id": { "type": "keyword" },
+            "run-uuid": { "type": "keyword" },
             "begin": { "type": "date" },
             "end": { "type": "date" },
             "harness": { "type": "keyword" },

@@ -10,7 +10,7 @@ program
 
 var searchTerms = [];
 if (program.run) {
-  searchTerms.push({ term: { 'run.id': program.run } });
+  searchTerms.push({ term: { 'run.run-uuid': program.run } });
 }
 if (program.email) {
   searchTerms.push({ term: { 'run.user.email': program.email } });

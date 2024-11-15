@@ -1,6 +1,6 @@
           "metric_desc": {
             "properties": {
-              "id": { "type": "keyword" },
+              "metric_desc-uuid": { "type": "keyword" },
               "class": { "type": "keyword" },
               "type": { "type": "keyword" },
               "source": { "type": "keyword" },
@@ -114,7 +114,13 @@
                   "dport": { "type": "keyword" },
                   "mark": { "type": "keyword" },
                   "output": { "type": "keyword" },
-                  "use": { "type": "keyword" }
+                  "use": { "type": "keyword" },
+                  "step": { "type": "keyword" },
+                  "epoch": { "type": "keyword" },
+                  "batch": { "type": "keyword" },
+                  "slot": { "type": "keyword" },
+                  "blade": { "type": "keyword" },
+                  "rank": { "type": "keyword" }
                 }
               },
               "value-format": { "type": "keyword" },

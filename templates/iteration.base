@@ -1,6 +1,6 @@
           "iteration": {
             "properties": {
-              "id": { "type": "keyword" },
+              "iteration-uuid": { "type": "keyword" },
               "num": { "type": "unsigned_long" },
               "status": { "type": "keyword" },
               "path": { "type": "keyword" },

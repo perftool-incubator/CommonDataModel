@@ -1,6 +1,6 @@
       "metric_desc": {
         "properties": {
-          "id": { "type": "keyword" }
+          "metric_desc-uuid": { "type": "keyword" }
         }
       },
       "metric_data": {
@@ -10,4 +10,4 @@
           "end": { "type" : "date" },
           "duration": { "type": "long" }
         }
-      }
+      },
