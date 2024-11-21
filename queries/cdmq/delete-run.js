@@ -32,12 +32,10 @@ async function waitFor(docTypes) {
   }
 }
 
-var nonMetricDocTypes = ['run', 'iteration', 'sample', 'period', 'param', 'tag'];
-var remainingDocTypes = nonMetricDocTypes;
+var allDocTypes = ['run', 'iteration', 'sample', 'period', 'param', 'tag', 'metric_desc', 'metric_data'];
 var q = {};
 if (program.run) {
   q = { query: { bool: { filter: [{ term: { 'run.run-uuid': program.run } }] } } };
 }
-cdm.deleteMetrics(program.url, program.run);
-cdm.deleteDocs(program.url, nonMetricDocTypes, q);
-waitFor(nonMetricDocTypes);
+cdm.deleteDocs(program.url, allDocTypes, q);
+waitFor(allDocTypes);
