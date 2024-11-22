@@ -10,6 +10,7 @@ program
 async function waitFor(docTypes) {
   var numAttempts = 1;
   var maxAttempts = 10;
+  var remainingDocTypes = docTypes;
   while (numAttempts <= maxAttempts && docTypes.length > 0) {
     let promise = new Promise((resolve, reject) => {
       setTimeout(() => resolve('done!'), 2000);
