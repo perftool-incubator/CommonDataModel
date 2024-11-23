@@ -10,6 +10,7 @@ program
 async function waitFor(docTypes) {
   var numAttempts = 1;
   var maxAttempts = 10;
+  var remainingDocTypes = docTypes;
   while (numAttempts <= maxAttempts && docTypes.length > 0) {
     let promise = new Promise((resolve, reject) => {
       setTimeout(() => resolve('done!'), 2000);
@@ -32,12 +33,10 @@ async function waitFor(docTypes) {
   }
 }
 
-var nonMetricDocTypes = ['run', 'iteration', 'sample', 'period', 'param', 'tag'];
-var remainingDocTypes = nonMetricDocTypes;
+var allDocTypes = ['run', 'iteration', 'sample', 'period', 'param', 'tag', 'metric_desc', 'metric_data'];
 var q = {};
 if (program.run) {
   q = { query: { bool: { filter: [{ term: { 'run.run-uuid': program.run } }] } } };
 }
-cdm.deleteMetrics(program.url, program.run);
-cdm.deleteDocs(program.url, nonMetricDocTypes, q);
-waitFor(nonMetricDocTypes);
+cdm.deleteDocs(program.url, allDocTypes, q);
+waitFor(allDocTypes);
