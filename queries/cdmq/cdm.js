@@ -680,7 +680,7 @@ getIterMetrics = function (url, iterId) {
 deleteDocs = function (url, docTypes, q) {
   docTypes.forEach((docType) => {
     //console.log("deleteDocs() query:\n" + JSON.stringify(q, null, 2));
-    var resp = esRequest(url, docType + '/_delete_by_query', q);
+    var resp = esRequest(url, docType + '/_delete_by_query?scroll_size=10000', q);
     var data = JSON.parse(resp.getBody());
   });
 };
