@@ -679,35 +679,10 @@ getIterMetrics = function (url, iterId) {
 
 deleteDocs = function (url, docTypes, q) {
   docTypes.forEach((docType) => {
-    //console.log("deleteDocs() query:\n" + JSON.stringify(q, null, 2));
-    var resp = esRequest(url, docType + '/_delete_by_query', q);
-    var data = JSON.parse(resp.getBody());
+    var resp = esRequest(url, docType + '/_delete_by_query?wait_for_completion=false', q);
   });
 };
 exports.deleteDocs = deleteDocs;
-
-// Delete all the metric (metric_desc and metric_data) for a run
-// TODO: probably should implment mDeleteMetrics with array of runIds for input
-deleteMetrics = function (url, runId) {
-  var ids = getMetricDescs(url, runId);
-  //console.log("There are " + ids.length + " metric_desc docs");
-  var q = { query: { bool: { filter: { terms: { 'metric_desc.metric_desc-uuid': [] } } } } };
-  ids.forEach((element) => {
-    var term = { 'metric_desc.metric_desc-uuid': element };
-    q['query']['bool']['filter']['terms']['metric_desc.metric_desc-uuid'].push(element);
-    if (q['query']['bool']['filter']['terms']['metric_desc.metric_desc-uuid'].length >= 1000) {
-      //console.log("deleting " + q['query']['bool']['filter']['terms']["metric_desc.metric_desc-uuid"].length + " metrics");
-      deleteDocs(url, ['metric_data', 'metric_desc'], q);
-      q['query']['bool']['filter']['terms']['metric_desc.metric_desc-uuid'] = [];
-    }
-  });
-  var remaining = q['query']['bool']['filter']['terms']['metric_desc.metric_desc-uuid'].length;
-  if (remaining > 0) {
-    //console.log("deleting " + q['query']['bool']['filter']['terms']["metric_desc.metric_desc-uuid"].length + " metrics");
-    deleteDocs(url, ['metric_data', 'metric_desc'], q);
-  }
-};
-exports.deleteMetrics = deleteMetrics;
 
 // For comparing N iterations across 1 or more runs.
 buildIterTree = function (
