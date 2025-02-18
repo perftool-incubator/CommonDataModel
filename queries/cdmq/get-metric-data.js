@@ -12,14 +12,30 @@
 var cdm = require('./cdm');
 var program = require('commander');
 var sprintf = require('sprintf-js').sprintf;
+var instances = []; // opensearch instances
 
 function list(val) {
   return val.split(',');
 }
 
+function save_host(host) {
+    var host_info = { 'host': host, 'header': { 'Content-Type': 'application/json' } };
+    instances.push(host_info);
+}
+
+function save_userpass(userpass) {
+    if (instances.length == 0) {
+        console.log("You must specify a --url before a --userpass");
+        process.exit(1);
+    }
+    instances[instances.length - 1]['header'] = { 'Content-Type': 'application/json', 'Authorization' : 'Basic ' + btoa(userpass) };
+}
+
+
 program
   .version('0.1.0')
-  .option('--url <host:port>', 'The host and port of the OpenSearch instance', 'localhost:9200')
+  .option('--host <host[:port]>', 'The host and optional port of the OpenSearch instance', save_host)
+  .option('--userpass <user:pass>', 'The user and password for the most recent --host', save_userpass)
   .option('--run <uuid>', 'The UUID from the run')
   .option('--period <uuid>', 'The UUID from the benchmark-iteration-sample-period')
   .option('--source <name>', 'The metric source, like a tool or benchmark name (sar, fio)')
@@ -67,8 +83,11 @@ program
   )
   .parse(process.argv);
 
+console.log("instances: " + JSON.stringify(instances, null, 2));
+var instance = findInstanceFromPeriod(instances, program.period);
+
 metric_data = cdm.getMetricData(
-  program.url,
+  instance,
   program.run,
   program.period,
   program.source,
