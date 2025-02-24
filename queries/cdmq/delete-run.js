@@ -1,11 +1,27 @@
 var cdm = require('./cdm');
 var program = require('commander');
+var instances = []; // opensearch instances
+
+function save_host(host) {
+    var host_info = { 'host': host, 'header': { 'Content-Type': 'application/json' } };
+    instances.push(host_info);
+}
+
+function save_userpass(userpass) {
+    if (instances.length == 0) {
+        console.log("You must specify a --url before a --userpass");
+        process.exit(1);
+    }
+    instances[instances.length - 1]['header'] = { 'Content-Type': 'application/json', 'Authorization' : 'Basic ' + btoa(userpass) };
+}
 
 program
   .version('0.1.0')
   .option('--run <run ID>')
-  .option('--url <host:port>', 'The host and port of the OpenSearch instance', 'localhost:9200')
+  .option('--host <host[:port]>', 'The host and optional port of the OpenSearch instance', save_host)
+  .option('--userpass <user:pass>', 'The user and password for the most recent --host', save_userpass)
   .parse(process.argv);
+
 
 async function waitFor(docTypes) {
   var numAttempts = 1;
@@ -23,7 +39,7 @@ async function waitFor(docTypes) {
     console.log('\nConfirming all documents are in deleted OpenSearch (attempt #' + numAttempts + ')');
     totalDocCount = 0;
     for (let i = 0; i < docTypes.length; i++) {
-      var thisNumDocs = cdm.getDocCount(program.url, program.run, docTypes[i]);
+      var thisNumDocs = cdm.getDocCount(instance, program.run, docTypes[i]);
       console.log('  ' + docTypes[i] + ': doc count: ' + thisNumDocs);
       totalDocCount += thisNumDocs;
 
@@ -49,8 +65,18 @@ async function waitFor(docTypes) {
 
 var allDocTypes = ['run', 'iteration', 'sample', 'period', 'param', 'tag', 'metric_desc', 'metric_data'];
 var q = {};
+
+if (instances.length == 0) {
+  console.log("You must provide at least one --host <host>");
+  process.exit(1);
+}
+console.log("instances: " + JSON.stringify(instances, null, 2));
 if (program.run) {
   q = { query: { bool: { filter: [{ term: { 'run.run-uuid': program.run } }] } } };
+  var instance = findInstanceFromRun(instances, program.run);
+  cdm.deleteDocs(instance, allDocTypes, q);
+  waitFor(allDocTypes);
+} else {
+  console.log("You must provide a --run <run-id>");
+  process.exit(1);
 }
-cdm.deleteDocs(program.url, allDocTypes, q);
-waitFor(allDocTypes);

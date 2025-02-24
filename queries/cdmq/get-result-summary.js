@@ -1,24 +1,49 @@
 //# vim: autoindent tabstop=2 shiftwidth=2 expandtab softtabstop=2 filetype=javascript
-
 var cdm = require('./cdm');
 var program = require('commander');
+var instances = [];
 
 function list(val) {
   return val.split(',');
 }
 
+function save_host(host) {
+    var host_info = { 'host': host, 'header': { 'Content-Type': 'application/json' } };
+    instances.push(host_info);
+}
+
+function save_userpass(userpass) {
+    if (instances.length == 0) {
+        console.log("You must specify a --host before a --userpass");
+        process.exit(1);
+    }
+    instances[instances.length - 1]['header'] = { 'Content-Type': 'application/json', 'Authorization' : 'Basic ' + btoa(userpass) };
+}
+
+function save_ver(ver) {
+    if (instances.length == 0) {
+        console.log("You must specify a --host before a --ver");
+        process.exit(1);
+    }
+    if (/^v[7|8|9]dev$/.exec(ver)) {
+      instances[instances.length - 1]['ver'] = ver;
+    } else {
+      console.log("The version must be v7dev, v8dev, or v9dev, not: " + ver);
+      process.exit(1);
+    }
+}
+
 program
   .version('0.1.0')
-  .option('--user <"full user name">')
-  .option('--email <email address>')
   .option('--run <run-ID>')
-  .option('--harness <harness name>')
-  .option('--url <host:port>')
+  .option('--host <host[:port]>', 'The host and optional port of the OpenSearch instance', save_host)
+  .option('--userpass <user:pass>', 'The user and password for the most recent --host', save_userpass)
+  .option('--ver <v7dev|v8dev|v9dev>', 'The Common Data Model version to use for the most recent --host', save_ver)
   .option('--output-dir <path>, if not used, output is to console only')
   .option('--output-format <fmt>, fmta[,fmtb]', 'one or more output formats: txt html', list, [])
   .parse(process.argv);
 
-//console.log("program.args:\n" + JSON.stringify(program, null, 2));
+console.log("instances: " + JSON.stringify(instances, null, 2));
 var termKeys = [];
 var values = [];
 
@@ -38,9 +63,6 @@ if (program.harness) {
   termKeys.push('run.harness');
   values.push([program.harness]);
 }
-if (!program.url) {
-  program.url = 'localhost:9200';
-}
 
 if (!program.outputDir) {
   program.outputDir = '';
@@ -59,46 +81,70 @@ function logOutput(str, formats) {
   }
 }
 
-var runIds = cdm.mSearch(program.url, 'run', termKeys, values, 'run.run-uuid', null, 1000)[0];
-if (runIds == undefined || runIds.length == 0) {
+getInstancesInfo(instances);
+
+// Since this query is looking for run ids (and may not inlcude run-uuid as a search term), we
+// need to check all instances.
+var allInstanceRunIds = [];
+for (const instance of instances) {
+  if (!Object.keys(instance).includes('indices') || Object.keys(instance['indices']).length == 0) {
+    console.log("Not searcing instance " + instance['host'] + " becasue it cannot be reached or does not have indices");
+    continue;
+  }
+  console.log("Searching in instance " + JSON.stringify(instance, null, 2));
+  var instanceRunIds = cdm.mSearch(instance, 'run', termKeys, values, 'run.run-uuid', null, 1000)[0];
+  allInstanceRunIds.push(instanceRunIds);
+}
+ console.log("allInstanceRunIds: " + JSON.stringify(allInstanceRunIds, null, 2));
+
+var runIds = cdm.consolidateAllArrays(allInstanceRunIds);
+
+console.log("runIds: " + JSON.stringify(runIds, null, 2));
+//var runIds = cdm.mSearch(instance, 'run', termKeys, values, 'run.run-uuid', null, 1000)[0];
+
+if (typeof runIds == 'undefined' || runIds.length == 0) {
   console.log('The run ID could not be found, exiting');
   process.exit(1);
 }
+
+
 runIds.forEach((runId) => {
+  var instance = findInstanceFromRun(instances, runId);
   logOutput('\nrun-id: ' + runId, program.outputFormat);
-  var tags = cdm.getTags(program.url, runId);
+  logOutput('\ninstance: ' + JSON.stringify(instance, null, 2), program.outputFormat);
+  var tags = cdm.getTags(instance, runId);
   tags.sort((a, b) => (a.name < b.name ? -1 : 1));
   var tagList = '  tags: ';
   tags.forEach((tag) => {
     tagList += tag.name + '=' + tag.val + ' ';
   });
   logOutput(tagList, program.outputFormat);
-  var benchName = cdm.getBenchmarkName(program.url, runId);
+  var benchName = cdm.getBenchmarkName(instance, runId);
   var benchmarks = list(benchName);
   logOutput('  benchmark: ' + benchName, program.outputFormat);
-  var benchIterations = cdm.getIterations(program.url, runId);
+  var benchIterations = cdm.getIterations(instance, runId);
   if (benchIterations.length == 0) {
     console.log('There were no iterations found, exiting');
     process.exit(1);
   }
 
-  var iterParams = cdm.mgetParams(program.url, benchIterations);
+  var iterParams = cdm.mgetParams(instance, benchIterations);
   //returns 1D array [iter]
-  var iterPrimaryPeriodNames = cdm.mgetPrimaryPeriodName(program.url, benchIterations);
+  var iterPrimaryPeriodNames = cdm.mgetPrimaryPeriodName(instance, benchIterations);
   //input: 1D array
   //output: 2D array [iter][samp]
-  var iterSampleIds = cdm.mgetSamples(program.url, benchIterations);
+  var iterSampleIds = cdm.mgetSamples(instance, benchIterations);
   //input: 2D array iterSampleIds: [iter][samp]
   //output: 2D array [iter][samp]
-  var iterSampleStatus = cdm.mgetSampleStatus(program.url, iterSampleIds);
+  var iterSampleStatus = cdm.mgetSampleStatus(instance, iterSampleIds);
   //console.log("sampleStatus:\n" + JSON.stringify(iterSampleStatus, null, 2));
   //needs 2D array iterSampleIds: [iter][samp] and 1D array iterPrimaryPeriodNames [iter]
   //returns 2D array [iter][samp]
-  var iterPrimaryPeriodIds = cdm.mgetPrimaryPeriodId(program.url, iterSampleIds, iterPrimaryPeriodNames);
-  var iterPrimaryPeriodRanges = cdm.mgetPeriodRange(program.url, iterPrimaryPeriodIds);
+  var iterPrimaryPeriodIds = cdm.mgetPrimaryPeriodId(instance, iterSampleIds, iterPrimaryPeriodNames);
+  var iterPrimaryPeriodRanges = cdm.mgetPeriodRange(instance, iterPrimaryPeriodIds);
 
   // Find the params which are the same in every iteration
-  var iterPrimaryMetrics = cdm.mgetPrimaryMetric(program.url, benchIterations);
+  var iterPrimaryMetrics = cdm.mgetPrimaryMetric(instance, benchIterations);
   var primaryMetrics = list(iterPrimaryMetrics[0]);
   // For now only dump params when 1 primary metric is used
   if (primaryMetrics.length == 1) {
@@ -131,12 +177,12 @@ runIds.forEach((runId) => {
   }
 
   logOutput('  metrics:', program.outputFormat);
-  var metricSources = cdm.getMetricSources(program.url, runId);
+  var metricSources = cdm.getMetricSources(instance, runId);
   var runIds = [];
   for (var i = 0; i < metricSources.length; i++) {
     runIds[i] = runId;
   }
-  var metricTypes = cdm.mgetMetricTypes(program.url, runIds, metricSources);
+  var metricTypes = cdm.mgetMetricTypes(instance, runIds, metricSources);
 
   for (var i = 0; i < metricSources.length; i++) {
     logOutput('    source: ' + metricSources[i], program.outputFormat);
@@ -185,7 +231,7 @@ runIds.forEach((runId) => {
         sets.push(set);
         if (sets.length == batchedQuerySize) {
           // Submit a chunk of the query and save the result
-          metricDataSetsChunks[chunkNum] = cdm.getMetricDataSets(program.url, sets);
+          metricDataSetsChunks[chunkNum] = cdm.getMetricDataSets(instance, sets);
           chunkNum++;
           sets = [];
         }
@@ -194,7 +240,7 @@ runIds.forEach((runId) => {
   }
   if (sets.length > 0) {
     // Submit a chunk of the query and save the result
-    metricDataSetsChunks[chunkNum] = cdm.getMetricDataSets(program.url, sets);
+    metricDataSetsChunks[chunkNum] = cdm.getMetricDataSets(instance, sets);
     chunkNum++;
     sets = [];
   }
@@ -242,15 +288,15 @@ runIds.forEach((runId) => {
 
     /*
     samples.forEach(sample => {
-      if (cdm.getSampleStatus(program.url, sample) == "pass") {
+      if (cdm.getSampleStatus(instance, sample) == "pass") {
         logOutput("        sample-id: " + sample, noHtml);
-        var primaryPeriodId = cdm.getPrimaryPeriodId(program.url, sample, primaryPeriodName);
+        var primaryPeriodId = cdm.getPrimaryPeriodId(instance, sample, primaryPeriodName);
         if (primaryPeriodId == undefined || primaryPeriodId == null) {
           logOutput("          the primary perdiod-id for this sample is not valid, exiting\n", noHtml);
           process.exit(1);
         }
         logOutput("          primary period-id: " + primaryPeriodId, noHtml);
-        var range = cdm.getPeriodRange(program.url, primaryPeriodId);
+        var range = cdm.getPeriodRange(instance, primaryPeriodId);
         if (range == undefined || range == null) {
           logOutput("          the range for the primary period is undefined, exiting", noHtml);
           process.exit(1);

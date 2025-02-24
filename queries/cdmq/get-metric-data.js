@@ -25,10 +25,23 @@ function save_host(host) {
 
 function save_userpass(userpass) {
     if (instances.length == 0) {
-        console.log("You must specify a --url before a --userpass");
+        console.log("You must specify a --host before a --userpass");
         process.exit(1);
     }
     instances[instances.length - 1]['header'] = { 'Content-Type': 'application/json', 'Authorization' : 'Basic ' + btoa(userpass) };
+}
+
+function save_ver(ver) {
+    if (instances.length == 0) {
+        console.log("You must specify a --host before a --ver");
+        process.exit(1);
+    }
+    if (/^v[7|8|9]dev$/.exec(ver)) {
+      instances[instances.length - 1]['ver'] = { 'Content-Type': 'application/json', 'Authorization' : 'Basic ' + btoa(ver) };
+    } else {
+      console.log("The version must be v7dev, v8dev, or v9dev, not: " + ver);
+      process.exit(1);
+    }
 }
 
 
@@ -36,6 +49,7 @@ program
   .version('0.1.0')
   .option('--host <host[:port]>', 'The host and optional port of the OpenSearch instance', save_host)
   .option('--userpass <user:pass>', 'The user and password for the most recent --host', save_userpass)
+  .option('--ver <v7dev|v8dev|v9dev>', 'The Common Data Model version to use for the most recent --host', save_ver)
   .option('--run <uuid>', 'The UUID from the run')
   .option('--period <uuid>', 'The UUID from the benchmark-iteration-sample-period')
   .option('--source <name>', 'The metric source, like a tool or benchmark name (sar, fio)')
@@ -83,8 +97,12 @@ program
   )
   .parse(process.argv);
 
-console.log("instances: " + JSON.stringify(instances, null, 2));
+getInstancesInfo(instances);
 var instance = findInstanceFromPeriod(instances, program.period);
+if (typeof instance == 'undefined') {
+  console.log("None of the instances provided were valid, so going to abort");
+  process.exit(1);
+}
 
 metric_data = cdm.getMetricData(
   instance,

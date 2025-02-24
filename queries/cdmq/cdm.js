@@ -2,12 +2,12 @@
 var request = require('sync-request');
 var bigQuerySize = 262144;
 
-function getCdmVer() {
-  return 'v9dev';
+function getCdmVer(instance) {
+  return instance['indices']['ver'];
 }
 
-function getIndexBaseName() {
-  cdmVer = getCdmVer();
+function getIndexBaseName(instance) {
+  cdmVer = getCdmVer(instance);
   if (cdmVer == 'v7dev' || cdmVer == 'v8dev') {
     return 'cdm' + cdmVer + '-';
   } else {
@@ -16,7 +16,12 @@ function getIndexBaseName() {
 }
 
 function getIndexName(docType) {
-  return docType + '@2025.02';
+  if (cdmVer == 'v7dev' || cdmVer == 'v8dev') {
+    return docType;
+  } else {
+    //TODO: return correct year.month(s)
+    return docType + '@2025.02';
+  }
 }
 
 // Return subtraction of two 1-dimensional arrays
@@ -41,7 +46,7 @@ function getObjVals(a, k) {
 }
 
 // Return consolidation (non-repeated values) of a 2-dimensional array
-function consolidateAllArrays(a) {
+consolidateAllArrays = function (a) {
   const c = [];
   a.forEach((b) => {
     b.forEach((e) => {
@@ -50,6 +55,7 @@ function consolidateAllArrays(a) {
   });
   return c;
 }
+exports.consolidateAllArrays = consolidateAllArrays;
 
 // Return intersection of two 1-dimensional arrays
 intersectTwoArrays = function (a1, a2) {
@@ -76,8 +82,8 @@ exports.intersectAllArrays = intersectAllArrays;
 
 function esJsonArrRequest(instance, idx, action, jsonArr) {
   console.log("esJsonArrRequest instance: ", JSON.stringify(instance, null, 2));
-  //var instance = 'http://' + host + '/' + getIndexBaseName() + getIndexName(idx) + action;
-  var url = 'http://' + instance['host'] + '/' + getIndexBaseName() + getIndexName(idx) + action;
+  //var instance = 'http://' + host + '/' + getIndexBaseName(instance) + getIndexName(idx) + action;
+  var url = 'http://' + instance['host'] + '/' + getIndexBaseName(instance) + getIndexName(idx) + action;
   var max = 16384;
   var idx = 0;
   var req_count = 0;
@@ -106,7 +112,7 @@ function esJsonArrRequest(instance, idx, action, jsonArr) {
       console.log(ndjson);
       var resp = request('POST', url, {
         body: ndjson,
-        headers: remoteHeader
+        headers: instance['header']
       });
       var data = JSON.parse(resp.getBody());
       responses.push(...data.responses);
@@ -130,7 +136,7 @@ function esJsonArrRequest(instance, idx, action, jsonArr) {
 }
 
 function esRequest(instance, idx, action, q) {
-  var url = 'http://' + instance['host'] + '/' + getIndexBaseName() + getIndexName(idx) + action;
+  var url = 'http://' + instance['host'] + '/' + getIndexBaseName(instance) + getIndexName(idx) + action;
   // The var q can be an object or a string.  If you are submitting NDJSON
   // for a _msearch, it must be a [multi-line] string.
   if (typeof q === 'object') {
@@ -510,17 +516,85 @@ getRunFromPeriod = function (instance, periId) {
 };
 exports.getRunFromPeriod = getRunFromPeriod;
 
+// For each opensearch instance, get the cdm versions they contain and their indices
+getInstancesInfo = function (instances) {
+  for (inst_idx=0; inst_idx<instances.length; inst_idx++) {
+    //console.log("Searching for info in instance " + JSON.stringify(instance, null, 2));
+    var url = 'http://' + instances[inst_idx]['host'] + '/_cat/indices?format=json';
+    var resp;
+    try {
+      resp = request('GET', url, { headers: instances[inst_idx]['header'] });
+    } catch(error) {
+      console.log("Failed to reach the host " + instances[inst_idx]['host'] + ", so not including it");
+      console.log("error:\n" + error);
+      continue;
+    }
+    if (typeof resp != 'undefined') {
+      console.log("resp:\n" + resp);
+      var indices = JSON.parse(resp.getBody());
+      //console.log("indices: " + JSON.stringify(indices, null, 2));
+      instances[inst_idx]['indices'] = {};
+      for (const index of indices) {
+        //console.log(JSON.stringify(index, null, 2));
+        var name = index['index'];
+        console.log("checking " + name);
+        if (/^cdm/.exec(name)) {
+          const match = name.match(/^cdm[-]{0,1}(v[\d+]dev)/);
+          const cdmver = match[1];
+          console.log("Found: " + cdmver);
+          if (! Object.keys(instances[inst_idx]['indices']).includes(cdmver)) {
+            instances[inst_idx]['indices'][cdmver] = [];
+          }
+          instances[inst_idx]['indices'][cdmver].push(name);
+        }
+      }
+    }
+    if (Object.keys(instances[inst_idx]['indices']).length != 0 && typeof instances[inst_idx].ver == 'undefined') {
+      console.log("instance: " + JSON.stringify(instances[inst_idx], null, 2));
+      // If mulitple versions of indices exist, default to the latest version
+      // (this can be overridden with --ver <v7dev|v8dev|v9dev> after --host)
+      var cdmvers = Object.keys(instances[inst_idx]['indices']).sort;
+      instances['ver'] = cdmvers[cdmvers.length - 1];
+    }
+  }
+  console.log("instances:\n" + JSON.stringify(instances, null, 2));
+}
+
+findInstanceFromRun = function (instances, runId) {
+  console.log("findInstanceFromRun()");
+  var foundInstance;
+  console.log("Instances: " + JSON.stringify(instances, null, 2));
+  console.log("run ID: " + runId);
+  for (const instance of instances) {
+    if (!Object.keys(instance).includes('indices') || Object.keys(instance['indices']).length == 0) {
+    //if (!Object.keys(instance).includes('indices') || instance['indices'].length == 0) {
+      console.log("Not searcing instance " + instance['host'] + " becasue it cannot be reached or does not have indices");
+      continue;
+    }
+    //console.log("Searching in instance " + JSON.stringify(instance, null, 2));
+    // Use any function which searches by run id and always returns something if the run id is present
+    var result = getIterations(instance, runId);
+    if (typeof result != 'undefined') {
+      console.log("Got a hit: " + JSON.stringify(result, null, 2));
+      foundInstance = instance;
+      break;
+    }
+  }
+  //console.log("findInstanceFromRun: returning " + JSON.stringify(foundInstance, null, 2));
+  return foundInstance;
+}
+
 findInstanceFromPeriod = function (instances, periId) {
+  console.log("findInstanceFromPeriod()");
   var foundInstance;
   console.log("Instances: " + JSON.stringify(instances, null, 2));
   console.log("period ID: " + periId);
-  // If there's only 1. assume it must have this period
-  if (instances.length == 1) {
-    console.log("Only one instance, so assuming it has what you are looking for");
-    return instances[0];
-  }
   for (const instance of instances) {
-  //instances.forEach((instance) => {
+    console.log("\n\n\nindices: " + Object.keys(instance['indices'] + "\n\n"));
+    if (!Object.keys(instance).includes('indices') || Object.keys(instance['indices']).length == 0) {
+      console.log("Not searcing instance " + instance['host'] + " becasue it cannot be reached or does not have indices");
+      continue;
+    }
     console.log("Searching in instance " + JSON.stringify(instance, null, 2));
     var result = mgetRunFromPeriod(instance, [periId])[0][0];
     if (typeof result != 'undefined') {
@@ -528,9 +602,8 @@ findInstanceFromPeriod = function (instances, periId) {
       foundInstance = instance;
       break;
     }
-  //});
   }
-  console.log("findInstanceFromPeriod: returning " + JSON.stringify(foundInstance, null, 2));
+  //console.log("findInstanceFromPeriod: returning " + JSON.stringify(foundInstance, null, 2));
   return foundInstance;
 }
 
@@ -1114,11 +1187,11 @@ getIters = function (
     if (val != 'tag-not-used') {
       var tagValTerm = { term: { 'tag.val': val } };
       tag_query.query.bool.filter.push(tagValTerm);
-      jsonArr.push('{"index": "' + getIndexBaseName() + 'tag' + '" }');
+      jsonArr.push('{"index": "' + getIndexBaseName(instance) + 'tag' + '" }');
       jsonArr.push(JSON.stringify(tag_query));
     } else {
       // Find the run IDs which have this tag name present (value does not matter)
-      jsonArr2 += '{"index": "' + getIndexBaseName() + 'tag' + '" }\n';
+      jsonArr2 += '{"index": "' + getIndexBaseName(instance) + 'tag' + '" }\n';
       jsonArr2 += JSON.stringify(tag_query) + '\n';
     }
   });
@@ -1176,12 +1249,12 @@ getIters = function (
     if (val != 'param-not-used') {
       var paramVal = { term: { 'param.val': val } };
       param_query.query.bool.filter.push(paramVal);
-      jsonArr.push('{"index": "' + getIndexBaseName() + 'param' + '" }');
+      jsonArr.push('{"index": "' + getIndexBaseName(instance) + 'param' + '" }');
       jsonArr.push(JSON.stringify(param_query));
     } else {
       // Find the run IDs which have this param name present (value does not matter).
       // Later, we will subtract these iteration IDs from the ones found with ndjson query.
-      jsonArr2 += '{"index": "' + getIndexBaseName() + 'param' + '" }\n';
+      jsonArr2 += '{"index": "' + getIndexBaseName(instance) + 'param' + '" }\n';
       jsonArr2 += JSON.stringify(param_query) + '\n';
     }
   });
@@ -1856,7 +1929,7 @@ getMetricDataFromIdsSets = function (instance, sets, metricGroupIdsByLabelSets) 
           //
           // This first request is for the weighted average, but does not include the
           // documents which are partially outside the time range we need.
-          indexjson = '{"index": "' + getIndexBaseName() + getIndexName('metric_data') + '" }\n';
+          indexjson = '{"index": "' + getIndexBaseName(instance) + getIndexName('metric_data') + '" }\n';
           reqjson = '{';
           reqjson += '  "size": 0,';
           reqjson += '  "query": {';
@@ -1888,7 +1961,7 @@ getMetricDataFromIdsSets = function (instance, sets, metricGroupIdsByLabelSets) 
           // This second request is for the total weight of the previous weighted average request.
           // We need this because we are going to recompute the weighted average by adding
           // a few more documents that are partially outside the time domain.
-          indexjson = '{"index": "' + getIndexBaseName() + getIndexName('metric_data') + '" }\n';
+          indexjson = '{"index": "' + getIndexBaseName(instance) + getIndexName('metric_data') + '" }\n';
           reqjson = '{';
           reqjson += '  "size": 0,';
           reqjson += '  "query": {';
@@ -1912,7 +1985,7 @@ getMetricDataFromIdsSets = function (instance, sets, metricGroupIdsByLabelSets) 
           jsonArr.push(JSON.stringify(req));
           // This third request is for documents that had its begin during or before the time range, but
           // its end was after the time range.
-          indexjson = '{"index": "' + getIndexBaseName() + getIndexName('metric_data') + '" }\n';
+          indexjson = '{"index": "' + getIndexBaseName(instance) + getIndexName('metric_data') + '" }\n';
           reqjson = '{';
           reqjson += '  "size": ' + bigQuerySize + ',';
           reqjson += '  "query": {';
@@ -1931,7 +2004,7 @@ getMetricDataFromIdsSets = function (instance, sets, metricGroupIdsByLabelSets) 
           jsonArr.push(JSON.stringify(req));
           // This fourth request is for documents that had its begin before the time range, but
           //  its end was during or after the time range
-          var indexjson = '{"index": "' + getIndexBaseName() + getIndexName('metric_data') + '" }\n';
+          var indexjson = '{"index": "' + getIndexBaseName(instance) + getIndexName('metric_data') + '" }\n';
           var reqjson = '';
           reqjson += '{';
           reqjson += '  "size": ' + bigQuerySize + ',';
