@@ -15,13 +15,33 @@ function save_userpass(userpass) {
     instances[instances.length - 1]['header'] = { 'Content-Type': 'application/json', 'Authorization' : 'Basic ' + btoa(userpass) };
 }
 
+function save_ver(ver) {
+    if (instances.length == 0) {
+        console.log("You must specify a --host before a --ver");
+        process.exit(1);
+    }
+    if (/^v[7|8|9]dev$/.exec(ver)) {
+      instances[instances.length - 1]['ver'] = ver;
+    } else {
+      console.log("The version must be v7dev, v8dev, or v9dev, not: " + ver);
+      process.exit(1);
+    }
+}
+
 program
   .version('0.1.0')
   .option('--run <run ID>')
   .option('--host <host[:port]>', 'The host and optional port of the OpenSearch instance', save_host)
   .option('--userpass <user:pass>', 'The user and password for the most recent --host', save_userpass)
+  .option('--ver <v7dev|v8dev|v9dev>', 'The Common Data Model version to use for the most recent --host', save_ver)
   .parse(process.argv);
 
+// If the user does not specify any hosts, assume localhost:9200 is used
+if (instances.length == 0) {
+  save_host("localhost:9200")
+}
+
+getInstancesInfo(instances);
 
 async function waitFor(docTypes) {
   var numAttempts = 1;
@@ -51,7 +71,7 @@ async function waitFor(docTypes) {
     numAttempts++;
 
     if (previousTotalDocCount != 0) {
-      console.log('Document deletion rate: %.2f documents/sec\n', (previousTotalDocCount - totalDocCount) / interval);
+      console.log('Document deletion rate: ' + (previousTotalDocCount - totalDocCount) / interval + ' documents/sec');
     }
     previousTotalDocCount = totalDocCount;
   }
@@ -70,7 +90,6 @@ if (instances.length == 0) {
   console.log("You must provide at least one --host <host>");
   process.exit(1);
 }
-console.log("instances: " + JSON.stringify(instances, null, 2));
 if (program.run) {
   q = { query: { bool: { filter: [{ term: { 'run.run-uuid': program.run } }] } } };
   var instance = findInstanceFromRun(instances, program.run);

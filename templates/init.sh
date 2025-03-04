@@ -86,7 +86,9 @@ for i in `/bin/ls *.json | sed -e s/\.json//`; do
         echo "  found index"
     else
         echo -n "  index missing, creating..."
-        qresult=$(${curl_cmd} -X PUT $es_url/cdm$es_ver-$i)
+        create_cmd="${curl_cmd} -X PUT $es_url/cdm$es_ver-$i"
+        echo -n " $create_cmd "
+        qresult=$($create_cmd)
         if echo "${qresult}" | grep -q '"acknowledged":true'; then
              echo "success"
         else

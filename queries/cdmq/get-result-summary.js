@@ -43,7 +43,6 @@ program
   .option('--output-format <fmt>, fmta[,fmtb]', 'one or more output formats: txt html', list, [])
   .parse(process.argv);
 
-console.log("instances: " + JSON.stringify(instances, null, 2));
 var termKeys = [];
 var values = [];
 
@@ -81,37 +80,34 @@ function logOutput(str, formats) {
   }
 }
 
+// If the user does not specify any hosts, assume localhost:9200 is used
+if (instances.length == 0) {
+  save_host("localhost:9200")
+}
+
 getInstancesInfo(instances);
 
 // Since this query is looking for run ids (and may not inlcude run-uuid as a search term), we
 // need to check all instances.
 var allInstanceRunIds = [];
 for (const instance of instances) {
-  if (!Object.keys(instance).includes('indices') || Object.keys(instance['indices']).length == 0) {
-    console.log("Not searcing instance " + instance['host'] + " becasue it cannot be reached or does not have indices");
+  if (invalidInstance(instance)) {
     continue;
   }
-  console.log("Searching in instance " + JSON.stringify(instance, null, 2));
   var instanceRunIds = cdm.mSearch(instance, 'run', termKeys, values, 'run.run-uuid', null, 1000)[0];
   allInstanceRunIds.push(instanceRunIds);
 }
- console.log("allInstanceRunIds: " + JSON.stringify(allInstanceRunIds, null, 2));
 
 var runIds = cdm.consolidateAllArrays(allInstanceRunIds);
-
-console.log("runIds: " + JSON.stringify(runIds, null, 2));
-//var runIds = cdm.mSearch(instance, 'run', termKeys, values, 'run.run-uuid', null, 1000)[0];
 
 if (typeof runIds == 'undefined' || runIds.length == 0) {
   console.log('The run ID could not be found, exiting');
   process.exit(1);
 }
 
-
 runIds.forEach((runId) => {
   var instance = findInstanceFromRun(instances, runId);
   logOutput('\nrun-id: ' + runId, program.outputFormat);
-  logOutput('\ninstance: ' + JSON.stringify(instance, null, 2), program.outputFormat);
   var tags = cdm.getTags(instance, runId);
   tags.sort((a, b) => (a.name < b.name ? -1 : 1));
   var tagList = '  tags: ';

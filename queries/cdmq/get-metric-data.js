@@ -37,7 +37,7 @@ function save_ver(ver) {
         process.exit(1);
     }
     if (/^v[7|8|9]dev$/.exec(ver)) {
-      instances[instances.length - 1]['ver'] = { 'Content-Type': 'application/json', 'Authorization' : 'Basic ' + btoa(ver) };
+      instances[instances.length - 1]['ver'] = ver;
     } else {
       console.log("The version must be v7dev, v8dev, or v9dev, not: " + ver);
       process.exit(1);
@@ -96,6 +96,11 @@ program
     2
   )
   .parse(process.argv);
+
+// If the user does not specify any hosts, assume localhost:9200 is used
+if (instances.length == 0) {
+  save_host("localhost:9200")
+}
 
 getInstancesInfo(instances);
 var instance = findInstanceFromPeriod(instances, program.period);
