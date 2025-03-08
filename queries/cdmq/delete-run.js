@@ -43,7 +43,7 @@ if (instances.length == 0) {
 
 getInstancesInfo(instances);
 
-async function waitFor(docTypes) {
+async function waitFor(instance, docTypes) {
   var numAttempts = 1;
   var maxAttempts = 30;
   var remainingDocTypes = docTypes;
@@ -92,9 +92,11 @@ if (instances.length == 0) {
 }
 if (program.run) {
   q = { query: { bool: { filter: [{ term: { 'run.run-uuid': program.run } }] } } };
-  var instance = findInstanceFromRun(instances, program.run);
-  cdm.deleteDocs(instance, allDocTypes, q);
-  waitFor(allDocTypes);
+  // When deleting, you must use exactly one instance, so we use the last provided.
+  // We don't want to search for an instance with this run, because we don't want
+  //  to delete just any copy of this run.
+  cdm.deleteDocs(instances[instances.length - 1], allDocTypes, q);
+  waitFor(instances[instances.length - 1], allDocTypes);
 } else {
   console.log("You must provide a --run <run-id>");
   process.exit(1);

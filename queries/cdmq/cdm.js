@@ -1,5 +1,6 @@
 //# vim: autoindent tabstop=2 shiftwidth=2 expandtab softtabstop=2 filetype=javascript
 var request = require('sync-request');
+var thenRequest = require('then-request');
 var bigQuerySize = 262144;
 
 function getCdmVer(instance) {
@@ -83,16 +84,63 @@ intersectAllArrays = function (a2D) {
 };
 exports.intersectAllArrays = intersectAllArrays;
 
-function esJsonArrRequest(instance, idx, action, jsonArr) {
-  //var instance = 'http://' + host + '/' + getIndexBaseName(instance) + getIndexName(idx) + action;
-  var url = 'http://' + instance['host'] + '/' + getIndexBaseName(instance) + getIndexName(idx, instance) + action;
+
+
+async function fetchBatchedData(instance, reqs, batchSize = 16) {
+  const responses = [];
+  const batches = [];
+
+  for (let i = 0; i < reqs.length; i += batchSize) {
+    batches.push(reqs.slice(i, i + batchSize));
+  }
+
+  for (const batch of batches) {
+    const promises = batch.map(async (req) => {
+      try {
+        // thenRequest will abolutely *not* work unless this header is converted to string and back
+        const headerStr = JSON.stringify(instance['header']);
+        const hdrs = JSON.parse(headerStr);
+        const response = await thenRequest('POST', req.url, { body: req.body, headers: hdrs });
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          try {
+            return JSON.parse(response.getBody('utf8')); // Attempt JSON parsing
+          } catch (jsonError){
+            return response.getBody('utf8'); // return text if JSON parsing fails
+          }
+        } else {
+          throw new Error(`HTTP error! status: ${response.statusCode}`);
+        }
+      } catch (error) {
+        console.error(`Error fetching ${req}:`, error);
+        return null; // Or handle the error as needed
+      }
+    });
+
+    const batchResults = await Promise.all(promises);
+    responses.push(...batchResults);
+  }
+
+  return responses;
+}
+
+esJsonArrRequest = async function (instance, index, action, jsonArr) {
+  var url = "";
+  if (index == '') {
+    // Index and action must be in the jsonArr itself
+    url = 'http://' + instance['host'] + '/_bulk';
+  } else {
+    url = 'http://' + instance['host'] + '/' + getIndexBaseName(instance) + getIndexName(index, instance) + action;
+  }
   var max = 16384;
   var idx = 0;
   var req_count = 0;
   var q_count = 0;
   var ndjson = '';
-  var responses = [];
+  var reqs = [];
+  var theseResps = [];
+  var allResponses = [];
   // Process queries in chunks no larger than 'max' chars
+  //console.log("jsonArr.length: " + jsonArr.length);
   while (idx < jsonArr.length) {
     // Add the first request (2 lines) even if it exceeds our limit (we don't really have a choice)
     // The limit we have is likely much lower than what can be handled, but if this becomes a
@@ -103,36 +151,31 @@ function esJsonArrRequest(instance, idx, action, jsonArr) {
     ndjson += jsonArr[idx] + '\n' + jsonArr[idx + 1] + '\n';
     idx += 2;
     // Add more requests if are any left and the max will not be exceeded
-    if (idx < jsonArr.length && ndjson.length + jsonArr[idx].length + jsonArr[idx + 1].length < max) {
+    if (idx + 2 < jsonArr.length && ndjson.length + jsonArr[idx].length + jsonArr[idx + 1].length < max) {
       q_count++;
       ndjson += jsonArr[idx] + '\n' + jsonArr[idx + 1] + '\n';
       idx += 2;
     } else {
       req_count++;
       q_count = 0;
-      var resp = request('POST', url, {
-        body: ndjson,
-        headers: instance['header']
-      });
-      var data = JSON.parse(resp.getBody());
-      responses.push(...data.responses);
+      const req = { url: url, body: ndjson };
+      reqs.push(req);
       ndjson = '';
     }
-  }
+  }  //while
   // Max was not exceeded but there are some requests that have not been submitted
   if (ndjson != '') {
     req_count++;
     q_count = 0;
-    var resp = request('POST', url, {
-      body: ndjson,
-      headers: instance['header']
-    });
-    var data = JSON.parse(resp.getBody());
-    responses.push(...data.responses);
-    ndjson = '';
+    const req = { url: url, body: ndjson };
+    reqs.push(req);
   }
+  console.log("There are " + reqs.length + "requests");
+
+  const responses = await fetchBatchedData(instance, reqs);
   return responses;
 }
+exports.esJsonArrRequest = esJsonArrRequest;
 
 function esRequest(instance, idx, action, q) {
   var url = 'http://' + instance['host'] + '/' + getIndexBaseName(instance) + getIndexName(idx, instance) + action;
