@@ -86,6 +86,7 @@ if (instances.length == 0) {
 }
 
 getInstancesInfo(instances);
+console.log(JSON.stringify(instances, null, 2));
 
 // Since this query is looking for run ids (and may not inlcude run-uuid as a search term), we
 // need to check all instances.
@@ -95,7 +96,9 @@ for (const instance of instances) {
     continue;
   }
   var instanceRunIds = cdm.mSearch(instance, 'run', termKeys, values, 'run.run-uuid', null, 1000)[0];
-  allInstanceRunIds.push(instanceRunIds);
+  if (typeof instanceRunIds != 'undefined') {
+    allInstanceRunIds.push(instanceRunIds);
+  }
 }
 
 var runIds = cdm.consolidateAllArrays(allInstanceRunIds);
