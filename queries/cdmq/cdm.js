@@ -170,7 +170,8 @@ esJsonArrRequest = async function (instance, index, action, jsonArr) {
     const req = { url: url, body: ndjson };
     reqs.push(req);
   }
-  console.log("There are " + reqs.length + "requests");
+  console.log("There are " + reqs.length + " requests");
+  console.log(reqs);
 
   const responses = await fetchBatchedData(instance, reqs);
   return responses;
