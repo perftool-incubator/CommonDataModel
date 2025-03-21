@@ -7,6 +7,12 @@ function getCdmVer(instance) {
   return instance['ver'];
 }
 
+function debug(str) {
+  if (1 == 2) {
+    console.log(str);
+  }
+}
+
 function getIndexBaseName(instance) {
   cdmVer = getCdmVer(instance);
   if (cdmVer == 'v7dev' || cdmVer == 'v8dev') {
@@ -87,6 +93,7 @@ exports.intersectAllArrays = intersectAllArrays;
 
 
 async function fetchBatchedData(instance, reqs, batchSize = 16) {
+  debug("fetchBatchedData() begin");
   const responses = [];
   const batches = [];
 
@@ -95,16 +102,21 @@ async function fetchBatchedData(instance, reqs, batchSize = 16) {
   }
 
   for (const batch of batches) {
+    debug("fetchBatchedData() processing batch");
     const promises = batch.map(async (req) => {
       try {
         // thenRequest will abolutely *not* work unless this header is converted to string and back
         const headerStr = JSON.stringify(instance['header']);
         const hdrs = JSON.parse(headerStr);
+        debug("fetchBatchedData() calling thenRequest()");
         const response = await thenRequest('POST', req.url, { body: req.body, headers: hdrs });
+        debug("fetchBatchedData() returned from thenRequest()");
         if (response.statusCode >= 200 && response.statusCode < 300) {
           try {
+            debug("fetchBatchedData() about to return with JSON.parse");
             return JSON.parse(response.getBody('utf8')); // Attempt JSON parsing
           } catch (jsonError){
+            debug("fetchBatchedData() about to return with JSON(no-parse)");
             return response.getBody('utf8'); // return text if JSON parsing fails
           }
         } else {
@@ -117,16 +129,21 @@ async function fetchBatchedData(instance, reqs, batchSize = 16) {
     });
 
     const batchResults = await Promise.all(promises);
-    responses.push(...batchResults);
+    debug("fetchBatchedData() batchResults.length:\n" + batchResults.length);
+    for (const batchResult of batchResults) {
+      responses.push(...batchResult.responses);
+    }
   }
 
+  debug("fetchBatchedData() responses.length:\n" + responses.length);
   return responses;
 }
 
 esJsonArrRequest = async function (instance, index, action, jsonArr) {
+  debug("esJsonArrRequest() begin");
   var url = "";
   if (index == '') {
-    // Index and action must be in the jsonArr itself
+    // Expect to have the Index and action in the jsonArr itself
     url = 'http://' + instance['host'] + '/_bulk';
   } else {
     url = 'http://' + instance['host'] + '/' + getIndexBaseName(instance) + getIndexName(index, instance) + action;
@@ -170,10 +187,17 @@ esJsonArrRequest = async function (instance, index, action, jsonArr) {
     const req = { url: url, body: ndjson };
     reqs.push(req);
   }
-  console.log("There are " + reqs.length + " requests");
-  console.log(reqs);
+  //console.log("esJsonArrRequest(): hello");
+  //console.log("esJsonArrRequest(): There are " + reqs.length + " requests:\n" + JSON.stringify(requests, null, 2));
+  //await console.log("esJsonArrRequest(): There are " + reqs.length + " requests:\n" + JSON.stringify(requests, null, 2));
+  //console.log("requests: " + JSON.stringify(requests, null, 2));
 
   const responses = await fetchBatchedData(instance, reqs);
+  //await console.log("esJsonArrRequest(): responses.length:\n" + responses.length);
+  //return new Promise((resolve, reject) => {
+    //resolve(responses);
+  //});
+  debug("esJsonArrRequest end");
   return responses;
 }
 exports.esJsonArrRequest = esJsonArrRequest;
@@ -199,7 +223,7 @@ function esRequest(instance, idx, action, q) {
 // of http requests.
 // Note: termKeys is a 1D array, while values is a 2D array.
 // termKeys[x] uses list of values from values[x]
-mSearch = function (instance, index, termKeys, values, source, aggs, size, sort) {
+mSearch = async function (instance, index, termKeys, values, source, aggs, size, sort) {
 
   if (typeof termKeys !== typeof []) return;
   if (typeof values !== typeof []) return;
@@ -228,7 +252,9 @@ mSearch = function (instance, index, termKeys, values, source, aggs, size, sort)
     jsonArr.push('{}');
     jsonArr.push(JSON.stringify(req));
   }
-  var responses = esJsonArrRequest(instance, index, '/_msearch', jsonArr);
+  debug("mSearch(): calling esJsonArrRequest()");
+  var responses = await esJsonArrRequest(instance, index, '/_msearch', jsonArr);
+  debug("mSearch(): returned from calling esJsonArrRequest(), responses:\n" + JSON.stringify(responses, null, 2));
 
   // Unpack response and organize in array of arrays
   var retData = [];
@@ -247,8 +273,9 @@ mSearch = function (instance, index, termKeys, values, source, aggs, size, sort)
       });
       retData[i] = keys;
 
-      // For queries without aggregation
+    // For queries without aggregation
     } else {
+      debug("hits:\n" + JSON.stringify(responses[i], null, 2));
       if (responses[i].hits == null) {
         console.log('WARNING! msearch returned data.responses[' + i + '].hits is NULL');
         console.log(JSON.stringify(responses[i], null, 2));
@@ -299,6 +326,7 @@ mSearch = function (instance, index, termKeys, values, source, aggs, size, sort)
       }
     }
   }
+  debug("mSearch(): about to return");
   return retData;
 };
 exports.mSearch = mSearch;
@@ -308,8 +336,8 @@ exports.mSearch = mSearch;
 // but these functions just wrap the value in 2D array for msearch (and a key in a 1D array).  Effectively
 // all query functions use msearch, even if there is a single query.
 
-mgetPrimaryMetric = function (instance, iterations) {
-  var metrics = mSearch(instance, 'iteration', ['iteration.iteration-uuid'], [iterations], 'iteration.primary-metric');
+mgetPrimaryMetric = async function (instance, iterations) {
+  var metrics = await mSearch(instance, 'iteration', ['iteration.iteration-uuid'], [iterations], 'iteration.primary-metric');
   // mSearch returns a list of values for each query, so 2D array.  We only have exactly 1 primary-metric
   // for each iteration, so collapse the 2D array into a 1D array, 1 element per iteration.
   var primaryMetrics = [];
@@ -319,13 +347,15 @@ mgetPrimaryMetric = function (instance, iterations) {
   return primaryMetrics;
 };
 exports.mgetPrimaryMetric = mgetPrimaryMetric;
-getPrimaryMetric = function (instance, iteration) {
-  return mgetPrimaryMetric(instance, [iteration])[0][0];
+
+getPrimaryMetric = async function (instance, iteration) {
+  var primaryMetrics =  await mgetPrimaryMetric(instance, [iteration]);
+  return primaryMetrics[0][0];
 };
 exports.getPrimaryMetric = getPrimaryMetric;
 
-mgetPrimaryPeriodName = function (instance, iterations) {
-  var data = mSearch(instance, 'iteration', ['iteration.iteration-uuid'], [iterations], 'iteration.primary-period');
+mgetPrimaryPeriodName = async function (instance, iterations) {
+  var data = await mSearch(instance, 'iteration', ['iteration.iteration-uuid'], [iterations], 'iteration.primary-period');
   // There can be only 1 period-name er iteration, therefore no need for a period name per period [of the same iteration]
   // Therefore, we do not need to return a 2D array
   var periodNames = [];
@@ -335,17 +365,21 @@ mgetPrimaryPeriodName = function (instance, iterations) {
   return periodNames;
 };
 exports.mgetPrimaryPeriodName = mgetPrimaryPeriodName;
-getPrimaryPeriodName = function (instance, iteration) {
-  return mgetPrimaryPeriodName(instance, [iteration])[0][0];
+
+getPrimaryPeriodName = async function (instance, iteration) {
+  var primaryPeriodNames = await mgetPrimaryPeriodName(instance, [iteration]);
+  return primaryPeriodNames[0][0];
 };
 exports.getPrimaryPeriodName = getPrimaryPeriodName;
 
-mgetSamples = function (instance, iters) {
-  return mSearch(instance, 'sample', ['iteration.iteration-uuid'], [iters], 'sample.sample-uuid');
+mgetSamples = async function (instance, iters) {
+  return await mSearch(instance, 'sample', ['iteration.iteration-uuid'], [iters], 'sample.sample-uuid');
 };
 exports.mgetSamples = mgetSamples;
-getSamples = function (instance, iter) {
-  return mgetSamples(instance, [iter])[0];
+
+getSamples = async function (instance, iter) {
+  var samples = await mgetSamples(instance, [iter]);
+  return samples[0];
 };
 exports.getSamples = getSamples;
 
@@ -353,8 +387,8 @@ exports.getSamples = getSamples;
 // find all the metadata names shared among all
 // found metric docs.  These names are what can be
 // used for "breakouts".
-mgetMetricNames = function (instance, runIds, sources, types) {
-  return mSearch(
+mgetMetricNames = async function (instance, runIds, sources, types) {
+  return await mSearch(
     instance,
     'metric_desc',
     ['run.run-uuid', 'metric_desc.source', 'metric_desc.type'],
@@ -365,11 +399,13 @@ mgetMetricNames = function (instance, runIds, sources, types) {
   );
 };
 exports.mgetMetricNames = mgetMetricNames;
-getMetricNames = function (instance, runId, source, type) {
-  return mgetMetricNames(instance, [runId], [source], [type]);
+
+getMetricNames = async function (instance, runId, source, type) {
+  var metricNames = await mgetMetricNames(instance, [runId], [source], [type]);
+  return metricNames[0];
 };
 
-mgetSampleStatus = function (instance, Ids) {
+mgetSampleStatus = async function (instance, Ids) {
   var sampleIds = [];
   var perSamplePeriNames = [];
   var idx = 0;
@@ -380,7 +416,7 @@ mgetSampleStatus = function (instance, Ids) {
     }
   }
 
-  var data = mSearch(instance, 'sample', ['sample.sample-uuid'], [sampleIds], 'sample.status', null, 1);
+  var data = await mSearch(instance, 'sample', ['sample.sample-uuid'], [sampleIds], 'sample.status', null, 1);
 
   var sampleStatus = []; // Will be 2D array of [iter][sampIds];
   idx = 0;
@@ -396,12 +432,14 @@ mgetSampleStatus = function (instance, Ids) {
   return sampleStatus;
 };
 exports.mgetSampleStatus = mgetSampleStatus;
-getSampleStatus = function (instance, sampId) {
-  return mgetSampleStatus(instance, [sampId])[0][0];
+
+getSampleStatus = async function (instance, sampId) {
+  var sampleStatuses = await mgetSampleStatus(instance, [sampId]);
+  return sampleStatuses[0][0];
 };
 exports.getSampleStatus = getSampleStatus;
 
-mgetPrimaryPeriodId = function (instance, sampIds, periNames) {
+mgetPrimaryPeriodId = async function (instance, sampIds, periNames) {
   // needs 2D array iterSampleIds: [iter][samp] and 1D array iterPrimaryPeriodNames [iter]
   // returns 2D array [iter][samp]
   if (periNames.length == 1) {
@@ -419,7 +457,7 @@ mgetPrimaryPeriodId = function (instance, sampIds, periNames) {
       idx++;
     }
   }
-  var data = mSearch(
+  var data = await mSearch(
     instance,
     'period',
     ['sample.sample-uuid', 'period.name'],
@@ -445,12 +483,14 @@ mgetPrimaryPeriodId = function (instance, sampIds, periNames) {
   return periodIds;
 };
 exports.mgetPrimaryPeriodId = mgetPrimaryPeriodId;
-getPrimaryPeriodId = function (instance, sampId, periName) {
-  return mgetPrimaryPeriodId(instance, [sampId], [periName])[0][0];
+
+getPrimaryPeriodId = async function (instance, sampId, periName) {
+  var primaryPeriodIds =  await mgetPrimaryPeriodId(instance, [sampId], [periName]);
+  return primaryPeriodIds[0][0];
 };
 exports.getPrimaryPeriodId = getPrimaryPeriodId;
 
-mgetPeriodRange = function (instance, periodIds) {
+mgetPeriodRange = async function (instance, periodIds) {
   // needs 2D array periodIds: [iter][peri]
   // returns 2D array [iter][samp] of { "begin": x, "end": y }
 
@@ -463,7 +503,7 @@ mgetPeriodRange = function (instance, periodIds) {
       idx++;
     }
   }
-  var data = mSearch(instance, 'period', ['period.period-uuid'], [Ids], 'period', null, 1);
+  var data = await mSearch(instance, 'period', ['period.period-uuid'], [Ids], 'period', null, 1);
   // mSearch returns a 2D array, in other words, a list of values (inner array) for each query (outer array)
   // In this case, the queries are 1 per sampleId/periodName (for all iterations ordered), and the list of values
   // happens to be exactly 1 value, the primaryPeriodId.
@@ -485,29 +525,35 @@ mgetPeriodRange = function (instance, periodIds) {
   return ranges;
 };
 exports.mgetPeriodRange = mgetPeriodRange;
-getPeriodRange = function (instance, periId) {
-  return mgetPeriodRange(instance, [[periId]])[0][0];
+
+getPeriodRange = async function (instance, periId) {
+  var periodRanges = await mgetPeriodRange(instance, [[periId]]);
+  return periodRanges[0][0];
 };
 exports.getPeriodRange = getPeriodRange;
 
-mgetMetricDescs = function (instance, runIds) {
-  return mSearch(instance, 'metric_desc', ['run.run-uuid'], [runIds], 'metric_desc.metric_desc-uuid', null, bigQuerySize);
+mgetMetricDescs = async function (instance, runIds) {
+  return await mSearch(instance, 'metric_desc', ['run.run-uuid'], [runIds], 'metric_desc.metric_desc-uuid', null, bigQuerySize);
 };
-getMetricDescs = function (instance, runId) {
-  return mgetMetricDescs(instance, [runId])[0];
+
+getMetricDescs = async function (instance, runId) {
+  var metricDescs = await mgetMetricDescs(instance, [runId]);
+  return metricDescs[0];
 };
 exports.getMetricDescs = getMetricDescs;
 
-mgetMetricDataDocs = function (instance, metricIds) {
-  return mSearch(instance, 'metric_data', ['metric_desc.metric_desc-uuid'], [metricIds], '', null, bigQuerySize);
+mgetMetricDataDocs = async function (instance, metricIds) {
+  return await mSearch(instance, 'metric_data', ['metric_desc.metric_desc-uuid'], [metricIds], '', null, bigQuerySize);
 };
-getMetricDataDocs = function (instance, metricId) {
-  return mgetMetricDataDocs(instance, [metricId])[0];
+
+getMetricDataDocs = async function (instance, metricId) {
+  var metricDataDocs = await mgetMetricDataDocs(instance, [metricId]);
+  return await mgetMetricDataDocs(instance, [metricId])[0];
 };
 exports.getMetricDataDocs = getMetricDataDocs;
 
-mgetMetricTypes = function (instance, runIds, metricSources) {
-  return mSearch(
+mgetMetricTypes = async function (instance, runIds, metricSources) {
+  return await mSearch(
     instance,
     'metric_desc',
     ['run.run-uuid', 'metric_desc.source'],
@@ -518,42 +564,52 @@ mgetMetricTypes = function (instance, runIds, metricSources) {
   );
 };
 exports.mgetMetricTypes = mgetMetricTypes;
-getMetricTypes = function (instance, runId, metricSource) {
-  return mgetMetricTypes(instance, [runId], [metricSources])[0];
+
+getMetricTypes = async function (instance, runId, metricSource) {
+  var metricTypes = await mgetMetricTypes(instance, [runId], [metricSources]);
+  return await metricTypes[0];
 };
 exports.getMetricTypes = getMetricTypes;
 
-mgetIterations = function (instance, runIds) {
-  return mSearch(instance, 'iteration', ['run.run-uuid'], [runIds], 'iteration.iteration-uuid', null, 1000, [
+mgetIterations = async function (instance, runIds) {
+  return await mSearch(instance, 'iteration', ['run.run-uuid'], [runIds], 'iteration.iteration-uuid', null, 1000, [
     { 'iteration.num': { order: 'asc', numeric_type: 'long' } }
   ]);
 };
-getIterations = function (instance, runId) {
-  return mgetIterations(instance, [runId])[0];
+
+getIterations = async function (instance, runId) {
+  var iterations = await mgetIterations(instance, [runId]);
+  return iterations[0];
 };
 exports.getIterations = getIterations;
 
-mgetTags = function (instance, runIds) {
-  return mSearch(instance, 'tag', ['run.run-uuid'], [runIds], 'tag', null, 1000);
+mgetTags = async function (instance, runIds) {
+  return await mSearch(instance, 'tag', ['run.run-uuid'], [runIds], 'tag', null, 1000);
 };
-getTags = function (instance, runId) {
-  return mgetTags(instance, [runId])[0];
+
+getTags = async function (instance, runId) {
+  var tags = await mgetTags(instance, [runId]);
+  return tags[0];
 };
 exports.getTags = getTags;
 
-mgetRunFromIter = function (instance, iterIds) {
-  return mSearch(instance, 'iteration', ['iteration.iteration-uuid'], [iterIds], 'run.run-uuid', null, 1000);
+mgetRunFromIter = async function (instance, iterIds) {
+  return await mSearch(instance, 'iteration', ['iteration.iteration-uuid'], [iterIds], 'run.run-uuid', null, 1000);
 };
-getRunFromIter = function (instance, iterId) {
-  return mgetRunFromIter(instance, [iterId])[0][0];
+
+getRunFromIter = async function (instance, iterId) {
+  var runsFromIter = await mgetRunFromIter(instance, [iterId]);
+  return runsFromIter[0][0];
 };
 exports.getRunFromIter = getRunFromIter;
 
-mgetRunFromPeriod = function (instance, periIds) {
-  return mSearch(instance, 'period', ['period.period-uuid'], [periIds], 'run.run-uuid', null, 1);
+mgetRunFromPeriod = async function (instance, periIds) {
+  return await mSearch(instance, 'period', ['period.period-uuid'], [periIds], 'run.run-uuid', null, 1);
 };
-getRunFromPeriod = function (instance, periId) {
-  return mgetRunFromPeriod(instance, [periId])[0][0];
+
+getRunFromPeriod = async function (instance, periId) {
+  var runFromPeriods = await mgetRunFromPeriod(instance, [periId]);
+  return runFromPeriods[0][0];
 };
 exports.getRunFromPeriod = getRunFromPeriod;
 
@@ -610,29 +666,35 @@ invalidInstance = function (instance) {
   return false;
 }
 
-findInstanceFromRun = function (instances, runId) {
+findInstanceFromRun = async function (instances, runId) {
   var foundInstance;
   for (const instance of instances) {
     if (invalidInstance(instance)) {
+      console.log("not a valid instance: " + JSON.stringify(instance, null, 2));
       continue;
     }
     // Use any function which searches by run id and always returns something if the run id is present
-    var result = getIterations(instance, runId);
+    debug("findInstanceFromRun(): about to call getIterations()");
+    var result = await getIterations(instance, runId);
+    debug("findInstanceFromRun(): returned from calling getIterations()");
     if (typeof result != 'undefined') {
+      debug("found valid instance: " + JSON.stringify(instance, null, 2));
       foundInstance = instance;
       break;
     }
   }
+  debug("findInstanceFromRun(): about to return");
   return foundInstance;
 }
 
-findInstanceFromPeriod = function (instances, periId) {
+findInstanceFromPeriod = async function (instances, periId) {
   var foundInstance;
   for (const instance of instances) {
     if (invalidInstance(instance)) {
       continue;
     }
-    var result = mgetRunFromPeriod(instance, [periId])[0][0];
+    //var result = await mgetRunFromPeriod(instance, [periId])[0][0];
+    var result = await getRunFromPeriod(instance, [periId]);
     if (typeof result != 'undefined') {
       foundInstance = instance;
       break;
@@ -641,44 +703,53 @@ findInstanceFromPeriod = function (instances, periId) {
   return foundInstance;
 }
 
-mgetParams = function (instance, iterIds) {
-  return mSearch(instance, 'param', ['iteration.iteration-uuid'], [iterIds], 'param', null, 1000);
+mgetParams = async function (instance, iterIds) {
+  return await mSearch(instance, 'param', ['iteration.iteration-uuid'], [iterIds], 'param', null, 1000);
 };
 exports.mgetParams = mgetParams;
-getParams = function (instance, iterId) {
-  return mgetParams(instance, [iterId])[0];
+
+getParams = async function (instance, iterId) {
+  return await mgetParams(instance, [iterId])[0];
 };
 exports.getParams = getParams;
 
-mgetIterationDoc = function (instance, iterIds) {
-  return mSearch(instance, 'iteration', ['iteration.iteration-uuid'], [iterIds], '', null, 1000);
+mgetIterationDoc = async function (instance, iterIds) {
+  return await mSearch(instance, 'iteration', ['iteration.iteration-uuid'], [iterIds], '', null, 1000);
 };
-getIterationDoc = function (instance, iterId) {
-  return mgetIterationDoc(instance, [iterId])[0][0];
+
+getIterationDoc = async function (instance, iterId) {
+  var iterationDocs = await mgetIterationDoc(instance, [iterId]);
+  return iterationDocs[0][0];
 };
 exports.getIterationDoc = getIterationDoc;
 
-mgetBenchmarkNameFromIter = function (instance, Ids) {
-  return mSearch(instance, 'iteration', ['iteration.iteration-uuid'], [Ids], 'run.benchmark', null, 1);
+mgetBenchmarkNameFromIter = async function (instance, Ids) {
+  return await mSearch(instance, 'iteration', ['iteration.iteration-uuid'], [Ids], 'run.benchmark', null, 1);
 };
-getBenchmarkNameFromIter = function (instance, Id) {
-  return mgetBenchmarkNameFromIter(instance, [Id])[0][0];
+
+getBenchmarkNameFromIter = async function (instance, Id) {
+  var benchmarkNameforIters = await mgetBenchmarkNameFromIter(instance, [Id]);
+  return benchmarkNameFromIters[0][0];
 };
 exports.getBenchmarkNameFromIter = getBenchmarkNameFromIter;
 
-mgetBenchmarkName = function (instance, runIds) {
-  return mSearch(instance, 'run', ['run.run-uuid'], [runIds], 'run.benchmark', null, 1);
+mgetBenchmarkName = async function (instance, runIds) {
+  return await mSearch(instance, 'run', ['run.run-uuid'], [runIds], 'run.benchmark', null, 1);
 };
-getBenchmarkName = function (instance, runId) {
-  return mgetBenchmarkName(instance, [runId])[0][0];
+
+getBenchmarkName = async function (instance, runId) {
+  var benchmarkNames = await mgetBenchmarkName(instance, [runId]);
+  return benchmarkNames[0][0];
 };
 exports.getBenchmarkName = getBenchmarkName;
 
-mgetRunData = function (instance, runIds) {
-  return mSearch(instance, 'run', ['run.run-uuid'], [runIds], '', null, 1000);
+mgetRunData = async function (instance, runIds) {
+  return await mSearch(instance, 'run', ['run.run-uuid'], [runIds], '', null, 1000);
 };
-getRunData = function (instance, runId) {
-  return mgetRunData(instance, [runId]);
+
+getRunData = async function (instance, runId) {
+  var runData =  await mgetRunData(instance, [runId]);
+  return runData[0];
 };
 exports.getRunData = getRunData;
 
@@ -703,25 +774,25 @@ calcIterMetrics = function (vals) {
   };
 };
 
-mgetIterMetrics = function (instance, iterationIds) {
+mgetIterMetrics = async function (instance, iterationIds) {
   var results = {};
-  var benchmarkNames = consolidateAllArrays(mgetBenchmarkNameFromIter(instance, iterationIds));
+  var benchmarkNames = consolidateAllArrays(await mgetBenchmarkNameFromIter(instance, iterationIds));
   if (benchmarkNames.length !== 1) {
     console.log('ERROR: The benchmark-name for all iterations was not the same, includes: ' + benchmarkNames);
     process.exit(1);
   }
-  var primaryMetrics = consolidateAllArrays(mgetPrimaryMetric(instance, iterationIds));
+  var primaryMetrics = consolidateAllArrays(await mgetPrimaryMetric(instance, iterationIds));
   if (primaryMetrics.length !== 1) {
     console.log('ERROR: The primary-metric for all iterations was not the same, includes: ' + primaryMetrics);
     process.exit(1);
   }
-  var primaryPeriodNames = consolidateAllArrays(mgetPrimaryPeriodName(instance, iterationIds));
+  var primaryPeriodNames = consolidateAllArrays(await mgetPrimaryPeriodName(instance, iterationIds));
   if (primaryPeriodNames.length !== 1) {
     console.log('ERROR: The primary-period-name for all iterations was not the same, includes: ' + primaryPeriodNames);
     process.exit(1);
   }
   // Find all of the passing samples, then all of the primary-periods, then get the metric for all of them in one request
-  var samples = mgetSamples(instance, iterationIds); // Samples organized in 2D array, first dimension matching iterationIds
+  var samples = await mgetSamples(instance, iterationIds); // Samples organized in 2D array, first dimension matching iterationIds
   var samplesByIterId = {};
   var iterIdFromSample = {};
   for (i = 0; i < iterationIds.length; i++) {
@@ -733,12 +804,12 @@ mgetIterMetrics = function (instance, iterationIds) {
     });
   }
   var consSamples = consolidateAllArrays(samples); // All sample IDs flattened into 1 array
-  var consSamplesStatus = mgetSampleStatus(instance, consSamples);
+  var consSamplesStatus = await mgetSampleStatus(instance, consSamples);
   var consPassingSamples = []; // Only passing samples in flattened array
   for (i = 0; i < consSamplesStatus.length; i++) {
     if (consSamplesStatus[i] == 'pass') consPassingSamples.push(consSamples[i]);
   }
-  var primaryPeriodIds = mgetPrimaryPeriodId(instance, consPassingSamples, primaryPeriodNames);
+  var primaryPeriodIds = await mgetPrimaryPeriodId(instance, consPassingSamples, primaryPeriodNames);
   var periodsBySample = {};
   var sampleIdFromPeriod = {};
   for (i = 0; i < consPassingSamples.length; i++) {
@@ -750,7 +821,7 @@ mgetIterMetrics = function (instance, iterationIds) {
     });
   }
   var consPrimaryPeriodIds = consolidateAllArrays(primaryPeriodIds);
-  var periodRanges = mgetPeriodRange(instance, consPrimaryPeriodIds);
+  var periodRanges = await mgetPeriodRange(instance, consPrimaryPeriodIds);
   // Create the sets for getMetricDataSets
   var sets = [];
   var periodsByIteration = {};
@@ -769,7 +840,7 @@ mgetIterMetrics = function (instance, iterationIds) {
     periodsByIteration[iterIdFromSample[sampleIdFromPeriod[periodId]]] = p;
   }
   // Returned data should be in same order as consPrimaryPeriodIds
-  var metricDataSets = getMetricDataSets(instance, sets);
+  var metricDataSets = await getMetricDataSets(instance, sets);
   // Build per-iteration results
   var period = consPrimaryPeriodIds[0];
   var sample = sampleIdFromPeriod[period];
@@ -799,8 +870,8 @@ mgetIterMetrics = function (instance, iterationIds) {
 };
 exports.mgetIterMetrics = mgetIterMetrics;
 
-getIterMetrics = function (instance, iterId) {
-  mgetIterMetrics(instance, [iterId]);
+getIterMetrics = async function (instance, iterId) {
+  return await mgetIterMetrics(instance, [iterId]);
 };
 
 deleteDocs = function (instance, docTypes, q) {
@@ -1141,7 +1212,7 @@ reportIters = function (iterTree, indent, count) {
 };
 
 // getIters(): filter and group interations, typically for generating comparisons (clustered bar graphs)
-getIters = function (
+getIters = async function (
   instance,
   filterByAge,
   filterByTags,
@@ -1238,7 +1309,7 @@ getIters = function (
     }
   }
   // Now we can get all of the iterations for these run.run-uuids
-  var iterIdsFromRun = getIterations(instance, intersectedRunIds);
+  var iterIdsFromRun = await getIterations(instance, intersectedRunIds);
 
   // Next, we must find the iterations that match the params filters.
   // We are trying to find iterations that have *all* params filters matching, not just one.
@@ -1322,7 +1393,7 @@ getIters = function (
   // Now we can add any iterations from --add-runs and --add-iterations.
   // These options are not subject to the tags and params filters.
   if (typeof addRuns != 'undefined' && addRuns != []) {
-    var ids = getIterations(instance, addRuns);
+    var ids = await getIterations(instance, addRuns);
     ids.forEach((id) => {
       if (!allIterIds.includes(id)) {
         allIterIds.push(id);
@@ -1347,12 +1418,12 @@ getIters = function (
   console.log('Total iterations: ' + allIterIds.length);
 
   console.log('Finding all tag names');
-  var iterRunIds = mgetRunFromIter(instance, allIterIds);
-  var iterTags = mgetTags(instance, iterRunIds);
+  var iterRunIds = await mgetRunFromIter(instance, allIterIds);
+  var iterTags = await mgetTags(instance, iterRunIds);
   var allTagNames = getObjVals(consolidateAllArrays(iterTags), 'name');
   console.log('allTagNames:\n' + JSON.stringify(allTagNames, null, 2));
   console.log('Finding all param args');
-  var iterParams = mgetParams(instance, allIterIds);
+  var iterParams = await mgetParams(instance, allIterIds);
   var allParamArgs = getObjVals(consolidateAllArrays(iterParams), 'arg');
   console.log('allParamArgs:\n' + JSON.stringify(allParamArgs, null, 2));
 
@@ -1365,7 +1436,7 @@ getIters = function (
   //allIterIds.forEach(iter => {
   for (j = 0; j < allIterIds.length; j++) {
     var iter = allIterIds[j];
-    //var params = getParams(instance, iter);
+    //var params = await getParams(instance, iter);
     var params = iterParams[j];
     // Need to consolidate multiple params with same arg but different values
     var paramIdx = {};
@@ -1538,7 +1609,7 @@ getIters = function (
 
   // Build a lookup table of iterId->metrics
   console.log('mgetIterMetrics');
-  var results = mgetIterMetrics(instance, allIterIds);
+  var results = await mgetIterMetrics(instance, allIterIds);
 
   iterTree = buildIterTree(
     instance,
@@ -1682,7 +1753,7 @@ getMetricGroupTermsByLabel = function (metricGroupTerms) {
   return metricGroupTermsByLabel;
 };
 
-mgetMetricIdsFromTerms = function (instance, termsSets) {
+mgetMetricIdsFromTerms = async function (instance, termsSets) {
   // termsSets is an array of:
   // { 'period': x, 'run': y, 'termsByLabel': {} }
   // termsByLabel is a dict/hash of:
@@ -1716,7 +1787,7 @@ mgetMetricIdsFromTerms = function (instance, termsSets) {
         totalReqs++;
       });
   }
-  var responses = esJsonArrRequest(instance, 'metric_desc', '/_msearch', jsonArr);
+  var responses = await esJsonArrRequest(instance, 'metric_desc', '/_msearch', jsonArr);
   if (totalReqs != responses.length) {
     console.log(
       'mgetMetricIdsFromTerms(): ERROR, number of _msearch responses (' +
@@ -1778,7 +1849,7 @@ exports.mgetMetricIdsFromTerms = mgetMetricIdsFromTerms;
 // wants to "break-out" the metric (by some metadatam like cpu-id, devtype, etc).
 // Find the number of groups needed based on the --breakout options, then find out
 // what metric IDs belong in each group.
-getMetricGroupsFromBreakouts = function (instance, sets) {
+getMetricGroupsFromBreakouts = async function (instance, sets) {
   var metricGroupIdsByLabel = [];
   var indexjson = '{}\n';
   var index = JSON.parse(indexjson);
@@ -1817,7 +1888,7 @@ getMetricGroupsFromBreakouts = function (instance, sets) {
     jsonArr.push(JSON.stringify(index));
     jsonArr.push(JSON.stringify(q));
   });
-  var responses = esJsonArrRequest(instance, 'metric_desc', '/_msearch', jsonArr);
+  var responses = await esJsonArrRequest(instance, 'metric_desc', '/_msearch', jsonArr);
 
   var metricGroupIdsByLabelSets = [];
   var metricGroupTermsSets = [];
@@ -1836,12 +1907,12 @@ getMetricGroupsFromBreakouts = function (instance, sets) {
     };
     termsSets.push(thisLabelSet);
   }
-  metricGroupIdsByLabelSets = mgetMetricIdsFromTerms(instance, termsSets);
+  metricGroupIdsByLabelSets = await mgetMetricIdsFromTerms(instance, termsSets);
   return metricGroupIdsByLabelSets;
 };
 exports.getMetricGroupsFromBreakouts = getMetricGroupsFromBreakouts;
 
-getMetricGroupsFromBreakout = function (instance, runId, periId, source, type, breakout) {
+getMetricGroupsFromBreakout = async function (instance, runId, periId, source, type, breakout) {
   var thisSet = {
     run: runId,
     period: periId,
@@ -1849,7 +1920,7 @@ getMetricGroupsFromBreakout = function (instance, runId, periId, source, type, b
     type: type,
     breakout: breakout
   };
-  var metricGroupIdsByLabelSets = getMetricGroupsFromBreakouts(instance, [thisSet]);
+  var metricGroupIdsByLabelSets = await getMetricGroupsFromBreakouts(instance, [thisSet]);
   return metricGroupIdsByLabelSets[0];
 };
 exports.getMetricGroupsFromBreakout = getMetricGroupsFromBreakout;
@@ -1865,7 +1936,7 @@ exports.getMetricGroupsFromBreakout = getMetricGroupsFromBreakout;
 // function is called with begin=5 and end=1005, and there are 2 metric_data documents [having the same
 // metric_id in metricIds], and their respective (begin,end) are (0,500) and (501,2000),
 // then there are enough metric_data documents to compute the results.
-getMetricDataFromIdsSets = function (instance, sets, metricGroupIdsByLabelSets) {
+getMetricDataFromIdsSets = async function (instance, sets, metricGroupIdsByLabelSets) {
   var jsonArr = [];
   for (var idx = 0; idx < metricGroupIdsByLabelSets.length; idx++) {
     Object.keys(metricGroupIdsByLabelSets[idx])
@@ -2009,7 +2080,7 @@ getMetricDataFromIdsSets = function (instance, sets, metricGroupIdsByLabelSets) 
       });
   }
 
-  var responses = esJsonArrRequest(instance, 'metric_data', '/_msearch', jsonArr);
+  var responses = await esJsonArrRequest(instance, 'metric_data', '/_msearch', jsonArr);
   var elements = responses.length;
 
   var valueSets = [];
@@ -2145,7 +2216,7 @@ getMetricDataFromIdsSets = function (instance, sets, metricGroupIdsByLabelSets) 
 };
 exports.getMetricDataFromIdsSets = getMetricDataFromIdsSets;
 
-getMetricData = function (instance, runId, periId, source, type, begin, end, resolution, breakout, filter) {
+getMetricData = async function (instance, runId, periId, source, type, begin, end, resolution, breakout, filter) {
   var sets = [];
   var thisSet = {
     run: runId,
@@ -2159,7 +2230,7 @@ getMetricData = function (instance, runId, periId, source, type, begin, end, res
     filter: filter
   };
   sets.push(thisSet);
-  var dataSets = getMetricDataSets(instance, sets);
+  var dataSets = await getMetricDataSets(instance, sets);
   return dataSets[0];
 };
 exports.getMetricData = getMetricData;
@@ -2176,7 +2247,7 @@ exports.getMetricData = getMetricData;
 //   from this [benchmark-iteration-sample-]period (from doc which contains the periId)
 //   *if* the metric is from a benchmark.  If you want to query for corresponding
 //   tool data, use the same begin and end as the benchmark-iteration-sample-period.
-getMetricDataSets = function (instance, sets) {
+getMetricDataSets = async function (instance, sets) {
   for (var i = 0; i < sets.length; i++) {
     // If a begin and end are not defined, get it from the period.begin & period.end.
     // If a begin and/or end are not defined, and the period is not defined, error out.
@@ -2184,7 +2255,7 @@ getMetricDataSets = function (instance, sets) {
     // If a run and period are not defined, error out.
     if (typeof sets[i].run == 'undefined') {
       if (typeof sets[i].period != 'undefined') {
-        sets[i].run = getRunFromPeriod(instance, sets[i].period);
+        sets[i].run = await getRunFromPeriod(instance, sets[i].period);
       } else {
         console.log('ERROR: run and period was not defined');
       }
@@ -2192,7 +2263,7 @@ getMetricDataSets = function (instance, sets) {
     var periodRange;
     if (typeof sets[i].begin == 'undefined') {
       if (typeof sets[i].period != 'undefined') {
-        periodRange = getPeriodRange(instance, sets[i].period);
+        periodRange = await getPeriodRange(instance, sets[i].period);
         sets[i]['begin'] = periodRange['begin'];
       } else {
         console.log('ERROR: begin is not defined and a period was not defined');
@@ -2201,7 +2272,7 @@ getMetricDataSets = function (instance, sets) {
     if (typeof sets[i].end == 'undefined') {
       if (typeof sets[i].period != 'undefined') {
         if (typeof periodRange == 'undefined') {
-          periodRange = getPeriodRange(instance, sets[i].period);
+          periodRange = await getPeriodRange(instance, sets[i].period);
         }
         sets[i].end = periodRange.end;
       } else {
@@ -2226,8 +2297,8 @@ getMetricDataSets = function (instance, sets) {
     delete sets[i].period;
   }
 
-  var metricGroupIdsByLabelSets = getMetricGroupsFromBreakouts(instance, sets);
-  var dataSets = getMetricDataFromIdsSets(instance, sets, metricGroupIdsByLabelSets);
+  var metricGroupIdsByLabelSets = await getMetricGroupsFromBreakouts(instance, sets);
+  var dataSets = await getMetricDataFromIdsSets(instance, sets, metricGroupIdsByLabelSets);
 
   if (dataSets.length != sets.length) {
     console.log(
@@ -2249,7 +2320,7 @@ getMetricDataSets = function (instance, sets) {
     sources[i] = sets[i].source;
     types[i] = sets[i].type;
   }
-  var setBreakouts = mgetMetricNames(instance, runIds, sources, types);
+  var setBreakouts = await mgetMetricNames(instance, runIds, sources, types);
 
   for (var i = 0; i < sets.length; i++) {
     // Rearrange the actual data into 'values' section

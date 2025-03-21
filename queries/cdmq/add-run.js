@@ -46,9 +46,11 @@ async function readNdjsonXzToString(filePath) {
 
       decompressStream.on('data', (chunk) => {
         decompressedString += chunk.toString('utf8');
+        console.log("file: [" + filePath + "] reading chunk");
       });
 
       decompressStream.on('end', () => {
+        console.log("done with [" + filePath + "]");
         resolve(decompressedString);
       });
 
@@ -76,6 +78,7 @@ async function processDir(instance, dir) {
     try {
         const filePath = path.join(program.dir, files[i]);
         const decompressedData = await readNdjsonXzToString(filePath);
+        console.log("finished reading file " + filePath);
         var lines = decompressedData.split('\n');
         for (var j = 0; j < lines.length; j++) {
             // TODO: validate JSON syntax and possible validate document schema?
@@ -87,33 +90,57 @@ async function processDir(instance, dir) {
         console.error('Error processing NDJSON.XZ file:', error);
     }
   }
-  console.log("Going to index " + jsonArr.length/2 + " documents");
-  esJsonArrRequest(instance, '', '/_bulk', jsonArr);
+  console.log("finished reading ALL files");
+  console.log("processDir(): Going to index " + jsonArr.length/2 + " documents");
+  var responses = await esJsonArrRequest(instance, '', '/_bulk', jsonArr);
+  console.log("processDir(): responses.length: " + responses.length);
+  console.log("processDir(): responses: " + JSON.stringify(responses, null, 2));
+  console.log("processDir(): done");
+  //Promise.resolve("processDir-returned");
 }
 
 
-program
-  .version('0.1.0')
-  .option('--dir <a directory with ndjson files to index>')
-  .option('--host <host[:port]>', 'The host and optional port of the OpenSearch instance', save_host)
-  .option('--userpass <user:pass>', 'The user and password for the most recent --host', save_userpass)
-  .option('--ver <v7dev|v8dev|v9dev>', 'The Common Data Model version to use for the most recent --host', save_ver)
-  .parse(process.argv);
+async function main() {
 
-// If the user does not specify any hosts, assume localhost:9200 is used
-if (instances.length == 0) {
-  save_host("localhost:9200")
+  program
+    .version('0.1.0')
+    .option('--dir <a directory with ndjson files to index>')
+    .option('--host <host[:port]>', 'The host and optional port of the OpenSearch instance', save_host)
+    .option('--userpass <user:pass>', 'The user and password for the most recent --host', save_userpass)
+    .option('--ver <v7dev|v8dev|v9dev>', 'The Common Data Model version to use for the most recent --host', save_ver)
+    .parse(process.argv);
+
+  // If the user does not specify any hosts, assume localhost:9200 is used
+  if (instances.length == 0) {
+    save_host("localhost:9200")
+  }
+  getInstancesInfo(instances);
+
+  if (instances.length == 0) {
+    console.log("You must provide at least one --host <host>");
+    process.exit(1);
+  }
+  if (program.dir) {
+    console.log("about to call processDir");
+    //var myPromise = processDir(instances[instances.length - 1], program.dir);
+    //await processDir(instances[instances.length - 1], program.dir);
+    await processDir(instances[instances.length - 1], program.dir);
+    console.log("returned from processDir");
+
+/*
+  Promise.allSettled(myPromise).then(
+      function(value) { console.log("finished calling processDir, returned " + value) },
+      function(error) { console.log("error: " + error) }
+  );
+  */
+
+  } else {
+    console.log("You must provide a --dir <directory with ndjsons>");
+    process.exit(1);
+  }
+  console.log("add-run is complete");
 }
 
-getInstancesInfo(instances);
 
-if (instances.length == 0) {
-  console.log("You must provide at least one --host <host>");
-  process.exit(1);
-}
-if (program.dir) {
-  var jsona = processDir(instances[instances.length - 1], program.dir);
-} else {
-  console.log("You must provide a --dir <directory with ndjsons>");
-  process.exit(1);
-}
+main();
+
