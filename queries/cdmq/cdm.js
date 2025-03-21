@@ -2,22 +2,43 @@
 var request = require('sync-request');
 var thenRequest = require('then-request');
 var bigQuerySize = 262144;
+const debugOut = 1;
 
 function getCdmVer(instance) {
   return instance['ver'];
 }
 
 function debug(str) {
-  if (1 == 2) {
+  if (debugOut != 0) {
     console.log(str);
   }
 }
 
+// cdmv9 adds indices dynamically based on year and month, so
+// we need a way to check for existence of the index and create
+// if not found.  Since this moves toward a auto-create index
+// policy, might as well do the same for earlier CDM versions.
+// This will eliminate the need for other projects (like Crucible)
+// to maintain the indices.
+function checkCreateIndex(instance, docType) {
+  // get base index name
+  // check instance.cdmver.indices for index, if not found:
+  //   create index
+  //   query opensearch for index
+  //   add index to instances.cdmver.indices
+}
+
 function getIndexBaseName(instance) {
+  // CDM version support is effectively determined here
   cdmVer = getCdmVer(instance);
+  console.log("cdmver: [" + cdmVer + "]");
   if (cdmVer == 'v7dev' || cdmVer == 'v8dev') {
     return 'cdm' + cdmVer + '-';
   } else if (cdmVer == 'v9dev') {
+    // v9dev adds a '-' after 'cdm' because of a [lab admin] naming convention
+    // used for shared opensearch.  Therefore, you will find that v7dev
+    // and v8dev cannot be used for some [lab managed] opensearch instances with
+    // same naming requirement.
     return 'cdm-v9dev-';
   } else {
     console.log("CDM version [" + instance['ver'] + "] is not supported, exiting");
@@ -90,8 +111,6 @@ intersectAllArrays = function (a2D) {
 };
 exports.intersectAllArrays = intersectAllArrays;
 
-
-
 async function fetchBatchedData(instance, reqs, batchSize = 16) {
   debug("fetchBatchedData() begin");
   const responses = [];
@@ -157,7 +176,6 @@ esJsonArrRequest = async function (instance, index, action, jsonArr) {
   var theseResps = [];
   var allResponses = [];
   // Process queries in chunks no larger than 'max' chars
-  //console.log("jsonArr.length: " + jsonArr.length);
   while (idx < jsonArr.length) {
     // Add the first request (2 lines) even if it exceeds our limit (we don't really have a choice)
     // The limit we have is likely much lower than what can be handled, but if this becomes a
@@ -187,22 +205,16 @@ esJsonArrRequest = async function (instance, index, action, jsonArr) {
     const req = { url: url, body: ndjson };
     reqs.push(req);
   }
-  //console.log("esJsonArrRequest(): hello");
-  //console.log("esJsonArrRequest(): There are " + reqs.length + " requests:\n" + JSON.stringify(requests, null, 2));
-  //await console.log("esJsonArrRequest(): There are " + reqs.length + " requests:\n" + JSON.stringify(requests, null, 2));
-  //console.log("requests: " + JSON.stringify(requests, null, 2));
-
+  debug("esJsonArrRequest(): There are " + reqs.length + " requests:\n" + JSON.stringify(reqs, null, 2));
   const responses = await fetchBatchedData(instance, reqs);
-  //await console.log("esJsonArrRequest(): responses.length:\n" + responses.length);
-  //return new Promise((resolve, reject) => {
-    //resolve(responses);
-  //});
+  debug("esJsonArrRequest(): responses.length:\n" + responses.length);
   debug("esJsonArrRequest end");
   return responses;
 }
 exports.esJsonArrRequest = esJsonArrRequest;
 
 function esRequest(instance, idx, action, q) {
+  // This is the only http request remainig that still uses a sync-request
   var url = 'http://' + instance['host'] + '/' + getIndexBaseName(instance) + getIndexName(idx, instance) + action;
   // The var q can be an object or a string.  If you are submitting NDJSON
   // for a _msearch, it must be a [multi-line] string.
@@ -417,7 +429,6 @@ mgetSampleStatus = async function (instance, Ids) {
   }
 
   var data = await mSearch(instance, 'sample', ['sample.sample-uuid'], [sampleIds], 'sample.status', null, 1);
-
   var sampleStatus = []; // Will be 2D array of [iter][sampIds];
   idx = 0;
   for (var i = 0; i < Ids.length; i++) {
@@ -644,6 +655,9 @@ getInstancesInfo = function (instances) {
     if (Object.keys(instances[inst_idx]['indices']).length != 0 && !Object.keys(instances[inst_idx]).includes('ver')) {
       // If mulitple versions of indices exist, default to the latest version
       // (this can be overridden with --ver <v7dev|v8dev|v9dev> after --host)
+      // Note: if you index a new data into a newer CDM version, that will
+      // create those indices, and a subsequent query (without --ver) will now
+      // default to the newer cdm version.
       var cdmvers = Object.keys(instances[inst_idx]['indices']).sort();
       instances[inst_idx]['ver'] = cdmvers[cdmvers.length - 1];
     }

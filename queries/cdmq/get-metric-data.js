@@ -97,19 +97,19 @@ async function main() {
       2
     )
     .parse(process.argv);
-  
+
   // If the user does not specify any hosts, assume localhost:9200 is used
   if (instances.length == 0) {
     save_host("localhost:9200")
   }
-  
+
   getInstancesInfo(instances);
   var instance = await findInstanceFromPeriod(instances, program.period);
   if (typeof instance == 'undefined') {
     console.log("None of the instances provided were valid, so going to abort");
     process.exit(1);
   }
-  
+
   metric_data = await cdm.getMetricData(
     instance,
     program.run,
@@ -122,18 +122,17 @@ async function main() {
     program.breakout,
     program.filter
   );
-  
-  console.log("metric_data:\n" + JSON.stringify(metric_data, null, 2));
+
   if (Object.keys(metric_data.values).length == 0) {
     console.log('There were no metrics found, exiting');
     process.exit(1);
   }
-  
+
   if (program.outputFormat == 'json') {
     console.log(JSON.stringify(metric_data, null, 2));
     process.exit(0);
   }
-  
+
   // Rest of the code is for non-JSON output formats
   console.log('Available breakouts:  ' + metric_data.remainingBreakouts + '\n');
   var dataColumnLengths = [];
@@ -152,7 +151,7 @@ async function main() {
   var labels = [];
   beginMarker = ' ';
   endMarker = '';
-  
+
   Object.keys(metric_data.values)
     .sort((a, b) => {
       return a.localeCompare(b, undefined, {
@@ -251,7 +250,7 @@ async function main() {
       });
       row++;
     });
-  
+
   // Adjust column widths according to longest string per column
   // (this should become a function)
   for (row = 0; row < vals.length; row++) {
@@ -270,7 +269,7 @@ async function main() {
       }
     }
   }
-  
+
   rowStart = 0;
   rowEnd = vals.length;
   if (program.outputContent == 'values') {
@@ -280,7 +279,7 @@ async function main() {
     // stop early to ensure we don't print the values
     rowEnd = dataStartRow;
   }
-  
+
   for (row = rowStart; row < rowEnd; row++) {
     // add a horizontal break
     if (program.horizontalBreak == 'yes' && row == dataStartRow) {
@@ -291,7 +290,7 @@ async function main() {
           line = line + sprintf('-');
         }
       }
-  
+
       // construct the values for the row
       for (col = 0; col < vals[row].length; col++) {
         for (letter = 0; letter < dataColumnLengths[col] + 1; letter++) {
@@ -300,13 +299,13 @@ async function main() {
       }
       console.log(line);
     }
-  
+
     line = '';
     // construct the labels (left columns) for the row
     for (col = 0; col < labels[row].length; col++) {
       line = line + sprintf(beginMarker + '%' + labelColumnLengths[col] + 's' + endMarker, labels[row][col]);
     }
-  
+
     // construct the values for the row
     for (col = 0; col < vals[row].length; col++) {
       if (row >= dataStartRow) {

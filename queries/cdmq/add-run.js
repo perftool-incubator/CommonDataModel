@@ -4,34 +4,32 @@ var xz = require('xz');
 var readline = require('readline');
 var path = require('path');
 var program = require('commander');
-
 var instances = []; // opensearch instances
 
 function save_host(host) {
-    var host_info = { 'host': host, 'header': { 'Content-Type': 'application/json' } };
-    //var host_info = { 'host': host, 'header': " 'Content-Type': 'application/json' " };
-    instances.push(host_info);
+  var host_info = { 'host': host, 'header': { 'Content-Type': 'application/json' } };
+  instances.push(host_info);
 }
 
 function save_userpass(userpass) {
-    if (instances.length == 0) {
-        console.log("You must specify a --url before a --userpass");
-        process.exit(1);
-    }
-    instances[instances.length - 1]['header'] = { 'Content-Type': 'application/json', 'Authorization' : 'Basic ' + btoa(userpass) };
+  if (instances.length == 0) {
+    console.log("You must specify a --url before a --userpass");
+    process.exit(1);
+  }
+  instances[instances.length - 1]['header'] = { 'Content-Type': 'application/json', 'Authorization' : 'Basic ' + btoa(userpass) };
 }
 
 function save_ver(ver) {
-    if (instances.length == 0) {
-        console.log("You must specify a --host before a --ver");
-        process.exit(1);
-    }
-    if (/^v[7|8|9]dev$/.exec(ver)) {
-      instances[instances.length - 1]['ver'] = ver;
-    } else {
-      console.log("The version must be v7dev, v8dev, or v9dev, not: " + ver);
-      process.exit(1);
-    }
+  if (instances.length == 0) {
+    console.log("You must specify a --host before a --ver");
+    process.exit(1);
+  }
+  if (/^v[7|8|9]dev$/.exec(ver)) {
+    instances[instances.length - 1]['ver'] = ver;
+  } else {
+    console.log("The version must be v7dev, v8dev, or v9dev, not: " + ver);
+    process.exit(1);
+  }
 }
 
 async function readNdjsonXzToString(filePath) {
@@ -68,7 +66,6 @@ async function readNdjsonXzToString(filePath) {
   });
 }
 
-
 async function processDir(instance, dir) {
   var jsonArr = [];
   var files = fs.readdirSync(dir);
@@ -96,12 +93,10 @@ async function processDir(instance, dir) {
   console.log("processDir(): responses.length: " + responses.length);
   console.log("processDir(): responses: " + JSON.stringify(responses, null, 2));
   console.log("processDir(): done");
-  //Promise.resolve("processDir-returned");
 }
 
 
 async function main() {
-
   program
     .version('0.1.0')
     .option('--dir <a directory with ndjson files to index>')
@@ -114,26 +109,10 @@ async function main() {
   if (instances.length == 0) {
     save_host("localhost:9200")
   }
+
   getInstancesInfo(instances);
-
-  if (instances.length == 0) {
-    console.log("You must provide at least one --host <host>");
-    process.exit(1);
-  }
   if (program.dir) {
-    console.log("about to call processDir");
-    //var myPromise = processDir(instances[instances.length - 1], program.dir);
-    //await processDir(instances[instances.length - 1], program.dir);
     await processDir(instances[instances.length - 1], program.dir);
-    console.log("returned from processDir");
-
-/*
-  Promise.allSettled(myPromise).then(
-      function(value) { console.log("finished calling processDir, returned " + value) },
-      function(error) { console.log("error: " + error) }
-  );
-  */
-
   } else {
     console.log("You must provide a --dir <directory with ndjsons>");
     process.exit(1);
