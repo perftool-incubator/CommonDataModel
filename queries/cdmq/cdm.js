@@ -154,7 +154,16 @@ async function fetchBatchedData(instance, reqs, batchSize = 16) {
     const batchResults = await Promise.all(promises);
     debug('fetchBatchedData() batchResults.length:\n' + batchResults.length);
     for (const batchResult of batchResults) {
-      responses.push(...batchResult.responses);
+      const keys = Object.keys(batchResult);
+      // items present if this is document creation
+      if (keys.includes('items')) {
+        responses.push(...batchResult.items);
+      } else {
+        // responses present if this is a query (_msearch)
+        if (keys.includes('responses')) {
+          responses.push(...batchResult.responses);
+        }
+      }
     }
   }
 

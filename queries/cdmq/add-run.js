@@ -47,11 +47,9 @@ async function readNdjsonXzToString(filePath) {
 
       decompressStream.on('data', (chunk) => {
         decompressedString += chunk.toString('utf8');
-        console.log('file: [' + filePath + '] reading chunk');
       });
 
       decompressStream.on('end', () => {
-        console.log('done with [' + filePath + ']');
         resolve(decompressedString);
       });
 
@@ -73,11 +71,15 @@ async function processDir(instance, dir) {
   var files = fs.readdirSync(dir);
 
   for (var i = 0; i < files.length; i++) {
-    // TODO: only allow .ndjson.xz files
+    var regExp = /\.ndjson\.xz$/;
+    var matches = regExp.exec(files[i]);
+    // skip non ndjson.xz files
+    if (!matches) {
+      continue;
+    }
     try {
       const filePath = path.join(program.dir, files[i]);
       const decompressedData = await readNdjsonXzToString(filePath);
-      console.log('finished reading file ' + filePath);
       var lines = decompressedData.split('\n');
       for (var j = 0; j < lines.length; j++) {
         // TODO: validate JSON syntax and possible validate document schema?
@@ -89,12 +91,7 @@ async function processDir(instance, dir) {
       console.error('Error processing NDJSON.XZ file:', error);
     }
   }
-  console.log('finished reading ALL files');
-  console.log('processDir(): Going to index ' + jsonArr.length / 2 + ' documents');
   var responses = await esJsonArrRequest(instance, '', '/_bulk', jsonArr);
-  console.log('processDir(): responses.length: ' + responses.length);
-  console.log('processDir(): responses: ' + JSON.stringify(responses, null, 2));
-  console.log('processDir(): done');
 }
 
 async function main() {
