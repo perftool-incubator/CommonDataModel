@@ -19,33 +19,35 @@ function list(val) {
 }
 
 function save_host(host) {
-    var host_info = { 'host': host, 'header': { 'Content-Type': 'application/json' } };
-    instances.push(host_info);
+  var host_info = { host: host, header: { 'Content-Type': 'application/json' } };
+  instances.push(host_info);
 }
 
 function save_userpass(userpass) {
-    if (instances.length == 0) {
-        console.log("You must specify a --host before a --userpass");
-        process.exit(1);
-    }
-    instances[instances.length - 1]['header'] = { 'Content-Type': 'application/json', 'Authorization' : 'Basic ' + btoa(userpass) };
+  if (instances.length == 0) {
+    console.log('You must specify a --host before a --userpass');
+    process.exit(1);
+  }
+  instances[instances.length - 1]['header'] = {
+    'Content-Type': 'application/json',
+    Authorization: 'Basic ' + btoa(userpass)
+  };
 }
 
 function save_ver(ver) {
-    if (instances.length == 0) {
-        console.log("You must specify a --host before a --ver");
-        process.exit(1);
-    }
-    if (/^v[7|8|9]dev$/.exec(ver)) {
-      instances[instances.length - 1]['ver'] = ver;
-    } else {
-      console.log("The version must be v7dev, v8dev, or v9dev, not: " + ver);
-      process.exit(1);
-    }
+  if (instances.length == 0) {
+    console.log('You must specify a --host before a --ver');
+    process.exit(1);
+  }
+  if (/^v[7|8|9]dev$/.exec(ver)) {
+    instances[instances.length - 1]['ver'] = ver;
+  } else {
+    console.log('The version must be v7dev, v8dev, or v9dev, not: ' + ver);
+    process.exit(1);
+  }
 }
 
 async function main() {
-
   program
     .version('0.1.0')
     .option('--host <host[:port]>', 'The host and optional port of the OpenSearch instance', save_host)
@@ -90,7 +92,11 @@ async function main() {
       '[optional] Output the entire table, just the headers, or just the values',
       'all'
     )
-    .option('--horizontal-break <yes|no>', '[optional] Add a horizontal break between the headers and the values', 'yes')
+    .option(
+      '--horizontal-break <yes|no>',
+      '[optional] Add a horizontal break between the headers and the values',
+      'yes'
+    )
     .option(
       '--timestamp-rows <1-2>',
       'Use one or two rows to display timestamp.  When using two rows with UTC date & time, date will be on the first row and time on the second row',
@@ -100,13 +106,13 @@ async function main() {
 
   // If the user does not specify any hosts, assume localhost:9200 is used
   if (instances.length == 0) {
-    save_host("localhost:9200")
+    save_host('localhost:9200');
   }
 
   getInstancesInfo(instances);
   var instance = await findInstanceFromPeriod(instances, program.period);
   if (typeof instance == 'undefined') {
-    console.log("None of the instances provided were valid, so going to abort");
+    console.log('None of the instances provided were valid, so going to abort');
     process.exit(1);
   }
 
@@ -324,4 +330,3 @@ async function main() {
 }
 
 main();
-

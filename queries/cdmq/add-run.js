@@ -7,27 +7,30 @@ var program = require('commander');
 var instances = []; // opensearch instances
 
 function save_host(host) {
-  var host_info = { 'host': host, 'header': { 'Content-Type': 'application/json' } };
+  var host_info = { host: host, header: { 'Content-Type': 'application/json' } };
   instances.push(host_info);
 }
 
 function save_userpass(userpass) {
   if (instances.length == 0) {
-    console.log("You must specify a --url before a --userpass");
+    console.log('You must specify a --url before a --userpass');
     process.exit(1);
   }
-  instances[instances.length - 1]['header'] = { 'Content-Type': 'application/json', 'Authorization' : 'Basic ' + btoa(userpass) };
+  instances[instances.length - 1]['header'] = {
+    'Content-Type': 'application/json',
+    Authorization: 'Basic ' + btoa(userpass)
+  };
 }
 
 function save_ver(ver) {
   if (instances.length == 0) {
-    console.log("You must specify a --host before a --ver");
+    console.log('You must specify a --host before a --ver');
     process.exit(1);
   }
   if (/^v[7|8|9]dev$/.exec(ver)) {
     instances[instances.length - 1]['ver'] = ver;
   } else {
-    console.log("The version must be v7dev, v8dev, or v9dev, not: " + ver);
+    console.log('The version must be v7dev, v8dev, or v9dev, not: ' + ver);
     process.exit(1);
   }
 }
@@ -44,11 +47,11 @@ async function readNdjsonXzToString(filePath) {
 
       decompressStream.on('data', (chunk) => {
         decompressedString += chunk.toString('utf8');
-        console.log("file: [" + filePath + "] reading chunk");
+        console.log('file: [' + filePath + '] reading chunk');
       });
 
       decompressStream.on('end', () => {
-        console.log("done with [" + filePath + "]");
+        console.log('done with [' + filePath + ']');
         resolve(decompressedString);
       });
 
@@ -59,7 +62,6 @@ async function readNdjsonXzToString(filePath) {
       fileStream.on('error', (error) => {
         reject(error);
       });
-
     } catch (error) {
       reject(error);
     }
@@ -73,28 +75,27 @@ async function processDir(instance, dir) {
   for (var i = 0; i < files.length; i++) {
     // TODO: only allow .ndjson.xz files
     try {
-        const filePath = path.join(program.dir, files[i]);
-        const decompressedData = await readNdjsonXzToString(filePath);
-        console.log("finished reading file " + filePath);
-        var lines = decompressedData.split('\n');
-        for (var j = 0; j < lines.length; j++) {
-            // TODO: validate JSON syntax and possible validate document schema?
-            if (lines[j] != '') {
-                jsonArr.push(lines[j]);
-            }
+      const filePath = path.join(program.dir, files[i]);
+      const decompressedData = await readNdjsonXzToString(filePath);
+      console.log('finished reading file ' + filePath);
+      var lines = decompressedData.split('\n');
+      for (var j = 0; j < lines.length; j++) {
+        // TODO: validate JSON syntax and possible validate document schema?
+        if (lines[j] != '') {
+          jsonArr.push(lines[j]);
         }
+      }
     } catch (error) {
-        console.error('Error processing NDJSON.XZ file:', error);
+      console.error('Error processing NDJSON.XZ file:', error);
     }
   }
-  console.log("finished reading ALL files");
-  console.log("processDir(): Going to index " + jsonArr.length/2 + " documents");
+  console.log('finished reading ALL files');
+  console.log('processDir(): Going to index ' + jsonArr.length / 2 + ' documents');
   var responses = await esJsonArrRequest(instance, '', '/_bulk', jsonArr);
-  console.log("processDir(): responses.length: " + responses.length);
-  console.log("processDir(): responses: " + JSON.stringify(responses, null, 2));
-  console.log("processDir(): done");
+  console.log('processDir(): responses.length: ' + responses.length);
+  console.log('processDir(): responses: ' + JSON.stringify(responses, null, 2));
+  console.log('processDir(): done');
 }
-
 
 async function main() {
   program
@@ -107,19 +108,17 @@ async function main() {
 
   // If the user does not specify any hosts, assume localhost:9200 is used
   if (instances.length == 0) {
-    save_host("localhost:9200")
+    save_host('localhost:9200');
   }
 
   getInstancesInfo(instances);
   if (program.dir) {
     await processDir(instances[instances.length - 1], program.dir);
   } else {
-    console.log("You must provide a --dir <directory with ndjsons>");
+    console.log('You must provide a --dir <directory with ndjsons>');
     process.exit(1);
   }
-  console.log("add-run is complete");
+  console.log('add-run is complete');
 }
 
-
 main();
-

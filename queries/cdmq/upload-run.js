@@ -8,30 +8,33 @@ var program = require('commander');
 var instances = []; // opensearch instances
 
 function save_host(host) {
-    var host_info = { 'host': host, 'header': { 'Content-Type': 'application/json' } };
-    //var host_info = { 'host': host, 'header': " 'Content-Type': 'application/json' " };
-    instances.push(host_info);
+  var host_info = { host: host, header: { 'Content-Type': 'application/json' } };
+  //var host_info = { 'host': host, 'header': " 'Content-Type': 'application/json' " };
+  instances.push(host_info);
 }
 
 function save_userpass(userpass) {
-    if (instances.length == 0) {
-        console.log("You must specify a --url before a --userpass");
-        process.exit(1);
-    }
-    instances[instances.length - 1]['header'] = { 'Content-Type': 'application/json', 'Authorization' : 'Basic ' + btoa(userpass) };
+  if (instances.length == 0) {
+    console.log('You must specify a --url before a --userpass');
+    process.exit(1);
+  }
+  instances[instances.length - 1]['header'] = {
+    'Content-Type': 'application/json',
+    Authorization: 'Basic ' + btoa(userpass)
+  };
 }
 
 function save_ver(ver) {
-    if (instances.length == 0) {
-        console.log("You must specify a --host before a --ver");
-        process.exit(1);
-    }
-    if (/^v[7|8|9]dev$/.exec(ver)) {
-      instances[instances.length - 1]['ver'] = ver;
-    } else {
-      console.log("The version must be v7dev, v8dev, or v9dev, not: " + ver);
-      process.exit(1);
-    }
+  if (instances.length == 0) {
+    console.log('You must specify a --host before a --ver');
+    process.exit(1);
+  }
+  if (/^v[7|8|9]dev$/.exec(ver)) {
+    instances[instances.length - 1]['ver'] = ver;
+  } else {
+    console.log('The version must be v7dev, v8dev, or v9dev, not: ' + ver);
+    process.exit(1);
+  }
 }
 
 async function readNdjsonXzToString(filePath) {
@@ -59,13 +62,11 @@ async function readNdjsonXzToString(filePath) {
       fileStream.on('error', (error) => {
         reject(error);
       });
-
     } catch (error) {
       reject(error);
     }
   });
 }
-
 
 async function processDir(instance, dir) {
   var jsonArr = [];
@@ -74,23 +75,22 @@ async function processDir(instance, dir) {
   for (var i = 0; i < files.length; i++) {
     // TODO: only allow .ndjson.xz files
     try {
-        const filePath = path.join(program.dir, files[i]);
-        const decompressedData = await readNdjsonXzToString(filePath);
-        var lines = decompressedData.split('\n');
-        for (var j = 0; j < lines.length; j++) {
-            // TODO: validate JSON syntax and possible validate document schema?
-            if (lines[j] != '') {
-                jsonArr.push(lines[j]);
-            }
+      const filePath = path.join(program.dir, files[i]);
+      const decompressedData = await readNdjsonXzToString(filePath);
+      var lines = decompressedData.split('\n');
+      for (var j = 0; j < lines.length; j++) {
+        // TODO: validate JSON syntax and possible validate document schema?
+        if (lines[j] != '') {
+          jsonArr.push(lines[j]);
         }
+      }
     } catch (error) {
-        console.error('Error processing NDJSON.XZ file:', error);
+      console.error('Error processing NDJSON.XZ file:', error);
     }
   }
-  console.log("Going to index " + jsonArr.length/2 + " documents");
+  console.log('Going to index ' + jsonArr.length / 2 + ' documents');
   esJsonArrRequest(instance, '', '/_bulk', jsonArr);
 }
-
 
 program
   .version('0.1.0')
@@ -102,18 +102,18 @@ program
 
 // If the user does not specify any hosts, assume localhost:9200 is used
 if (instances.length == 0) {
-  save_host("localhost:9200")
+  save_host('localhost:9200');
 }
 
 getInstancesInfo(instances);
 
 if (instances.length == 0) {
-  console.log("You must provide at least one --host <host>");
+  console.log('You must provide at least one --host <host>');
   process.exit(1);
 }
 if (program.dir) {
   var jsona = processDir(instances[instances.length - 1], program.dir);
 } else {
-  console.log("You must provide a --dir <directory with ndjsons>");
+  console.log('You must provide a --dir <directory with ndjsons>');
   process.exit(1);
 }

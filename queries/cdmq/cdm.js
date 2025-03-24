@@ -23,7 +23,7 @@ function debug(str) {
 function checkCreateIndex(instance, docType) {
   const index = getIndexBaseName(instance) + getIndexName(index, instance);
   const cdmver = getCdmVer(instance);
-  if ( Object.keys( instance.indices[cdmver] ).includes(index) ) {
+  if (Object.keys(instance.indices[cdmver]).includes(index)) {
     return;
   }
   //create index
@@ -35,7 +35,7 @@ function checkCreateIndex(instance, docType) {
 function getIndexBaseName(instance) {
   // CDM version support is effectively determined here
   cdmVer = getCdmVer(instance);
-  debug("cdmver: [" + cdmVer + "]");
+  debug('cdmver: [' + cdmVer + ']');
   if (cdmVer == 'v7dev' || cdmVer == 'v8dev') {
     return 'cdm' + cdmVer + '-';
   } else if (cdmVer == 'v9dev') {
@@ -45,7 +45,7 @@ function getIndexBaseName(instance) {
     // same naming requirement.
     return 'cdm-v9dev-';
   } else {
-    console.log("CDM version [" + instance['ver'] + "] is not supported, exiting");
+    console.log('CDM version [' + instance['ver'] + '] is not supported, exiting');
   }
 }
 
@@ -89,7 +89,7 @@ consolidateAllArrays = function (a) {
     });
   });
   return c;
-}
+};
 exports.consolidateAllArrays = consolidateAllArrays;
 
 // Return intersection of two 1-dimensional arrays
@@ -116,7 +116,7 @@ intersectAllArrays = function (a2D) {
 exports.intersectAllArrays = intersectAllArrays;
 
 async function fetchBatchedData(instance, reqs, batchSize = 16) {
-  debug("fetchBatchedData() begin");
+  debug('fetchBatchedData() begin');
   const responses = [];
   const batches = [];
 
@@ -125,21 +125,21 @@ async function fetchBatchedData(instance, reqs, batchSize = 16) {
   }
 
   for (const batch of batches) {
-    debug("fetchBatchedData() processing batch");
+    debug('fetchBatchedData() processing batch');
     const promises = batch.map(async (req) => {
       try {
         // thenRequest will abolutely *not* work unless this header is converted to string and back
         const headerStr = JSON.stringify(instance['header']);
         const hdrs = JSON.parse(headerStr);
-        debug("fetchBatchedData() calling thenRequest()");
+        debug('fetchBatchedData() calling thenRequest()');
         const response = await thenRequest('POST', req.url, { body: req.body, headers: hdrs });
-        debug("fetchBatchedData() returned from thenRequest()");
+        debug('fetchBatchedData() returned from thenRequest()');
         if (response.statusCode >= 200 && response.statusCode < 300) {
           try {
-            debug("fetchBatchedData() about to return with JSON.parse");
+            debug('fetchBatchedData() about to return with JSON.parse');
             return JSON.parse(response.getBody('utf8')); // Attempt JSON parsing
-          } catch (jsonError){
-            debug("fetchBatchedData() about to return with JSON(no-parse)");
+          } catch (jsonError) {
+            debug('fetchBatchedData() about to return with JSON(no-parse)');
             return response.getBody('utf8'); // return text if JSON parsing fails
           }
         } else {
@@ -152,19 +152,19 @@ async function fetchBatchedData(instance, reqs, batchSize = 16) {
     });
 
     const batchResults = await Promise.all(promises);
-    debug("fetchBatchedData() batchResults.length:\n" + batchResults.length);
+    debug('fetchBatchedData() batchResults.length:\n' + batchResults.length);
     for (const batchResult of batchResults) {
       responses.push(...batchResult.responses);
     }
   }
 
-  debug("fetchBatchedData() responses.length:\n" + responses.length);
+  debug('fetchBatchedData() responses.length:\n' + responses.length);
   return responses;
 }
 
 esJsonArrRequest = async function (instance, index, action, jsonArr) {
-  debug("esJsonArrRequest() begin");
-  var url = "";
+  debug('esJsonArrRequest() begin');
+  var url = '';
   if (index == '') {
     // Expect to have the Index and action in the jsonArr itself
     url = 'http://' + instance['host'] + '/_bulk';
@@ -201,7 +201,7 @@ esJsonArrRequest = async function (instance, index, action, jsonArr) {
       reqs.push(req);
       ndjson = '';
     }
-  }  //while
+  } //while
   // Max was not exceeded but there are some requests that have not been submitted
   if (ndjson != '') {
     req_count++;
@@ -209,12 +209,12 @@ esJsonArrRequest = async function (instance, index, action, jsonArr) {
     const req = { url: url, body: ndjson };
     reqs.push(req);
   }
-  debug("esJsonArrRequest(): There are " + reqs.length + " requests:\n" + JSON.stringify(reqs, null, 2));
+  debug('esJsonArrRequest(): There are ' + reqs.length + ' requests:\n' + JSON.stringify(reqs, null, 2));
   const responses = await fetchBatchedData(instance, reqs);
-  debug("esJsonArrRequest(): responses.length:\n" + responses.length);
-  debug("esJsonArrRequest end");
+  debug('esJsonArrRequest(): responses.length:\n' + responses.length);
+  debug('esJsonArrRequest end');
   return responses;
-}
+};
 exports.esJsonArrRequest = esJsonArrRequest;
 
 function esRequest(instance, idx, action, q) {
@@ -240,7 +240,6 @@ function esRequest(instance, idx, action, q) {
 // Note: termKeys is a 1D array, while values is a 2D array.
 // termKeys[x] uses list of values from values[x]
 mSearch = async function (instance, index, termKeys, values, source, aggs, size, sort) {
-
   if (typeof termKeys !== typeof []) return;
   if (typeof values !== typeof []) return;
   var jsonArr = [];
@@ -268,9 +267,9 @@ mSearch = async function (instance, index, termKeys, values, source, aggs, size,
     jsonArr.push('{}');
     jsonArr.push(JSON.stringify(req));
   }
-  debug("mSearch(): calling esJsonArrRequest()");
+  debug('mSearch(): calling esJsonArrRequest()');
   var responses = await esJsonArrRequest(instance, index, '/_msearch', jsonArr);
-  debug("mSearch(): returned from calling esJsonArrRequest(), responses:\n" + JSON.stringify(responses, null, 2));
+  debug('mSearch(): returned from calling esJsonArrRequest(), responses:\n' + JSON.stringify(responses, null, 2));
 
   // Unpack response and organize in array of arrays
   var retData = [];
@@ -289,9 +288,9 @@ mSearch = async function (instance, index, termKeys, values, source, aggs, size,
       });
       retData[i] = keys;
 
-    // For queries without aggregation
+      // For queries without aggregation
     } else {
-      debug("hits:\n" + JSON.stringify(responses[i], null, 2));
+      debug('hits:\n' + JSON.stringify(responses[i], null, 2));
       if (responses[i].hits == null) {
         console.log('WARNING! msearch returned data.responses[' + i + '].hits is NULL');
         console.log(JSON.stringify(responses[i], null, 2));
@@ -342,7 +341,7 @@ mSearch = async function (instance, index, termKeys, values, source, aggs, size,
       }
     }
   }
-  debug("mSearch(): about to return");
+  debug('mSearch(): about to return');
   return retData;
 };
 exports.mSearch = mSearch;
@@ -353,7 +352,13 @@ exports.mSearch = mSearch;
 // all query functions use msearch, even if there is a single query.
 
 mgetPrimaryMetric = async function (instance, iterations) {
-  var metrics = await mSearch(instance, 'iteration', ['iteration.iteration-uuid'], [iterations], 'iteration.primary-metric');
+  var metrics = await mSearch(
+    instance,
+    'iteration',
+    ['iteration.iteration-uuid'],
+    [iterations],
+    'iteration.primary-metric'
+  );
   // mSearch returns a list of values for each query, so 2D array.  We only have exactly 1 primary-metric
   // for each iteration, so collapse the 2D array into a 1D array, 1 element per iteration.
   var primaryMetrics = [];
@@ -365,13 +370,19 @@ mgetPrimaryMetric = async function (instance, iterations) {
 exports.mgetPrimaryMetric = mgetPrimaryMetric;
 
 getPrimaryMetric = async function (instance, iteration) {
-  var primaryMetrics =  await mgetPrimaryMetric(instance, [iteration]);
+  var primaryMetrics = await mgetPrimaryMetric(instance, [iteration]);
   return primaryMetrics[0][0];
 };
 exports.getPrimaryMetric = getPrimaryMetric;
 
 mgetPrimaryPeriodName = async function (instance, iterations) {
-  var data = await mSearch(instance, 'iteration', ['iteration.iteration-uuid'], [iterations], 'iteration.primary-period');
+  var data = await mSearch(
+    instance,
+    'iteration',
+    ['iteration.iteration-uuid'],
+    [iterations],
+    'iteration.primary-period'
+  );
   // There can be only 1 period-name er iteration, therefore no need for a period name per period [of the same iteration]
   // Therefore, we do not need to return a 2D array
   var periodNames = [];
@@ -500,7 +511,7 @@ mgetPrimaryPeriodId = async function (instance, sampIds, periNames) {
 exports.mgetPrimaryPeriodId = mgetPrimaryPeriodId;
 
 getPrimaryPeriodId = async function (instance, sampId, periName) {
-  var primaryPeriodIds =  await mgetPrimaryPeriodId(instance, [sampId], [periName]);
+  var primaryPeriodIds = await mgetPrimaryPeriodId(instance, [sampId], [periName]);
   return primaryPeriodIds[0][0];
 };
 exports.getPrimaryPeriodId = getPrimaryPeriodId;
@@ -548,7 +559,15 @@ getPeriodRange = async function (instance, periId) {
 exports.getPeriodRange = getPeriodRange;
 
 mgetMetricDescs = async function (instance, runIds) {
-  return await mSearch(instance, 'metric_desc', ['run.run-uuid'], [runIds], 'metric_desc.metric_desc-uuid', null, bigQuerySize);
+  return await mSearch(
+    instance,
+    'metric_desc',
+    ['run.run-uuid'],
+    [runIds],
+    'metric_desc.metric_desc-uuid',
+    null,
+    bigQuerySize
+  );
 };
 
 getMetricDescs = async function (instance, runId) {
@@ -630,14 +649,16 @@ exports.getRunFromPeriod = getRunFromPeriod;
 
 // For each opensearch instance, get the cdm versions they contain and their indices
 getInstancesInfo = function (instances) {
-  for (inst_idx=0; inst_idx<instances.length; inst_idx++) {
+  for (inst_idx = 0; inst_idx < instances.length; inst_idx++) {
     var url = 'http://' + instances[inst_idx]['host'] + '/_cat/indices?format=json';
     var resp;
     instances[inst_idx]['online'] = true;
     try {
       resp = request('GET', url, { headers: instances[inst_idx]['header'] });
-    } catch(error) {
-      console.log("getInstancesInfo(): Failed to reach the host " + instances[inst_idx]['host'] + ", so not including it");
+    } catch (error) {
+      console.log(
+        'getInstancesInfo(): Failed to reach the host ' + instances[inst_idx]['host'] + ', so not including it'
+      );
       instances[inst_idx]['online'] = false;
       continue;
     }
@@ -649,7 +670,7 @@ getInstancesInfo = function (instances) {
         if (/^cdm/.exec(name)) {
           const match = name.match(/^cdm[-]{0,1}(v[\d+]dev)/);
           const cdmver = match[1];
-          if (! Object.keys(instances[inst_idx]['indices']).includes(cdmver)) {
+          if (!Object.keys(instances[inst_idx]['indices']).includes(cdmver)) {
             instances[inst_idx]['indices'][cdmver] = [];
           }
           instances[inst_idx]['indices'][cdmver].push(name);
@@ -671,44 +692,52 @@ getInstancesInfo = function (instances) {
       instances[inst_idx]['ver'] = 'v8dev';
     }
   }
-}
+};
 
 invalidInstance = function (instance) {
-    if (!instance['online']) {
-      //console.log("invalidInstance(): Not using instance " + instance['host'] + " becasue it cannot be reached");
-      return true;
-    }
-    if (!Object.keys(instance).includes('indices') || Object.keys(instance['indices']).length == 0) {
-      //console.log("invalidInstance(): Not using instance " + instance['host'] + " becasue it does not have indices for any cdm version");
-      return true;
-    }
-    if (!Object.keys(instance['indices']).includes(instance['ver'])) {
-      console.log("invalidInstance(): Not using instance " + instance['host'] + " becasue the cdm version requested [" + instance['ver'] + "] is not one of the cdm versions it contains [" + Object.keys(instance['indices']) + "]");
-      return true;
-    }
+  if (!instance['online']) {
+    //console.log("invalidInstance(): Not using instance " + instance['host'] + " becasue it cannot be reached");
+    return true;
+  }
+  if (!Object.keys(instance).includes('indices') || Object.keys(instance['indices']).length == 0) {
+    //console.log("invalidInstance(): Not using instance " + instance['host'] + " becasue it does not have indices for any cdm version");
+    return true;
+  }
+  if (!Object.keys(instance['indices']).includes(instance['ver'])) {
+    console.log(
+      'invalidInstance(): Not using instance ' +
+        instance['host'] +
+        ' becasue the cdm version requested [' +
+        instance['ver'] +
+        '] is not one of the cdm versions it contains [' +
+        Object.keys(instance['indices']) +
+        ']'
+    );
+    return true;
+  }
   return false;
-}
+};
 
 findInstanceFromRun = async function (instances, runId) {
   var foundInstance;
   for (const instance of instances) {
     if (invalidInstance(instance)) {
-      console.log("not a valid instance: " + JSON.stringify(instance, null, 2));
+      console.log('not a valid instance: ' + JSON.stringify(instance, null, 2));
       continue;
     }
     // Use any function which searches by run id and always returns something if the run id is present
-    debug("findInstanceFromRun(): about to call getIterations()");
+    debug('findInstanceFromRun(): about to call getIterations()');
     var result = await getIterations(instance, runId);
-    debug("findInstanceFromRun(): returned from calling getIterations()");
+    debug('findInstanceFromRun(): returned from calling getIterations()');
     if (typeof result != 'undefined') {
-      debug("found valid instance: " + JSON.stringify(instance, null, 2));
+      debug('found valid instance: ' + JSON.stringify(instance, null, 2));
       foundInstance = instance;
       break;
     }
   }
-  debug("findInstanceFromRun(): about to return");
+  debug('findInstanceFromRun(): about to return');
   return foundInstance;
-}
+};
 
 findInstanceFromPeriod = async function (instances, periId) {
   var foundInstance;
@@ -724,7 +753,7 @@ findInstanceFromPeriod = async function (instances, periId) {
     }
   }
   return foundInstance;
-}
+};
 
 mgetParams = async function (instance, iterIds) {
   return await mSearch(instance, 'param', ['iteration.iteration-uuid'], [iterIds], 'param', null, 1000);
@@ -771,11 +800,10 @@ mgetRunData = async function (instance, runIds) {
 };
 
 getRunData = async function (instance, runId) {
-  var runData =  await mgetRunData(instance, [runId]);
+  var runData = await mgetRunData(instance, [runId]);
   return runData[0];
 };
 exports.getRunData = getRunData;
-
 
 calcIterMetrics = function (vals) {
   var count = vals.length;
@@ -1125,8 +1153,6 @@ buildIterTree = function (
   iterNode['iterations'] = iterations;
   return iterNode;
 };
-
-
 
 // Generate a txt report for iteration compareisons (uses data from buildIterTree)
 reportIters = function (iterTree, indent, count) {
@@ -2399,4 +2425,3 @@ getMetricDataSets = async function (instance, sets) {
   return dataSets;
 };
 exports.getMetricDataSets = getMetricDataSets;
-

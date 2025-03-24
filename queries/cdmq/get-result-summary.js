@@ -8,29 +8,32 @@ function list(val) {
 }
 
 function save_host(host) {
-    var host_info = { 'host': host, 'header': { 'Content-Type': 'application/json' } };
-    instances.push(host_info);
+  var host_info = { host: host, header: { 'Content-Type': 'application/json' } };
+  instances.push(host_info);
 }
 
 function save_userpass(userpass) {
-    if (instances.length == 0) {
-        console.log("You must specify a --host before a --userpass");
-        process.exit(1);
-    }
-    instances[instances.length - 1]['header'] = { 'Content-Type': 'application/json', 'Authorization' : 'Basic ' + btoa(userpass) };
+  if (instances.length == 0) {
+    console.log('You must specify a --host before a --userpass');
+    process.exit(1);
+  }
+  instances[instances.length - 1]['header'] = {
+    'Content-Type': 'application/json',
+    Authorization: 'Basic ' + btoa(userpass)
+  };
 }
 
 function save_ver(ver) {
-    if (instances.length == 0) {
-        console.log("You must specify a --host before a --ver");
-        process.exit(1);
-    }
-    if (/^v[7|8|9]dev$/.exec(ver)) {
-      instances[instances.length - 1]['ver'] = ver;
-    } else {
-      console.log("The version must be v7dev, v8dev, or v9dev, not: " + ver);
-      process.exit(1);
-    }
+  if (instances.length == 0) {
+    console.log('You must specify a --host before a --ver');
+    process.exit(1);
+  }
+  if (/^v[7|8|9]dev$/.exec(ver)) {
+    instances[instances.length - 1]['ver'] = ver;
+  } else {
+    console.log('The version must be v7dev, v8dev, or v9dev, not: ' + ver);
+    process.exit(1);
+  }
 }
 
 program
@@ -81,10 +84,9 @@ function logOutput(str, formats) {
 }
 
 async function main() {
-
   // If the user does not specify any hosts, assume localhost:9200 is used
   if (instances.length == 0) {
-    save_host("localhost:9200")
+    save_host('localhost:9200');
   }
 
   getInstancesInfo(instances);
@@ -97,18 +99,18 @@ async function main() {
     if (invalidInstance(instance)) {
       continue;
     }
-    console.log("main(): calling cdm.mSearch()");
+    console.log('main(): calling cdm.mSearch()');
     var instanceRunIds = await cdm.mSearch(instance, 'run', termKeys, values, 'run.run-uuid', null, 1000);
-    console.log("main(): returned from cdm.mSearch()");
-    console.log("instanceRunIds:\n" + JSON.stringify(instanceRunIds, null, 2));
+    console.log('main(): returned from cdm.mSearch()');
+    console.log('instanceRunIds:\n' + JSON.stringify(instanceRunIds, null, 2));
     if (typeof instanceRunIds[0] != 'undefined') {
       allInstanceRunIds.push(instanceRunIds[0]);
     }
   }
-  console.log("allInstanceRunIds:\n" + JSON.stringify(allInstanceRunIds, null, 2));
+  console.log('allInstanceRunIds:\n' + JSON.stringify(allInstanceRunIds, null, 2));
 
   var runIds = cdm.consolidateAllArrays(allInstanceRunIds);
-  console.log("(consolidated)allInstanceRunIds:\n" + JSON.stringify(runIds, null, 2));
+  console.log('(consolidated)allInstanceRunIds:\n' + JSON.stringify(runIds, null, 2));
 
   if (typeof runIds == 'undefined' || runIds.length == 0) {
     console.log('The run ID could not be found, exiting');
@@ -116,9 +118,9 @@ async function main() {
   }
 
   //runIds.forEach((runId) => {
-  console.log("runIds:\n" + JSON.stringify(runIds, null, 2));
+  console.log('runIds:\n' + JSON.stringify(runIds, null, 2));
   for (runIdx = 0; runIdx < runIds.length; runIdx++) {
-    console.log("runIdx:\n" + runIdx);
+    console.log('runIdx:\n' + runIdx);
     const runId = runIds[runIdx];
     //console.log("instances:\n" + JSON.stringify(instances, null, 2));
     var instance = await findInstanceFromRun(instances, runId);
@@ -463,7 +465,7 @@ async function main() {
         console.log(err);
       }
     }
-  //});
+    //});
   }
 }
 
