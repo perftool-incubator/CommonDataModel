@@ -2,7 +2,7 @@
 var request = require('sync-request');
 var thenRequest = require('then-request');
 var bigQuerySize = 262144;
-const debugOut = 1;
+const debugOut = 0;
 
 function getCdmVer(instance) {
   return instance['ver'];
@@ -21,17 +21,21 @@ function debug(str) {
 // This will eliminate the need for other projects (like Crucible)
 // to maintain the indices.
 function checkCreateIndex(instance, docType) {
-  // get base index name
-  // check instance.cdmver.indices for index, if not found:
-  //   create index
-  //   query opensearch for index
-  //   add index to instances.cdmver.indices
+  const index = getIndexBaseName(instance) + getIndexName(index, instance);
+  const cdmver = getCdmVer(instance);
+  if ( Object.keys( instance.indices[cdmver] ).includes(index) ) {
+    return;
+  }
+  //create index
+  //query opensearch for index
+  instance['indices'][cdmver].push(index);
+  return;
 }
 
 function getIndexBaseName(instance) {
   // CDM version support is effectively determined here
   cdmVer = getCdmVer(instance);
-  console.log("cdmver: [" + cdmVer + "]");
+  debug("cdmver: [" + cdmVer + "]");
   if (cdmVer == 'v7dev' || cdmVer == 'v8dev') {
     return 'cdm' + cdmVer + '-';
   } else if (cdmVer == 'v9dev') {
@@ -660,6 +664,11 @@ getInstancesInfo = function (instances) {
       // default to the newer cdm version.
       var cdmvers = Object.keys(instances[inst_idx]['indices']).sort();
       instances[inst_idx]['ver'] = cdmvers[cdmvers.length - 1];
+    } else {
+      // There are no cdm indices at all, so we have to pick a default cdm version.
+      // Currently this is v8dev until this code is well tested for v8dev, then
+      // it will move to 9dev
+      instances[inst_idx]['ver'] = 'v8dev';
     }
   }
 }
@@ -766,6 +775,7 @@ getRunData = async function (instance, runId) {
   return runData[0];
 };
 exports.getRunData = getRunData;
+
 
 calcIterMetrics = function (vals) {
   var count = vals.length;
@@ -1115,6 +1125,8 @@ buildIterTree = function (
   iterNode['iterations'] = iterations;
   return iterNode;
 };
+
+
 
 // Generate a txt report for iteration compareisons (uses data from buildIterTree)
 reportIters = function (iterTree, indent, count) {
@@ -2387,3 +2399,4 @@ getMetricDataSets = async function (instance, sets) {
   return dataSets;
 };
 exports.getMetricDataSets = getMetricDataSets;
+
