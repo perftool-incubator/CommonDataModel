@@ -121,9 +121,9 @@ async function main() {
   for (runIdx = 0; runIdx < runIds.length; runIdx++) {
     cdm.debuglog('runIdx:\n' + runIdx);
     const runId = runIds[runIdx];
-    cdm.debuglog("instances:\n" + JSON.stringify(instances, null, 2));
+    cdm.debuglog('instances:\n' + JSON.stringify(instances, null, 2));
     var instance = await findInstanceFromRun(instances, runId);
-    cdm.debuglog("instance: " + JSON.stringify(instance, null, 2));
+    cdm.debuglog('instance: ' + JSON.stringify(instance, null, 2));
     logOutput('\nrun-id: ' + runId, program.outputFormat);
     var tags = await cdm.getTags(instance, runId);
     tags.sort((a, b) => (a.name < b.name ? -1 : 1));
@@ -150,7 +150,7 @@ async function main() {
     //input: 2D array iterSampleIds: [iter][samp]
     //output: 2D array [iter][samp]
     var iterSampleStatus = await cdm.mgetSampleStatus(instance, iterSampleIds);
-    cdm.debuglog("sampleStatus:\n" + JSON.stringify(iterSampleStatus, null, 2));
+    cdm.debuglog('sampleStatus:\n' + JSON.stringify(iterSampleStatus, null, 2));
     //needs 2D array iterSampleIds: [iter][samp] and 1D array iterPrimaryPeriodNames [iter]
     //returns 2D array [iter][samp]
     var iterPrimaryPeriodIds = await cdm.mgetPrimaryPeriodId(instance, iterSampleIds, iterPrimaryPeriodNames);

@@ -12,7 +12,7 @@ debuglog = function (str) {
   if (debugOut != 0) {
     console.log(str);
   }
-}
+};
 exports.debuglog = debuglog;
 
 // cdmv9 adds indices dynamically based on year and month, so
