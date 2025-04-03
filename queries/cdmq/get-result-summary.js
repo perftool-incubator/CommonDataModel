@@ -55,12 +55,12 @@ var txt_summary = '';
 var html_summary = '<pre>';
 
 let json_summary = {
-      "run-id": "",
-      "tags": {},
-      "benchmark": "",
-      "common_params": {},
-      "metrics": [],
-      "iteration-array": [],  // Array of iteration objects
+  'run-id': '',
+  tags: {},
+  benchmark: '',
+  common_params: {},
+  metrics: [],
+  'iteration-array': [] // Array of iteration objects
 };
 
 function logOutput(str, formats) {
@@ -69,7 +69,7 @@ function logOutput(str, formats) {
     html_summary += str + '\n';
   }
 
-  if (DEBUG) console.log("DEBUG: Received log line:", JSON.stringify(str));
+  if (DEBUG) console.log('DEBUG: Received log line:', JSON.stringify(str));
 
   if (formats.includes('json')) {
     try {
@@ -80,8 +80,8 @@ function logOutput(str, formats) {
 
       // Run ID
       if ((match = str.match(/^\s*run-id:\s*(.+)/))) {
-        json_summary["run-id"] = match[1].trim();
-        if (DEBUG) console.log("DEBUG: Set run-id:", json_summary["run-id"]);
+        json_summary['run-id'] = match[1].trim();
+        if (DEBUG) console.log('DEBUG: Set run-id:', json_summary['run-id']);
       }
       // Tags (Handling spaces before 'tags:')
       else if ((match = str.match(/^\s*tags:\s*(.+)/))) {
@@ -90,12 +90,12 @@ function logOutput(str, formats) {
           if (key && value) acc[key] = value;
           return acc;
         }, {});
-        if (DEBUG) console.log("DEBUG: Set tags:", JSON.stringify(json_summary.tags));
+        if (DEBUG) console.log('DEBUG: Set tags:', JSON.stringify(json_summary.tags));
       }
       // Benchmark
       else if ((match = str.match(/^\s*benchmark:\s*(.+)/))) {
         json_summary.benchmark = match[1].trim();
-        if (DEBUG) console.log("DEBUG: Set benchmark:", json_summary.benchmark);
+        if (DEBUG) console.log('DEBUG: Set benchmark:', json_summary.benchmark);
       }
       // Common Params
       else if ((match = str.match(/^\s*common params:\s*(.+)/))) {
@@ -104,34 +104,34 @@ function logOutput(str, formats) {
           if (key && value) acc[key] = value;
           return acc;
         }, {});
-        if (DEBUG) console.log("DEBUG: Set common_params:", JSON.stringify(json_summary.common_params));
+        if (DEBUG) console.log('DEBUG: Set common_params:', JSON.stringify(json_summary.common_params));
       }
       // Metrics Source
       else if ((match = str.match(/^\s*source:\s*([\w-]+)/))) {
         let source = match[1].trim();
         json_summary.metrics.push({ source, types: [] });
-        if (DEBUG) console.log("DEBUG: Added metric source:", source);
+        if (DEBUG) console.log('DEBUG: Added metric source:', source);
       }
       // Metric Types
       else if ((match = str.match(/^\s*types:\s*(.+)/))) {
-        let types = match[1].split(' ').map(type => type.trim());
+        let types = match[1].split(' ').map((type) => type.trim());
         if (json_summary.metrics.length > 0) {
           json_summary.metrics[json_summary.metrics.length - 1].types = types;
-          if (DEBUG) console.log("DEBUG: Updated metric types:", types);
+          if (DEBUG) console.log('DEBUG: Updated metric types:', types);
         }
       }
 
       // Iteration ID (Start a new iteration)
       else if ((match = str.match(/^\s*iteration-id:\s*([\w-]{36})/))) {
         let iterationId = match[1].trim();
-        json_summary["iteration-array"].push({
-          "iteration-id": iterationId,
-          "unique_params": {},  // Initialize unique params
-          "primary-period-name": "",
-          "samples": [],
-          "results": []  // Add the results object for each iteration
+        json_summary['iteration-array'].push({
+          'iteration-id': iterationId,
+          unique_params: {}, // Initialize unique params
+          'primary-period-name': '',
+          samples: [],
+          results: [] // Add the results object for each iteration
         });
-        if (DEBUG) console.log("DEBUG: Set iteration-id:", iterationId);
+        if (DEBUG) console.log('DEBUG: Set iteration-id:', iterationId);
       }
 
       // Unique Params (Captured for each iteration)
@@ -143,18 +143,19 @@ function logOutput(str, formats) {
         }, {});
 
         // Find the last iteration-id and assign unique params to it
-        if (json_summary["iteration-array"].length > 0) {
-          json_summary["iteration-array"][json_summary["iteration-array"].length - 1]["unique_params"] = uniqueParams;
-          if (DEBUG) console.log("DEBUG: Set unique params for iteration:", JSON.stringify(uniqueParams));
+        if (json_summary['iteration-array'].length > 0) {
+          json_summary['iteration-array'][json_summary['iteration-array'].length - 1]['unique_params'] = uniqueParams;
+          if (DEBUG) console.log('DEBUG: Set unique params for iteration:', JSON.stringify(uniqueParams));
         }
       }
 
       // Primary Period Name (Captured for each iteration)
       else if ((match = str.match(/^\s*primary-period name:\s*(.+)/))) {
         let periodName = match[1].trim();
-        if (json_summary["iteration-array"].length > 0) {
-          json_summary["iteration-array"][json_summary["iteration-array"].length - 1]["primary-period-name"] = periodName;
-          if (DEBUG) console.log("DEBUG: Set primary-period name for iteration:", periodName);
+        if (json_summary['iteration-array'].length > 0) {
+          json_summary['iteration-array'][json_summary['iteration-array'].length - 1]['primary-period-name'] =
+            periodName;
+          if (DEBUG) console.log('DEBUG: Set primary-period name for iteration:', periodName);
         }
       }
 
@@ -162,21 +163,26 @@ function logOutput(str, formats) {
       else if ((match = str.match(/^\s*sample-id:\s*([\w-]{36})/))) {
         let sampleId = match[1].trim();
         let newSample = {
-          "sample-id": sampleId,
-          "primary-period-id": "",
-          "period-range": { "begin": null, "end": null },
-          "period-length": null
+          'sample-id': sampleId,
+          'primary-period-id': '',
+          'period-range': { begin: null, end: null },
+          'period-length': null
         };
-        json_summary["iteration-array"][json_summary["iteration-array"].length - 1].samples.push(newSample);
-        if (DEBUG) console.log("DEBUG: Added new sample:", JSON.stringify(newSample));
+        json_summary['iteration-array'][json_summary['iteration-array'].length - 1].samples.push(newSample);
+        if (DEBUG) console.log('DEBUG: Added new sample:', JSON.stringify(newSample));
       }
 
       // Primary Period ID
       else if ((match = str.match(/^\s*primary period-id:\s*([\w-]{36})/))) {
         let periodId = match[1].trim();
-        if (json_summary["iteration-array"].length > 0 && json_summary["iteration-array"][json_summary["iteration-array"].length - 1].samples.length > 0) {
-          json_summary["iteration-array"][json_summary["iteration-array"].length - 1].samples[json_summary["iteration-array"][json_summary["iteration-array"].length - 1].samples.length - 1]["primary-period-id"] = periodId;
-          if (DEBUG) console.log("DEBUG: Set primary-period-id:", periodId);
+        if (
+          json_summary['iteration-array'].length > 0 &&
+          json_summary['iteration-array'][json_summary['iteration-array'].length - 1].samples.length > 0
+        ) {
+          json_summary['iteration-array'][json_summary['iteration-array'].length - 1].samples[
+            json_summary['iteration-array'][json_summary['iteration-array'].length - 1].samples.length - 1
+          ]['primary-period-id'] = periodId;
+          if (DEBUG) console.log('DEBUG: Set primary-period-id:', periodId);
         }
       }
 
@@ -184,26 +190,39 @@ function logOutput(str, formats) {
       else if ((match = str.match(/^\s*period range:\s*begin:\s*(\d+)\s*end:\s*(\d+)/))) {
         let begin = parseInt(match[1]);
         let end = parseInt(match[2]);
-        if (json_summary["iteration-array"].length > 0 && json_summary["iteration-array"][json_summary["iteration-array"].length - 1].samples.length > 0) {
-          json_summary["iteration-array"][json_summary["iteration-array"].length - 1].samples[json_summary["iteration-array"][json_summary["iteration-array"].length - 1].samples.length - 1]["period-range"] = { begin, end };
-          if (DEBUG) console.log("DEBUG: Set period range:", { begin, end });
+        if (
+          json_summary['iteration-array'].length > 0 &&
+          json_summary['iteration-array'][json_summary['iteration-array'].length - 1].samples.length > 0
+        ) {
+          json_summary['iteration-array'][json_summary['iteration-array'].length - 1].samples[
+            json_summary['iteration-array'][json_summary['iteration-array'].length - 1].samples.length - 1
+          ]['period-range'] = { begin, end };
+          if (DEBUG) console.log('DEBUG: Set period range:', { begin, end });
         }
       }
 
       // Period Length
       else if ((match = str.match(/^\s*period length:\s*([\d.]+)\s*seconds/))) {
         let length = parseFloat(match[1]);
-        if (json_summary["iteration-array"].length > 0 && json_summary["iteration-array"][json_summary["iteration-array"].length - 1].samples.length > 0) {
-          json_summary["iteration-array"][json_summary["iteration-array"].length - 1].samples[json_summary["iteration-array"][json_summary["iteration-array"].length - 1].samples.length - 1]["period-length"] = length;
-          if (DEBUG) console.log("DEBUG: Set period length:", length);
+        if (
+          json_summary['iteration-array'].length > 0 &&
+          json_summary['iteration-array'][json_summary['iteration-array'].length - 1].samples.length > 0
+        ) {
+          json_summary['iteration-array'][json_summary['iteration-array'].length - 1].samples[
+            json_summary['iteration-array'][json_summary['iteration-array'].length - 1].samples.length - 1
+          ]['period-length'] = length;
+          if (DEBUG) console.log('DEBUG: Set period length:', length);
         }
       }
 
       // Iteration Result (Aggregated metrics for iteration)
-      else if ((match = str.match(/^\s*result:\s*\(([\w:.-]+)\)\s*samples:\s*([\d.\s]+)mean:\s*([\d.]+)\s+min:\s*([\d.]+)\s+max:\s*([\d.]+)\s+stddev:\s*([\d.]+|NaN)\s+(?:stddev\s*%|stddevpct):\s*([\d.]+|NaN)/))) {
-
+      else if (
+        (match = str.match(
+          /^\s*result:\s*\(([\w:.-]+)\)\s*samples:\s*([\d.\s]+)mean:\s*([\d.]+)\s+min:\s*([\d.]+)\s+max:\s*([\d.]+)\s+stddev:\s*([\d.]+|NaN)\s+(?:stddev\s*%|stddevpct):\s*([\d.]+|NaN)/
+        ))
+      ) {
         let metric = match[1];
-        let samples = match[2].trim().split(/\s+/).map(Number);  // Split into array of numbers
+        let samples = match[2].trim().split(/\s+/).map(Number); // Split into array of numbers
         let mean = parseFloat(match[3]);
         let min = parseFloat(match[4]);
         let max = parseFloat(match[5]);
@@ -211,34 +230,34 @@ function logOutput(str, formats) {
         let stddevPercent = isNaN(parseFloat(match[7])) ? null : parseFloat(match[7]);
 
         // Add the result at iteration level
-        if (json_summary["iteration-array"].length > 0) {
-          json_summary["iteration-array"][json_summary["iteration-array"].length - 1].results.push({
-            "metric": metric,
-            "samples": samples,  // Dynamically includes all sample values
-            "mean": mean,
-            "min": min,
-            "max": max,
-            "stddev": stddev,
-            "stddevpct": stddevPercent
+        if (json_summary['iteration-array'].length > 0) {
+          json_summary['iteration-array'][json_summary['iteration-array'].length - 1].results.push({
+            metric: metric,
+            samples: samples, // Dynamically includes all sample values
+            mean: mean,
+            min: min,
+            max: max,
+            stddev: stddev,
+            stddevpct: stddevPercent
           });
         }
 
-        if (DEBUG) console.log("DEBUG: Added iteration result:", {
-            "metric": metric,
-            "samples": samples,  // Log dynamically captured samples
-            "mean": mean,
-            "min": min,
-            "max": max,
-            "stddev": stddev,
-            "stddev %": stddevPercent
-        });
+        if (DEBUG)
+          console.log('DEBUG: Added iteration result:', {
+            metric: metric,
+            samples: samples, // Log dynamically captured samples
+            mean: mean,
+            min: min,
+            max: max,
+            stddev: stddev,
+            'stddev %': stddevPercent
+          });
       }
 
       // Print full JSON at the end
-      if (DEBUG) console.log("DEBUG: Current JSON Summary:", JSON.stringify(json_summary, null, 2));
-
+      if (DEBUG) console.log('DEBUG: Current JSON Summary:', JSON.stringify(json_summary, null, 2));
     } catch (error) {
-      console.error("ERROR processing JSON output:", error);
+      console.error('ERROR processing JSON output:', error);
     }
   }
 }
@@ -580,6 +599,7 @@ runIds.forEach((runId) => {
       console.error(err);
     }
   }
+
   if (program.outputFormat.includes('html')) {
     try {
       fs.writeFileSync(program.outputDir + '/' + 'data.js', 'var data = ' + JSON.stringify(data, null, 2));
