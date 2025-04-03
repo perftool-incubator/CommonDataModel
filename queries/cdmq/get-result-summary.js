@@ -90,7 +90,7 @@ async function main() {
   }
 
   getInstancesInfo(instances);
-  console.log(JSON.stringify(instances, null, 2));
+  cdm.debuglog(JSON.stringify(instances, null, 2));
 
   // Since this query is looking for run ids (and may not inlcude run-uuid as a search term), we
   // need to check all instances.
@@ -99,32 +99,31 @@ async function main() {
     if (invalidInstance(instance)) {
       continue;
     }
-    console.log('main(): calling cdm.mSearch()');
+    cdm.debuglog('main(): calling cdm.mSearch()');
     var instanceRunIds = await cdm.mSearch(instance, 'run', termKeys, values, 'run.run-uuid', null, 1000);
-    console.log('main(): returned from cdm.mSearch()');
-    console.log('instanceRunIds:\n' + JSON.stringify(instanceRunIds, null, 2));
+    cdm.debuglog('main(): returned from cdm.mSearch()');
+    cdm.debuglog('instanceRunIds:\n' + JSON.stringify(instanceRunIds, null, 2));
     if (typeof instanceRunIds[0] != 'undefined') {
       allInstanceRunIds.push(instanceRunIds[0]);
     }
   }
-  console.log('allInstanceRunIds:\n' + JSON.stringify(allInstanceRunIds, null, 2));
+  cdm.debuglog('allInstanceRunIds:\n' + JSON.stringify(allInstanceRunIds, null, 2));
 
   var runIds = cdm.consolidateAllArrays(allInstanceRunIds);
-  console.log('(consolidated)allInstanceRunIds:\n' + JSON.stringify(runIds, null, 2));
+  cdm.debuglog('(consolidated)allInstanceRunIds:\n' + JSON.stringify(runIds, null, 2));
 
   if (typeof runIds == 'undefined' || runIds.length == 0) {
     console.log('The run ID could not be found, exiting');
     process.exit(1);
   }
 
-  //runIds.forEach((runId) => {
-  console.log('runIds:\n' + JSON.stringify(runIds, null, 2));
+  cdm.debuglog('runIds:\n' + JSON.stringify(runIds, null, 2));
   for (runIdx = 0; runIdx < runIds.length; runIdx++) {
-    console.log('runIdx:\n' + runIdx);
+    cdm.debuglog('runIdx:\n' + runIdx);
     const runId = runIds[runIdx];
-    //console.log("instances:\n" + JSON.stringify(instances, null, 2));
+    cdm.debuglog("instances:\n" + JSON.stringify(instances, null, 2));
     var instance = await findInstanceFromRun(instances, runId);
-    //console.log("instance: " + JSON.stringify(instance, null, 2));
+    cdm.debuglog("instance: " + JSON.stringify(instance, null, 2));
     logOutput('\nrun-id: ' + runId, program.outputFormat);
     var tags = await cdm.getTags(instance, runId);
     tags.sort((a, b) => (a.name < b.name ? -1 : 1));
@@ -138,7 +137,7 @@ async function main() {
     logOutput('  benchmark: ' + benchName, program.outputFormat);
     var benchIterations = await cdm.getIterations(instance, runId);
     if (benchIterations.length == 0) {
-      console.log('There were no iterations found, exiting');
+      cdm.debuglog('There were no iterations found, exiting');
       process.exit(1);
     }
 
@@ -151,7 +150,7 @@ async function main() {
     //input: 2D array iterSampleIds: [iter][samp]
     //output: 2D array [iter][samp]
     var iterSampleStatus = await cdm.mgetSampleStatus(instance, iterSampleIds);
-    //console.log("sampleStatus:\n" + JSON.stringify(iterSampleStatus, null, 2));
+    cdm.debuglog("sampleStatus:\n" + JSON.stringify(iterSampleStatus, null, 2));
     //needs 2D array iterSampleIds: [iter][samp] and 1D array iterPrimaryPeriodNames [iter]
     //returns 2D array [iter][samp]
     var iterPrimaryPeriodIds = await cdm.mgetPrimaryPeriodId(instance, iterSampleIds, iterPrimaryPeriodNames);

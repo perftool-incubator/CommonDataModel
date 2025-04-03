@@ -8,11 +8,12 @@ function getCdmVer(instance) {
   return instance['ver'];
 }
 
-function debug(str) {
+debuglog = function (str) {
   if (debugOut != 0) {
     console.log(str);
   }
 }
+exports.debuglog = debuglog;
 
 // cdmv9 adds indices dynamically based on year and month, so
 // we need a way to check for existence of the index and create
@@ -35,7 +36,7 @@ function checkCreateIndex(instance, docType) {
 function getIndexBaseName(instance) {
   // CDM version support is effectively determined here
   cdmVer = getCdmVer(instance);
-  debug('cdmver: [' + cdmVer + ']');
+  debuglog('cdmver: [' + cdmVer + ']');
   if (cdmVer == 'v7dev' || cdmVer == 'v8dev') {
     return 'cdm' + cdmVer + '-';
   } else if (cdmVer == 'v9dev') {
@@ -116,7 +117,7 @@ intersectAllArrays = function (a2D) {
 exports.intersectAllArrays = intersectAllArrays;
 
 async function fetchBatchedData(instance, reqs, batchSize = 16) {
-  debug('fetchBatchedData() begin');
+  debuglog('fetchBatchedData() begin');
   const responses = [];
   const batches = [];
 
@@ -125,21 +126,21 @@ async function fetchBatchedData(instance, reqs, batchSize = 16) {
   }
 
   for (const batch of batches) {
-    debug('fetchBatchedData() processing batch');
+    debuglog('fetchBatchedData() processing batch');
     const promises = batch.map(async (req) => {
       try {
         // thenRequest will abolutely *not* work unless this header is converted to string and back
         const headerStr = JSON.stringify(instance['header']);
         const hdrs = JSON.parse(headerStr);
-        debug('fetchBatchedData() calling thenRequest()');
+        debuglog('fetchBatchedData() calling thenRequest()');
         const response = await thenRequest('POST', req.url, { body: req.body, headers: hdrs });
-        debug('fetchBatchedData() returned from thenRequest()');
+        debuglog('fetchBatchedData() returned from thenRequest()');
         if (response.statusCode >= 200 && response.statusCode < 300) {
           try {
-            debug('fetchBatchedData() about to return with JSON.parse');
+            debuglog('fetchBatchedData() about to return with JSON.parse');
             return JSON.parse(response.getBody('utf8')); // Attempt JSON parsing
           } catch (jsonError) {
-            debug('fetchBatchedData() about to return with JSON(no-parse)');
+            debuglog('fetchBatchedData() about to return with JSON(no-parse)');
             return response.getBody('utf8'); // return text if JSON parsing fails
           }
         } else {
@@ -152,7 +153,7 @@ async function fetchBatchedData(instance, reqs, batchSize = 16) {
     });
 
     const batchResults = await Promise.all(promises);
-    debug('fetchBatchedData() batchResults.length:\n' + batchResults.length);
+    debuglog('fetchBatchedData() batchResults.length:\n' + batchResults.length);
     for (const batchResult of batchResults) {
       const keys = Object.keys(batchResult);
       // items present if this is document creation
@@ -167,12 +168,12 @@ async function fetchBatchedData(instance, reqs, batchSize = 16) {
     }
   }
 
-  debug('fetchBatchedData() responses.length:\n' + responses.length);
+  debuglog('fetchBatchedData() responses.length:\n' + responses.length);
   return responses;
 }
 
 esJsonArrRequest = async function (instance, index, action, jsonArr) {
-  debug('esJsonArrRequest() begin');
+  debuglog('esJsonArrRequest() begin');
   var url = '';
   if (index == '') {
     // Expect to have the Index and action in the jsonArr itself
@@ -218,10 +219,10 @@ esJsonArrRequest = async function (instance, index, action, jsonArr) {
     const req = { url: url, body: ndjson };
     reqs.push(req);
   }
-  debug('esJsonArrRequest(): There are ' + reqs.length + ' requests:\n' + JSON.stringify(reqs, null, 2));
+  debuglog('esJsonArrRequest(): There are ' + reqs.length + ' requests:\n' + JSON.stringify(reqs, null, 2));
   const responses = await fetchBatchedData(instance, reqs);
-  debug('esJsonArrRequest(): responses.length:\n' + responses.length);
-  debug('esJsonArrRequest end');
+  debuglog('esJsonArrRequest(): responses.length:\n' + responses.length);
+  debuglog('esJsonArrRequest end');
   return responses;
 };
 exports.esJsonArrRequest = esJsonArrRequest;
@@ -276,9 +277,9 @@ mSearch = async function (instance, index, termKeys, values, source, aggs, size,
     jsonArr.push('{}');
     jsonArr.push(JSON.stringify(req));
   }
-  debug('mSearch(): calling esJsonArrRequest()');
+  debuglog('mSearch(): calling esJsonArrRequest()');
   var responses = await esJsonArrRequest(instance, index, '/_msearch', jsonArr);
-  debug('mSearch(): returned from calling esJsonArrRequest(), responses:\n' + JSON.stringify(responses, null, 2));
+  debuglog('mSearch(): returned from calling esJsonArrRequest(), responses:\n' + JSON.stringify(responses, null, 2));
 
   // Unpack response and organize in array of arrays
   var retData = [];
@@ -299,7 +300,7 @@ mSearch = async function (instance, index, termKeys, values, source, aggs, size,
 
       // For queries without aggregation
     } else {
-      debug('hits:\n' + JSON.stringify(responses[i], null, 2));
+      debuglog('hits:\n' + JSON.stringify(responses[i], null, 2));
       if (responses[i].hits == null) {
         console.log('WARNING! msearch returned data.responses[' + i + '].hits is NULL');
         console.log(JSON.stringify(responses[i], null, 2));
@@ -350,7 +351,7 @@ mSearch = async function (instance, index, termKeys, values, source, aggs, size,
       }
     }
   }
-  debug('mSearch(): about to return');
+  debuglog('mSearch(): about to return');
   return retData;
 };
 exports.mSearch = mSearch;
@@ -735,16 +736,16 @@ findInstanceFromRun = async function (instances, runId) {
       continue;
     }
     // Use any function which searches by run id and always returns something if the run id is present
-    debug('findInstanceFromRun(): about to call getIterations()');
+    debuglog('findInstanceFromRun(): about to call getIterations()');
     var result = await getIterations(instance, runId);
-    debug('findInstanceFromRun(): returned from calling getIterations()');
+    debuglog('findInstanceFromRun(): returned from calling getIterations()');
     if (typeof result != 'undefined') {
-      debug('found valid instance: ' + JSON.stringify(instance, null, 2));
+      debuglog('found valid instance: ' + JSON.stringify(instance, null, 2));
       foundInstance = instance;
       break;
     }
   }
-  debug('findInstanceFromRun(): about to return');
+  debuglog('findInstanceFromRun(): about to return');
   return foundInstance;
 };
 
