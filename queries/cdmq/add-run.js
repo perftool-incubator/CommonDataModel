@@ -99,17 +99,17 @@ async function processDir(instance, dir, mode) {
       try {
         var obj = JSON.parse(jsonArr[k]);
       } catch (jsonError) {
-        console.log('Could not porse: [' + jsonArr[k] + "]");
+        console.log('Could not porse: [' + jsonArr[k] + ']');
         continue;
       }
       runId = obj['run']['run-uuid'];
-      if (! runIds.includes(runId)) {
+      if (!runIds.includes(runId)) {
         runIds.push(runId);
       }
     }
     return runIds;
   } else {
-    console.log("mode [" + mode + "] is not supported");
+    console.log('mode [' + mode + '] is not supported');
   }
 }
 
@@ -144,7 +144,7 @@ async function main() {
         );
       }
     }
-    console.log("Indexing documents");
+    console.log('Indexing documents');
     await processDir(instances[instances.length - 1], program.dir, 'index');
   } else {
     console.log('You must provide a --dir <directory with ndjsons>');
@@ -154,4 +154,3 @@ async function main() {
 }
 
 main();
-

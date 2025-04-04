@@ -1716,7 +1716,7 @@ getDocCount = function (instance, runId, docType) {
   var data = JSON.parse(resp.getBody());
   return data.count;
 };
-exports.getDocCount = getDocCount
+exports.getDocCount = getDocCount;
 
 // Traverse a response from a nested aggregation to generate a set of filter terms
 // for each metric group.
@@ -2436,7 +2436,6 @@ getMetricDataSets = async function (instance, sets) {
   return dataSets;
 };
 exports.getMetricDataSets = getMetricDataSets;
-
 
 async function waitForDeletedDocs(instance, runId, docTypes) {
   var numAttempts = 1;
