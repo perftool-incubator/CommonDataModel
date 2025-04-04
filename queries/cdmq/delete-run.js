@@ -46,61 +46,32 @@ if (instances.length == 0) {
 
 getInstancesInfo(instances);
 
-async function waitFor(instance, docTypes) {
-  var numAttempts = 1;
-  var maxAttempts = 30;
-  var remainingDocTypes = docTypes;
-  var totalDocCount = 0;
-  var previousTotalDocCount = 0;
-  var interval = 5;
-  while (numAttempts <= maxAttempts && docTypes.length > 0) {
-    let promise = new Promise((resolve, reject) => {
-      setTimeout(() => resolve('done!'), interval * 1000);
-    });
-    let result = await promise;
+async function main() {
+  var allDocTypes = ['run', 'iteration', 'sample', 'period', 'param', 'tag', 'metric_desc', 'metric_data'];
+  var q = {};
 
-    console.log('\nConfirming all documents are in deleted OpenSearch (attempt #' + numAttempts + ')');
-    totalDocCount = 0;
-    for (let i = 0; i < docTypes.length; i++) {
-      var thisNumDocs = cdm.getDocCount(instance, program.run, docTypes[i]);
-      console.log('  ' + docTypes[i] + ': doc count: ' + thisNumDocs);
-      totalDocCount += thisNumDocs;
-
-      if (thisNumDocs == 0) {
-        remainingDocTypes = remainingDocTypes.filter((val) => val !== docTypes[i]);
-      }
-    }
-    docTypes = remainingDocTypes;
-    numAttempts++;
-
-    if (previousTotalDocCount != 0) {
-      console.log('Document deletion rate: ' + (previousTotalDocCount - totalDocCount) / interval + ' documents/sec');
-    }
-    previousTotalDocCount = totalDocCount;
+  if (instances.length == 0) {
+    console.log('You must provide at least one --host <host>');
+    process.exit(1);
   }
-  if (docTypes.lenth > 0) {
-    console.log('Warning: could not delete all documents for ' + docTypes + ' with ' + numAttempts);
-    console.log(
-      'These documents may continue to be deleted in the background.  To check on the status, run this utility again'
-    );
+
+  if (program.run) {
+    q = { query: { bool: { filter: [{ term: { 'run.run-uuid': program.run } }] } } };
+    // When deleting, you must use exactly one instance, so we use the last provided.
+    // We don't want to search for an instance with this run, because we don't want
+    //  to delete just any copy of this run.
+    cdm.deleteDocs(instances[instances.length - 1], allDocTypes, q);
+    var numDocTypes = await cdm.waitForDeletedDocs(instances[instances.length - 1], program.run, allDocTypes);
+    if (numDocTypes > 0) {
+      console.log('Warning: could not delete all documents for ' + docTypes + ' with ' + numAttempts);
+      console.log(
+        'These documents may continue to be deleted in the background.  To check on the status, run this utility again'
+      );
+    }
+  } else {
+    console.log('You must provide a --run <run-id>');
+    process.exit(1);
   }
 }
 
-var allDocTypes = ['run', 'iteration', 'sample', 'period', 'param', 'tag', 'metric_desc', 'metric_data'];
-var q = {};
-
-if (instances.length == 0) {
-  console.log('You must provide at least one --host <host>');
-  process.exit(1);
-}
-if (program.run) {
-  q = { query: { bool: { filter: [{ term: { 'run.run-uuid': program.run } }] } } };
-  // When deleting, you must use exactly one instance, so we use the last provided.
-  // We don't want to search for an instance with this run, because we don't want
-  //  to delete just any copy of this run.
-  cdm.deleteDocs(instances[instances.length - 1], allDocTypes, q);
-  waitFor(instances[instances.length - 1], allDocTypes);
-} else {
-  console.log('You must provide a --run <run-id>');
-  process.exit(1);
-}
+main();

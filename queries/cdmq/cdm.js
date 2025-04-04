@@ -1710,12 +1710,13 @@ exports.getMetricSources = function (instance, runId) {
   }
 };
 
-exports.getDocCount = function (instance, runId, docType) {
+getDocCount = function (instance, runId, docType) {
   var q = { query: { bool: { filter: [{ term: { 'run.run-uuid': runId } }] } } };
   var resp = esRequest(instance, docType, '/_count', q);
   var data = JSON.parse(resp.getBody());
   return data.count;
 };
+exports.getDocCount = getDocCount
 
 // Traverse a response from a nested aggregation to generate a set of filter terms
 // for each metric group.
@@ -2435,3 +2436,40 @@ getMetricDataSets = async function (instance, sets) {
   return dataSets;
 };
 exports.getMetricDataSets = getMetricDataSets;
+
+
+async function waitForDeletedDocs(instance, runId, docTypes) {
+  var numAttempts = 1;
+  var maxAttempts = 30;
+  var remainingDocTypes = docTypes;
+  var totalDocCount = 0;
+  var previousTotalDocCount = 0;
+  var interval = 3;
+  while (numAttempts <= maxAttempts && docTypes.length > 0) {
+    let promise = new Promise((resolve, reject) => {
+      setTimeout(() => resolve('done!'), interval * 1000);
+    });
+    let result = await promise;
+
+    console.log('\nConfirming all documents are in deleted OpenSearch (attempt #' + numAttempts + ')');
+    totalDocCount = 0;
+    for (let i = 0; i < docTypes.length; i++) {
+      var thisNumDocs = getDocCount(instance, runId, docTypes[i]);
+      console.log('  ' + docTypes[i] + ': doc count: ' + thisNumDocs);
+      totalDocCount += thisNumDocs;
+
+      if (thisNumDocs == 0) {
+        remainingDocTypes = remainingDocTypes.filter((val) => val !== docTypes[i]);
+      }
+    }
+    docTypes = remainingDocTypes;
+    numAttempts++;
+
+    if (previousTotalDocCount != 0) {
+      console.log('Document deletion rate: ' + (previousTotalDocCount - totalDocCount) / interval + ' documents/sec');
+    }
+    previousTotalDocCount = totalDocCount;
+  }
+  return docTypes.lenth;
+}
+exports.waitForDeletedDocs = waitForDeletedDocs;

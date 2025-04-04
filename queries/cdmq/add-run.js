@@ -66,7 +66,7 @@ async function readNdjsonXzToString(filePath) {
   });
 }
 
-async function processDir(instance, dir) {
+async function processDir(instance, dir, mode) {
   var jsonArr = [];
   var files = fs.readdirSync(dir);
 
@@ -91,7 +91,26 @@ async function processDir(instance, dir) {
       console.error('Error processing NDJSON.XZ file:', error);
     }
   }
-  var responses = await esJsonArrRequest(instance, '', '/_bulk', jsonArr);
+  if (mode == 'index') {
+    var responses = await esJsonArrRequest(instance, '', '/_bulk', jsonArr);
+  } else if (mode == 'getruns') {
+    var runIds = [];
+    for (var k = 1; k < jsonArr.length; k += 2) {
+      try {
+        var obj = JSON.parse(jsonArr[k]);
+      } catch (jsonError) {
+        console.log('Could not porse: [' + jsonArr[k] + "]");
+        continue;
+      }
+      runId = obj['run']['run-uuid'];
+      if (! runIds.includes(runId)) {
+        runIds.push(runId);
+      }
+    }
+    return runIds;
+  } else {
+    console.log("mode [" + mode + "] is not supported");
+  }
 }
 
 async function main() {
@@ -110,7 +129,23 @@ async function main() {
 
   getInstancesInfo(instances);
   if (program.dir) {
-    await processDir(instances[instances.length - 1], program.dir);
+    var allDocTypes = ['run', 'iteration', 'sample', 'period', 'param', 'tag', 'metric_desc', 'metric_data'];
+    var runIds = await processDir(instances[instances.length - 1], program.dir, 'getruns');
+    for (i = 0; i < runIds.length; i++) {
+      console.log('Deleting any existing documents for runId ' + runIds[i]);
+      var runId = runIds[i];
+      var q = { query: { bool: { filter: [{ term: { 'run.run-uuid': runId } }] } } };
+      cdm.deleteDocs(instances[instances.length - 1], allDocTypes, q);
+      var numDocTypes = await cdm.waitForDeletedDocs(instances[instances.length - 1], runId, allDocTypes);
+      if (numDocTypes > 0) {
+        console.log('Warning: could not delete all documents for ' + docTypes + ' with ' + numAttempts);
+        console.log(
+          'These documents may continue to be deleted in the background.  To check on the status, run this utility again'
+        );
+      }
+    }
+    console.log("Indexing documents");
+    await processDir(instances[instances.length - 1], program.dir, 'index');
   } else {
     console.log('You must provide a --dir <directory with ndjsons>');
     process.exit(1);
@@ -119,3 +154,4 @@ async function main() {
 }
 
 main();
+
