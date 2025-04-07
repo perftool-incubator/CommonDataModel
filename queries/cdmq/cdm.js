@@ -1,9 +1,63 @@
 //# vim: autoindent tabstop=2 shiftwidth=2 expandtab softtabstop=2 filetype=javascript
 var request = require('sync-request');
+var thenRequest = require('then-request');
 var bigQuerySize = 262144;
+const debugOut = 0;
 
-function getIndexBaseName() {
-  return 'cdmv8dev-';
+function getCdmVer(instance) {
+  return instance['ver'];
+}
+
+debuglog = function (str) {
+  if (debugOut != 0) {
+    console.log(str);
+  }
+};
+exports.debuglog = debuglog;
+
+// cdmv9 adds indices dynamically based on year and month, so
+// we need a way to check for existence of the index and create
+// if not found.  Since this moves toward a auto-create index
+// policy, might as well do the same for earlier CDM versions.
+// This will eliminate the need for other projects (like Crucible)
+// to maintain the indices.
+function checkCreateIndex(instance, docType) {
+  const index = getIndexBaseName(instance) + getIndexName(index, instance);
+  const cdmver = getCdmVer(instance);
+  if (Object.keys(instance.indices[cdmver]).includes(index)) {
+    return;
+  }
+  //create index
+  //query opensearch for index
+  instance['indices'][cdmver].push(index);
+  return;
+}
+
+function getIndexBaseName(instance) {
+  // CDM version support is effectively determined here
+  cdmVer = getCdmVer(instance);
+  debuglog('cdmver: [' + cdmVer + ']');
+  if (cdmVer == 'v7dev' || cdmVer == 'v8dev') {
+    return 'cdm' + cdmVer + '-';
+  } else if (cdmVer == 'v9dev') {
+    // v9dev adds a '-' after 'cdm' because of a [lab admin] naming convention
+    // used for shared opensearch.  Therefore, you will find that v7dev
+    // and v8dev cannot be used for some [lab managed] opensearch instances with
+    // same naming requirement.
+    return 'cdm-v9dev-';
+  } else {
+    console.log('CDM version [' + instance['ver'] + '] is not supported, exiting');
+  }
+}
+
+function getIndexName(docType, instance) {
+  cdmVer = getCdmVer(instance);
+  if (cdmVer == 'v7dev' || cdmVer == 'v8dev') {
+    return docType;
+  } else {
+    //TODO: return correct year.month(s)
+    return docType + '@2025.02';
+  }
 }
 
 // Return subtraction of two 1-dimensional arrays
@@ -28,7 +82,7 @@ function getObjVals(a, k) {
 }
 
 // Return consolidation (non-repeated values) of a 2-dimensional array
-function consolidateAllArrays(a) {
+consolidateAllArrays = function (a) {
   const c = [];
   a.forEach((b) => {
     b.forEach((e) => {
@@ -36,7 +90,8 @@ function consolidateAllArrays(a) {
     });
   });
   return c;
-}
+};
+exports.consolidateAllArrays = consolidateAllArrays;
 
 // Return intersection of two 1-dimensional arrays
 intersectTwoArrays = function (a1, a2) {
@@ -61,14 +116,79 @@ intersectAllArrays = function (a2D) {
 };
 exports.intersectAllArrays = intersectAllArrays;
 
-function esJsonArrRequest(host, idx, jsonArr) {
-  var url = 'http://' + host + '/' + getIndexBaseName() + idx;
+async function fetchBatchedData(instance, reqs, batchSize = 16) {
+  debuglog('fetchBatchedData() begin');
+  const responses = [];
+  const batches = [];
+
+  for (let i = 0; i < reqs.length; i += batchSize) {
+    batches.push(reqs.slice(i, i + batchSize));
+  }
+
+  for (const batch of batches) {
+    debuglog('fetchBatchedData() processing batch');
+    const promises = batch.map(async (req) => {
+      try {
+        // thenRequest will abolutely *not* work unless this header is converted to string and back
+        const headerStr = JSON.stringify(instance['header']);
+        const hdrs = JSON.parse(headerStr);
+        debuglog('fetchBatchedData() calling thenRequest()');
+        const response = await thenRequest('POST', req.url, { body: req.body, headers: hdrs });
+        debuglog('fetchBatchedData() returned from thenRequest()');
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          try {
+            debuglog('fetchBatchedData() about to return with JSON.parse');
+            return JSON.parse(response.getBody('utf8')); // Attempt JSON parsing
+          } catch (jsonError) {
+            debuglog('fetchBatchedData() about to return with JSON(no-parse)');
+            return response.getBody('utf8'); // return text if JSON parsing fails
+          }
+        } else {
+          throw new Error(`HTTP error! status: ${response.statusCode}`);
+        }
+      } catch (error) {
+        console.error(`Error fetching ${req}:`, error);
+        return null; // Or handle the error as needed
+      }
+    });
+
+    const batchResults = await Promise.all(promises);
+    debuglog('fetchBatchedData() batchResults.length:\n' + batchResults.length);
+    for (const batchResult of batchResults) {
+      const keys = Object.keys(batchResult);
+      // items present if this is document creation
+      if (keys.includes('items')) {
+        responses.push(...batchResult.items);
+      } else {
+        // responses present if this is a query (_msearch)
+        if (keys.includes('responses')) {
+          responses.push(...batchResult.responses);
+        }
+      }
+    }
+  }
+
+  debuglog('fetchBatchedData() responses.length:\n' + responses.length);
+  return responses;
+}
+
+esJsonArrRequest = async function (instance, index, action, jsonArr) {
+  debuglog('esJsonArrRequest() begin');
+  var url = '';
+  if (index == '') {
+    // Expect to have the Index and action in the jsonArr itself
+    url = 'http://' + instance['host'] + '/_bulk';
+  } else {
+    url = 'http://' + instance['host'] + '/' + getIndexBaseName(instance) + getIndexName(index, instance) + action;
+  }
   var max = 16384;
   var idx = 0;
   var req_count = 0;
   var q_count = 0;
   var ndjson = '';
-  var responses = [];
+  var reqs = [];
+  var theseResps = [];
+  var allResponses = [];
   // Process queries in chunks no larger than 'max' chars
   while (idx < jsonArr.length) {
     // Add the first request (2 lines) even if it exceeds our limit (we don't really have a choice)
@@ -80,39 +200,36 @@ function esJsonArrRequest(host, idx, jsonArr) {
     ndjson += jsonArr[idx] + '\n' + jsonArr[idx + 1] + '\n';
     idx += 2;
     // Add more requests if are any left and the max will not be exceeded
-    if (idx < jsonArr.length && ndjson.length + jsonArr[idx].length + jsonArr[idx + 1].length < max) {
+    if (idx + 2 < jsonArr.length && ndjson.length + jsonArr[idx].length + jsonArr[idx + 1].length < max) {
       q_count++;
       ndjson += jsonArr[idx] + '\n' + jsonArr[idx + 1] + '\n';
       idx += 2;
     } else {
       req_count++;
       q_count = 0;
-      var resp = request('POST', url, {
-        body: ndjson,
-        headers: { 'Content-Type': 'application/json' }
-      });
-      var data = JSON.parse(resp.getBody());
-      responses.push(...data.responses);
+      const req = { url: url, body: ndjson };
+      reqs.push(req);
       ndjson = '';
     }
-  }
+  } //while
   // Max was not exceeded but there are some requests that have not been submitted
   if (ndjson != '') {
     req_count++;
     q_count = 0;
-    var resp = request('POST', url, {
-      body: ndjson,
-      headers: { 'Content-Type': 'application/json' }
-    });
-    var data = JSON.parse(resp.getBody());
-    responses.push(...data.responses);
-    ndjson = '';
+    const req = { url: url, body: ndjson };
+    reqs.push(req);
   }
+  debuglog('esJsonArrRequest(): There are ' + reqs.length + ' requests:\n' + JSON.stringify(reqs, null, 2));
+  const responses = await fetchBatchedData(instance, reqs);
+  debuglog('esJsonArrRequest(): responses.length:\n' + responses.length);
+  debuglog('esJsonArrRequest end');
   return responses;
-}
+};
+exports.esJsonArrRequest = esJsonArrRequest;
 
-function esRequest(host, idx, q) {
-  var url = 'http://' + host + '/' + getIndexBaseName() + idx;
+function esRequest(instance, idx, action, q) {
+  // This is the only http request remainig that still uses a sync-request
+  var url = 'http://' + instance['host'] + '/' + getIndexBaseName(instance) + getIndexName(idx, instance) + action;
   // The var q can be an object or a string.  If you are submitting NDJSON
   // for a _msearch, it must be a [multi-line] string.
   if (typeof q === 'object') {
@@ -120,7 +237,7 @@ function esRequest(host, idx, q) {
   }
   var resp = request('POST', url, {
     body: q,
-    headers: { 'Content-Type': 'application/json' }
+    headers: instance['header']
   });
   return resp;
 }
@@ -132,7 +249,7 @@ function esRequest(host, idx, q) {
 // of http requests.
 // Note: termKeys is a 1D array, while values is a 2D array.
 // termKeys[x] uses list of values from values[x]
-mSearch = function (url, index, termKeys, values, source, aggs, size, sort) {
+mSearch = async function (instance, index, termKeys, values, source, aggs, size, sort) {
   if (typeof termKeys !== typeof []) return;
   if (typeof values !== typeof []) return;
   var jsonArr = [];
@@ -160,7 +277,9 @@ mSearch = function (url, index, termKeys, values, source, aggs, size, sort) {
     jsonArr.push('{}');
     jsonArr.push(JSON.stringify(req));
   }
-  var responses = esJsonArrRequest(url, index + '/_msearch', jsonArr);
+  debuglog('mSearch(): calling esJsonArrRequest()');
+  var responses = await esJsonArrRequest(instance, index, '/_msearch', jsonArr);
+  debuglog('mSearch(): returned from calling esJsonArrRequest(), responses:\n' + JSON.stringify(responses, null, 2));
 
   // Unpack response and organize in array of arrays
   var retData = [];
@@ -181,6 +300,7 @@ mSearch = function (url, index, termKeys, values, source, aggs, size, sort) {
 
       // For queries without aggregation
     } else {
+      debuglog('hits:\n' + JSON.stringify(responses[i], null, 2));
       if (responses[i].hits == null) {
         console.log('WARNING! msearch returned data.responses[' + i + '].hits is NULL');
         console.log(JSON.stringify(responses[i], null, 2));
@@ -228,10 +348,10 @@ mSearch = function (url, index, termKeys, values, source, aggs, size, sort) {
         retData[i] = ids;
       } else {
         retData[i] = [];
-        //console.log("WARNING: no hits for request:\nquery:\n" + ndjson + "\nresponse:\n" + JSON.stringify(data));
       }
     }
   }
+  debuglog('mSearch(): about to return');
   return retData;
 };
 exports.mSearch = mSearch;
@@ -241,8 +361,14 @@ exports.mSearch = mSearch;
 // but these functions just wrap the value in 2D array for msearch (and a key in a 1D array).  Effectively
 // all query functions use msearch, even if there is a single query.
 
-mgetPrimaryMetric = function (url, iterations) {
-  var metrics = mSearch(url, 'iteration', ['iteration.iteration-uuid'], [iterations], 'iteration.primary-metric');
+mgetPrimaryMetric = async function (instance, iterations) {
+  var metrics = await mSearch(
+    instance,
+    'iteration',
+    ['iteration.iteration-uuid'],
+    [iterations],
+    'iteration.primary-metric'
+  );
   // mSearch returns a list of values for each query, so 2D array.  We only have exactly 1 primary-metric
   // for each iteration, so collapse the 2D array into a 1D array, 1 element per iteration.
   var primaryMetrics = [];
@@ -252,13 +378,21 @@ mgetPrimaryMetric = function (url, iterations) {
   return primaryMetrics;
 };
 exports.mgetPrimaryMetric = mgetPrimaryMetric;
-getPrimaryMetric = function (url, iteration) {
-  return mgetPrimaryMetric(url, [iteration])[0][0];
+
+getPrimaryMetric = async function (instance, iteration) {
+  var primaryMetrics = await mgetPrimaryMetric(instance, [iteration]);
+  return primaryMetrics[0][0];
 };
 exports.getPrimaryMetric = getPrimaryMetric;
 
-mgetPrimaryPeriodName = function (url, iterations) {
-  var data = mSearch(url, 'iteration', ['iteration.iteration-uuid'], [iterations], 'iteration.primary-period');
+mgetPrimaryPeriodName = async function (instance, iterations) {
+  var data = await mSearch(
+    instance,
+    'iteration',
+    ['iteration.iteration-uuid'],
+    [iterations],
+    'iteration.primary-period'
+  );
   // There can be only 1 period-name er iteration, therefore no need for a period name per period [of the same iteration]
   // Therefore, we do not need to return a 2D array
   var periodNames = [];
@@ -268,17 +402,21 @@ mgetPrimaryPeriodName = function (url, iterations) {
   return periodNames;
 };
 exports.mgetPrimaryPeriodName = mgetPrimaryPeriodName;
-getPrimaryPeriodName = function (url, iteration) {
-  return mgetPrimaryPeriodName(url, [iteration])[0][0];
+
+getPrimaryPeriodName = async function (instance, iteration) {
+  var primaryPeriodNames = await mgetPrimaryPeriodName(instance, [iteration]);
+  return primaryPeriodNames[0][0];
 };
 exports.getPrimaryPeriodName = getPrimaryPeriodName;
 
-mgetSamples = function (url, iters) {
-  return mSearch(url, 'sample', ['iteration.iteration-uuid'], [iters], 'sample.sample-uuid');
+mgetSamples = async function (instance, iters) {
+  return await mSearch(instance, 'sample', ['iteration.iteration-uuid'], [iters], 'sample.sample-uuid');
 };
 exports.mgetSamples = mgetSamples;
-getSamples = function (url, iter) {
-  return mgetSamples(url, [iter])[0];
+
+getSamples = async function (instance, iter) {
+  var samples = await mgetSamples(instance, [iter]);
+  return samples[0];
 };
 exports.getSamples = getSamples;
 
@@ -286,9 +424,9 @@ exports.getSamples = getSamples;
 // find all the metadata names shared among all
 // found metric docs.  These names are what can be
 // used for "breakouts".
-mgetMetricNames = function (url, runIds, sources, types) {
-  return mSearch(
-    url,
+mgetMetricNames = async function (instance, runIds, sources, types) {
+  return await mSearch(
+    instance,
     'metric_desc',
     ['run.run-uuid', 'metric_desc.source', 'metric_desc.type'],
     [runIds, sources, types],
@@ -298,11 +436,13 @@ mgetMetricNames = function (url, runIds, sources, types) {
   );
 };
 exports.mgetMetricNames = mgetMetricNames;
-getMetricNames = function (url, runId, source, type) {
-  return mgetMetricNames(url, [runId], [source], [type]);
+
+getMetricNames = async function (instance, runId, source, type) {
+  var metricNames = await mgetMetricNames(instance, [runId], [source], [type]);
+  return metricNames[0];
 };
 
-mgetSampleStatus = function (url, Ids) {
+mgetSampleStatus = async function (instance, Ids) {
   var sampleIds = [];
   var perSamplePeriNames = [];
   var idx = 0;
@@ -313,8 +453,7 @@ mgetSampleStatus = function (url, Ids) {
     }
   }
 
-  var data = mSearch(url, 'sample', ['sample.sample-uuid'], [sampleIds], 'sample.status', null, 1);
-
+  var data = await mSearch(instance, 'sample', ['sample.sample-uuid'], [sampleIds], 'sample.status', null, 1);
   var sampleStatus = []; // Will be 2D array of [iter][sampIds];
   idx = 0;
   for (var i = 0; i < Ids.length; i++) {
@@ -329,12 +468,14 @@ mgetSampleStatus = function (url, Ids) {
   return sampleStatus;
 };
 exports.mgetSampleStatus = mgetSampleStatus;
-getSampleStatus = function (url, sampId) {
-  return mgetSampleStatus(url, [sampId])[0][0];
+
+getSampleStatus = async function (instance, sampId) {
+  var sampleStatuses = await mgetSampleStatus(instance, [sampId]);
+  return sampleStatuses[0][0];
 };
 exports.getSampleStatus = getSampleStatus;
 
-mgetPrimaryPeriodId = function (url, sampIds, periNames) {
+mgetPrimaryPeriodId = async function (instance, sampIds, periNames) {
   // needs 2D array iterSampleIds: [iter][samp] and 1D array iterPrimaryPeriodNames [iter]
   // returns 2D array [iter][samp]
   if (periNames.length == 1) {
@@ -352,8 +493,8 @@ mgetPrimaryPeriodId = function (url, sampIds, periNames) {
       idx++;
     }
   }
-  var data = mSearch(
-    url,
+  var data = await mSearch(
+    instance,
     'period',
     ['sample.sample-uuid', 'period.name'],
     [sampleIds, perSamplePeriNames],
@@ -378,12 +519,14 @@ mgetPrimaryPeriodId = function (url, sampIds, periNames) {
   return periodIds;
 };
 exports.mgetPrimaryPeriodId = mgetPrimaryPeriodId;
-getPrimaryPeriodId = function (url, sampId, periName) {
-  return mgetPrimaryPeriodId(url, [sampId], [periName])[0][0];
+
+getPrimaryPeriodId = async function (instance, sampId, periName) {
+  var primaryPeriodIds = await mgetPrimaryPeriodId(instance, [sampId], [periName]);
+  return primaryPeriodIds[0][0];
 };
 exports.getPrimaryPeriodId = getPrimaryPeriodId;
 
-mgetPeriodRange = function (url, periodIds) {
+mgetPeriodRange = async function (instance, periodIds) {
   // needs 2D array periodIds: [iter][peri]
   // returns 2D array [iter][samp] of { "begin": x, "end": y }
 
@@ -396,7 +539,7 @@ mgetPeriodRange = function (url, periodIds) {
       idx++;
     }
   }
-  var data = mSearch(url, 'period', ['period.period-uuid'], [Ids], 'period', null, 1);
+  var data = await mSearch(instance, 'period', ['period.period-uuid'], [Ids], 'period', null, 1);
   // mSearch returns a 2D array, in other words, a list of values (inner array) for each query (outer array)
   // In this case, the queries are 1 per sampleId/periodName (for all iterations ordered), and the list of values
   // happens to be exactly 1 value, the primaryPeriodId.
@@ -418,30 +561,44 @@ mgetPeriodRange = function (url, periodIds) {
   return ranges;
 };
 exports.mgetPeriodRange = mgetPeriodRange;
-getPeriodRange = function (url, periId) {
-  return mgetPeriodRange(url, [[periId]])[0][0];
+
+getPeriodRange = async function (instance, periId) {
+  var periodRanges = await mgetPeriodRange(instance, [[periId]]);
+  return periodRanges[0][0];
 };
 exports.getPeriodRange = getPeriodRange;
 
-mgetMetricDescs = function (url, runIds) {
-  return mSearch(url, 'metric_desc', ['run.run-uuid'], [runIds], 'metric_desc.metric_desc-uuid', null, bigQuerySize);
+mgetMetricDescs = async function (instance, runIds) {
+  return await mSearch(
+    instance,
+    'metric_desc',
+    ['run.run-uuid'],
+    [runIds],
+    'metric_desc.metric_desc-uuid',
+    null,
+    bigQuerySize
+  );
 };
-getMetricDescs = function (url, runId) {
-  return mgetMetricDescs(url, [runId])[0];
+
+getMetricDescs = async function (instance, runId) {
+  var metricDescs = await mgetMetricDescs(instance, [runId]);
+  return metricDescs[0];
 };
 exports.getMetricDescs = getMetricDescs;
 
-mgetMetricDataDocs = function (url, metricIds) {
-  return mSearch(url, 'metric_data', ['metric_desc.metric_desc-uuid'], [metricIds], '', null, bigQuerySize);
+mgetMetricDataDocs = async function (instance, metricIds) {
+  return await mSearch(instance, 'metric_data', ['metric_desc.metric_desc-uuid'], [metricIds], '', null, bigQuerySize);
 };
-getMetricDataDocs = function (url, metricId) {
-  return mgetMetricDataDocs(url, [metricId])[0];
+
+getMetricDataDocs = async function (instance, metricId) {
+  var metricDataDocs = await mgetMetricDataDocs(instance, [metricId]);
+  return await mgetMetricDataDocs(instance, [metricId])[0];
 };
 exports.getMetricDataDocs = getMetricDataDocs;
 
-mgetMetricTypes = function (url, runIds, metricSources) {
-  return mSearch(
-    url,
+mgetMetricTypes = async function (instance, runIds, metricSources) {
+  return await mSearch(
+    instance,
     'metric_desc',
     ['run.run-uuid', 'metric_desc.source'],
     [runIds, metricSources],
@@ -451,83 +608,210 @@ mgetMetricTypes = function (url, runIds, metricSources) {
   );
 };
 exports.mgetMetricTypes = mgetMetricTypes;
-getMetricTypes = function (url, runId, metricSource) {
-  return mgetMetricTypes(url, [runId], [metricSources])[0];
+
+getMetricTypes = async function (instance, runId, metricSource) {
+  var metricTypes = await mgetMetricTypes(instance, [runId], [metricSources]);
+  return await metricTypes[0];
 };
 exports.getMetricTypes = getMetricTypes;
 
-mgetIterations = function (url, runIds) {
-  return mSearch(url, 'iteration', ['run.run-uuid'], [runIds], 'iteration.iteration-uuid', null, 1000, [
+mgetIterations = async function (instance, runIds) {
+  return await mSearch(instance, 'iteration', ['run.run-uuid'], [runIds], 'iteration.iteration-uuid', null, 1000, [
     { 'iteration.num': { order: 'asc', numeric_type: 'long' } }
   ]);
 };
-getIterations = function (url, runId) {
-  return mgetIterations(url, [runId])[0];
+
+getIterations = async function (instance, runId) {
+  var iterations = await mgetIterations(instance, [runId]);
+  return iterations[0];
 };
 exports.getIterations = getIterations;
 
-mgetTags = function (url, runIds) {
-  return mSearch(url, 'tag', ['run.run-uuid'], [runIds], 'tag', null, 1000);
+mgetTags = async function (instance, runIds) {
+  return await mSearch(instance, 'tag', ['run.run-uuid'], [runIds], 'tag', null, 1000);
 };
-getTags = function (url, runId) {
-  return mgetTags(url, [runId])[0];
+
+getTags = async function (instance, runId) {
+  var tags = await mgetTags(instance, [runId]);
+  return tags[0];
 };
 exports.getTags = getTags;
 
-mgetRunFromIter = function (url, iterIds) {
-  return mSearch(url, 'iteration', ['iteration.iteration-uuid'], [iterIds], 'run.run-uuid', null, 1000);
+mgetRunFromIter = async function (instance, iterIds) {
+  return await mSearch(instance, 'iteration', ['iteration.iteration-uuid'], [iterIds], 'run.run-uuid', null, 1000);
 };
-getRunFromIter = function (url, iterId) {
-  return mgetRunFromIter(url, [iterId])[0][0];
+
+getRunFromIter = async function (instance, iterId) {
+  var runsFromIter = await mgetRunFromIter(instance, [iterId]);
+  return runsFromIter[0][0];
 };
 exports.getRunFromIter = getRunFromIter;
 
-mgetRunFromPeriod = function (url, periIds) {
-  return mSearch(url, 'period', ['period.period-uuid'], [periIds], 'run.run-uuid', null, 1);
+mgetRunFromPeriod = async function (instance, periIds) {
+  return await mSearch(instance, 'period', ['period.period-uuid'], [periIds], 'run.run-uuid', null, 1);
 };
-getRunFromPeriod = function (url, periId) {
-  return mgetRunFromPeriod(url, [periId])[0][0];
+
+getRunFromPeriod = async function (instance, periId) {
+  var runFromPeriods = await mgetRunFromPeriod(instance, [periId]);
+  return runFromPeriods[0][0];
 };
 exports.getRunFromPeriod = getRunFromPeriod;
 
-mgetParams = function (url, iterIds) {
-  return mSearch(url, 'param', ['iteration.iteration-uuid'], [iterIds], 'param', null, 1000);
+// For each opensearch instance, get the cdm versions they contain and their indices
+getInstancesInfo = function (instances) {
+  for (inst_idx = 0; inst_idx < instances.length; inst_idx++) {
+    var url = 'http://' + instances[inst_idx]['host'] + '/_cat/indices?format=json';
+    var resp;
+    instances[inst_idx]['online'] = true;
+    try {
+      resp = request('GET', url, { headers: instances[inst_idx]['header'] });
+    } catch (error) {
+      console.log(
+        'getInstancesInfo(): Failed to reach the host ' + instances[inst_idx]['host'] + ', so not including it'
+      );
+      instances[inst_idx]['online'] = false;
+      continue;
+    }
+    if (typeof resp != 'undefined') {
+      var indices = JSON.parse(resp.getBody());
+      instances[inst_idx]['indices'] = {};
+      for (const index of indices) {
+        var name = index['index'];
+        if (/^cdm/.exec(name)) {
+          const match = name.match(/^cdm[-]{0,1}(v[\d+]dev)/);
+          const cdmver = match[1];
+          if (!Object.keys(instances[inst_idx]['indices']).includes(cdmver)) {
+            instances[inst_idx]['indices'][cdmver] = [];
+          }
+          instances[inst_idx]['indices'][cdmver].push(name);
+        }
+      }
+    }
+    if (Object.keys(instances[inst_idx]['indices']).length != 0 && !Object.keys(instances[inst_idx]).includes('ver')) {
+      // If mulitple versions of indices exist, default to the latest version
+      // (this can be overridden with --ver <v7dev|v8dev|v9dev> after --host)
+      // Note: if you index a new data into a newer CDM version, that will
+      // create those indices, and a subsequent query (without --ver) will now
+      // default to the newer cdm version.
+      var cdmvers = Object.keys(instances[inst_idx]['indices']).sort();
+      instances[inst_idx]['ver'] = cdmvers[cdmvers.length - 1];
+    } else {
+      // There are no cdm indices at all, so we have to pick a default cdm version.
+      // Currently this is v8dev until this code is well tested for v8dev, then
+      // it will move to 9dev
+      instances[inst_idx]['ver'] = 'v8dev';
+    }
+  }
+};
+
+invalidInstance = function (instance) {
+  if (!instance['online']) {
+    //console.log("invalidInstance(): Not using instance " + instance['host'] + " becasue it cannot be reached");
+    return true;
+  }
+  if (!Object.keys(instance).includes('indices') || Object.keys(instance['indices']).length == 0) {
+    //console.log("invalidInstance(): Not using instance " + instance['host'] + " becasue it does not have indices for any cdm version");
+    return true;
+  }
+  if (!Object.keys(instance['indices']).includes(instance['ver'])) {
+    console.log(
+      'invalidInstance(): Not using instance ' +
+        instance['host'] +
+        ' becasue the cdm version requested [' +
+        instance['ver'] +
+        '] is not one of the cdm versions it contains [' +
+        Object.keys(instance['indices']) +
+        ']'
+    );
+    return true;
+  }
+  return false;
+};
+
+findInstanceFromRun = async function (instances, runId) {
+  var foundInstance;
+  for (const instance of instances) {
+    if (invalidInstance(instance)) {
+      console.log('not a valid instance: ' + JSON.stringify(instance, null, 2));
+      continue;
+    }
+    // Use any function which searches by run id and always returns something if the run id is present
+    debuglog('findInstanceFromRun(): about to call getIterations()');
+    var result = await getIterations(instance, runId);
+    debuglog('findInstanceFromRun(): returned from calling getIterations()');
+    if (typeof result != 'undefined') {
+      debuglog('found valid instance: ' + JSON.stringify(instance, null, 2));
+      foundInstance = instance;
+      break;
+    }
+  }
+  debuglog('findInstanceFromRun(): about to return');
+  return foundInstance;
+};
+
+findInstanceFromPeriod = async function (instances, periId) {
+  var foundInstance;
+  for (const instance of instances) {
+    if (invalidInstance(instance)) {
+      continue;
+    }
+    //var result = await mgetRunFromPeriod(instance, [periId])[0][0];
+    var result = await getRunFromPeriod(instance, [periId]);
+    if (typeof result != 'undefined') {
+      foundInstance = instance;
+      break;
+    }
+  }
+  return foundInstance;
+};
+
+mgetParams = async function (instance, iterIds) {
+  return await mSearch(instance, 'param', ['iteration.iteration-uuid'], [iterIds], 'param', null, 1000);
 };
 exports.mgetParams = mgetParams;
-getParams = function (url, iterId) {
-  return mgetParams(url, [iterId])[0];
+
+getParams = async function (instance, iterId) {
+  return await mgetParams(instance, [iterId])[0];
 };
 exports.getParams = getParams;
 
-mgetIterationDoc = function (url, iterIds) {
-  return mSearch(url, 'iteration', ['iteration.iteration-uuid'], [iterIds], '', null, 1000);
+mgetIterationDoc = async function (instance, iterIds) {
+  return await mSearch(instance, 'iteration', ['iteration.iteration-uuid'], [iterIds], '', null, 1000);
 };
-getIterationDoc = function (url, iterId) {
-  return mgetIterationDoc(url, [iterId])[0][0];
+
+getIterationDoc = async function (instance, iterId) {
+  var iterationDocs = await mgetIterationDoc(instance, [iterId]);
+  return iterationDocs[0][0];
 };
 exports.getIterationDoc = getIterationDoc;
 
-mgetBenchmarkNameFromIter = function (url, Ids) {
-  return mSearch(url, 'iteration', ['iteration.iteration-uuid'], [Ids], 'run.benchmark', null, 1);
+mgetBenchmarkNameFromIter = async function (instance, Ids) {
+  return await mSearch(instance, 'iteration', ['iteration.iteration-uuid'], [Ids], 'run.benchmark', null, 1);
 };
-getBenchmarkNameFromIter = function (url, Id) {
-  return mgetBenchmarkNameFromIter(url, [Id])[0][0];
+
+getBenchmarkNameFromIter = async function (instance, Id) {
+  var benchmarkNameforIters = await mgetBenchmarkNameFromIter(instance, [Id]);
+  return benchmarkNameFromIters[0][0];
 };
 exports.getBenchmarkNameFromIter = getBenchmarkNameFromIter;
 
-mgetBenchmarkName = function (url, runIds) {
-  return mSearch(url, 'run', ['run.run-uuid'], [runIds], 'run.benchmark', null, 1);
+mgetBenchmarkName = async function (instance, runIds) {
+  return await mSearch(instance, 'run', ['run.run-uuid'], [runIds], 'run.benchmark', null, 1);
 };
-getBenchmarkName = function (url, runId) {
-  return mgetBenchmarkName(url, [runId])[0][0];
+
+getBenchmarkName = async function (instance, runId) {
+  var benchmarkNames = await mgetBenchmarkName(instance, [runId]);
+  return benchmarkNames[0][0];
 };
 exports.getBenchmarkName = getBenchmarkName;
 
-mgetRunData = function (url, runIds) {
-  return mSearch(url, 'run', ['run.run-uuid'], [runIds], '', null, 1000);
+mgetRunData = async function (instance, runIds) {
+  return await mSearch(instance, 'run', ['run.run-uuid'], [runIds], '', null, 1000);
 };
-getRunData = function (url, runId) {
-  return mgetRunData(url, [runId]);
+
+getRunData = async function (instance, runId) {
+  var runData = await mgetRunData(instance, [runId]);
+  return runData[0];
 };
 exports.getRunData = getRunData;
 
@@ -552,25 +836,25 @@ calcIterMetrics = function (vals) {
   };
 };
 
-mgetIterMetrics = function (url, iterationIds) {
+mgetIterMetrics = async function (instance, iterationIds) {
   var results = {};
-  var benchmarkNames = consolidateAllArrays(mgetBenchmarkNameFromIter(url, iterationIds));
+  var benchmarkNames = consolidateAllArrays(await mgetBenchmarkNameFromIter(instance, iterationIds));
   if (benchmarkNames.length !== 1) {
     console.log('ERROR: The benchmark-name for all iterations was not the same, includes: ' + benchmarkNames);
     process.exit(1);
   }
-  var primaryMetrics = consolidateAllArrays(mgetPrimaryMetric(url, iterationIds));
+  var primaryMetrics = consolidateAllArrays(await mgetPrimaryMetric(instance, iterationIds));
   if (primaryMetrics.length !== 1) {
     console.log('ERROR: The primary-metric for all iterations was not the same, includes: ' + primaryMetrics);
     process.exit(1);
   }
-  var primaryPeriodNames = consolidateAllArrays(mgetPrimaryPeriodName(url, iterationIds));
+  var primaryPeriodNames = consolidateAllArrays(await mgetPrimaryPeriodName(instance, iterationIds));
   if (primaryPeriodNames.length !== 1) {
     console.log('ERROR: The primary-period-name for all iterations was not the same, includes: ' + primaryPeriodNames);
     process.exit(1);
   }
   // Find all of the passing samples, then all of the primary-periods, then get the metric for all of them in one request
-  var samples = mgetSamples(url, iterationIds); // Samples organized in 2D array, first dimension matching iterationIds
+  var samples = await mgetSamples(instance, iterationIds); // Samples organized in 2D array, first dimension matching iterationIds
   var samplesByIterId = {};
   var iterIdFromSample = {};
   for (i = 0; i < iterationIds.length; i++) {
@@ -582,14 +866,12 @@ mgetIterMetrics = function (url, iterationIds) {
     });
   }
   var consSamples = consolidateAllArrays(samples); // All sample IDs flattened into 1 array
-  var consSamplesStatus = mgetSampleStatus(url, consSamples);
+  var consSamplesStatus = await mgetSampleStatus(instance, consSamples);
   var consPassingSamples = []; // Only passing samples in flattened array
   for (i = 0; i < consSamplesStatus.length; i++) {
     if (consSamplesStatus[i] == 'pass') consPassingSamples.push(consSamples[i]);
   }
-  //console.log("\nconsPassingSamples: " + consPassingSamples);
-  //console.log("mgetPrimaryperiodId");
-  var primaryPeriodIds = mgetPrimaryPeriodId(url, consPassingSamples, primaryPeriodNames);
+  var primaryPeriodIds = await mgetPrimaryPeriodId(instance, consPassingSamples, primaryPeriodNames);
   var periodsBySample = {};
   var sampleIdFromPeriod = {};
   for (i = 0; i < consPassingSamples.length; i++) {
@@ -601,16 +883,12 @@ mgetIterMetrics = function (url, iterationIds) {
     });
   }
   var consPrimaryPeriodIds = consolidateAllArrays(primaryPeriodIds);
-  //console.log("\nconsPrimaryPeriodIds: " + JSON.stringify(consPrimaryPeriodIds, null , 2));
-  //console.log("mgetPeriodRange");
-  var periodRanges = mgetPeriodRange(url, consPrimaryPeriodIds);
-  //console.log("\nperiodRanges: " + JSON.stringify(periodRanges, null, 2));
+  var periodRanges = await mgetPeriodRange(instance, consPrimaryPeriodIds);
   // Create the sets for getMetricDataSets
   var sets = [];
   var periodsByIteration = {};
   for (i = 0; i < consPrimaryPeriodIds.length; i++) {
     periodId = consPrimaryPeriodIds[i];
-    //console.log("period: " + periodId + "  periodRanges[" + i + "]: " + JSON.stringify(periodRanges[i]));
     var p = {
       period: periodId,
       source: benchmarkNames[0],
@@ -623,12 +901,8 @@ mgetIterMetrics = function (url, iterationIds) {
     sets.push(p);
     periodsByIteration[iterIdFromSample[sampleIdFromPeriod[periodId]]] = p;
   }
-  //console.log("\ngetMetricDataSets for " + sets.length + " sets");
   // Returned data should be in same order as consPrimaryPeriodIds
-  //console.log("getMetricDataSets");
-  var metricDataSets = getMetricDataSets(url, sets);
-  //console.log("calcIterMetrics");
-  //console.log("\nMetricDataSets.length: " + metricDataSets.length);
+  var metricDataSets = await getMetricDataSets(instance, sets);
   // Build per-iteration results
   var period = consPrimaryPeriodIds[0];
   var sample = sampleIdFromPeriod[period];
@@ -636,57 +910,42 @@ mgetIterMetrics = function (url, iterationIds) {
   var vals = [];
   // Below relies on the expectation that periods for the same sample are stored contiguously in consPrimaryPeriodIds array
   for (i = 0; i < consPrimaryPeriodIds.length; i++) {
-    //console.log("i: " + i);
     period = consPrimaryPeriodIds[i];
-    //console.log("period: " + period);
     sample = sampleIdFromPeriod[period];
-    //console.log("sample: " + sample);
-    //console.log("                    iter: " + iter);
-    //console.log("iterIdFromSample[sample]: " + iterIdFromSample[sample]);
     nextIter = iterIdFromSample[sample];
     //if (iter !== iterIdFromSample[sample]) {
     if (iter !== nextIter) {
       // detected next iteration, calc current iteration's metrics
-      //console.log("vals:\n" + JSON.stringify(vals));
       var thisResult = calcIterMetrics(vals);
-      //console.log(JSON.stringify(thisResult));
       results[iter] = thisResult;
-      //console.log("results length is now: " + Object.keys(results).length);
       // now switch to new iteration
-      //console.log("switching from iteration " + iter + " to iteration " + nextIter);
       iter = nextIter;
       vals = [];
     }
-    //console.log("Getting val from metricDataSets[" + i + "]:\n" + JSON.stringify(metricDataSets[i], null, 2));
     // metricDataSets can return metrics with multiple labels, and for each of those, multiple data-samples.
     // In this case, we are expecting a blank label since there is no metric-breakout, and exactly 1 data-sample.
-    //console.log("value: [" + metricDataSets[i][''][0].value + "]");
     vals.push(metricDataSets[i][''][0].value);
   }
-  //console.log("vals:\n" + JSON.stringify(vals));
   var thisResult = calcIterMetrics(vals);
-  //console.log(JSON.stringify(thisResult));
   results[iter] = thisResult;
-  //console.log("results length is now: " + Object.keys(results).length);
-  //console.log("mgetIterMetrics complete");
   return results;
 };
 exports.mgetIterMetrics = mgetIterMetrics;
 
-getIterMetrics = function (url, iterId) {
-  mgetIterMetrics(url, [iterId]);
+getIterMetrics = async function (instance, iterId) {
+  return await mgetIterMetrics(instance, [iterId]);
 };
 
-deleteDocs = function (url, docTypes, q) {
+deleteDocs = function (instance, docTypes, q) {
   docTypes.forEach((docType) => {
-    var resp = esRequest(url, docType + '/_delete_by_query?wait_for_completion=false', q);
+    var resp = esRequest(instance, docType, '/_delete_by_query?wait_for_completion=false', q);
   });
 };
 exports.deleteDocs = deleteDocs;
 
 // For comparing N iterations across 1 or more runs.
 buildIterTree = function (
-  url,
+  instance,
   results,
   params,
   tags,
@@ -774,7 +1033,7 @@ buildIterTree = function (
         newNewParams[nextArg] = {};
         newNewParams[nextArg][val] = newParams[nextArg][val];
         newIter = buildIterTree(
-          url,
+          instance,
           results,
           newNewParams,
           newTags,
@@ -838,7 +1097,7 @@ buildIterTree = function (
         newNewTags[nextName] = {};
         newNewTags[nextName][val] = newTags[nextName][val];
         newIter = buildIterTree(
-          url,
+          instance,
           results,
           newParams,
           newNewTags,
@@ -879,7 +1138,7 @@ buildIterTree = function (
   // There are no breakouts to create, so we should be at the leaf.  Create the iteration with labels, metrics, etc.
   var iterations = [];
   iterIds.forEach((id) => {
-    //var result = getIterMetrics(url, id);
+    //var result = getIterMetrics(instance, id);
     //return { "mean": mean, "min": Math.min(...vals), "max": Math.max(...vals), "stddev": mstddev, "stddevpct": mstddevpct };
     var thisIter = {
       id: id,
@@ -1015,8 +1274,8 @@ reportIters = function (iterTree, indent, count) {
 };
 
 // getIters(): filter and group interations, typically for generating comparisons (clustered bar graphs)
-getIters = function (
-  url,
+getIters = async function (
+  instance,
   filterByAge,
   filterByTags,
   filterByParams,
@@ -1070,17 +1329,17 @@ getIters = function (
     if (val != 'tag-not-used') {
       var tagValTerm = { term: { 'tag.val': val } };
       tag_query.query.bool.filter.push(tagValTerm);
-      jsonArr.push('{"index": "' + getIndexBaseName() + 'tag' + '" }');
+      jsonArr.push('{"index": "' + getIndexBaseName(instance) + 'tag' + '" }');
       jsonArr.push(JSON.stringify(tag_query));
     } else {
       // Find the run IDs which have this tag name present (value does not matter)
-      jsonArr2 += '{"index": "' + getIndexBaseName() + 'tag' + '" }\n';
+      jsonArr2 += '{"index": "' + getIndexBaseName(instance) + 'tag' + '" }\n';
       jsonArr2 += JSON.stringify(tag_query) + '\n';
     }
   });
 
   if (jsonArr.length > 0) {
-    var responses = esJsonArrRequest(url, 'tag/_msearch', jsonArr);
+    var responses = esJsonArrRequest(instance, 'tag', '/_msearch', jsonArr);
     var runIds = [];
     responses.forEach((response) => {
       var theseRunIds = [];
@@ -1092,7 +1351,7 @@ getIters = function (
     var intersectedRunIds = intersectAllArrays(runIds);
 
     if (jsonArr2.length > 0) {
-      var responses2 = esJsonArrRequest(url, 'tag/_msearch', jsonArr2);
+      var responses2 = esJsonArrRequest(instance, 'tag', '/_msearch', jsonArr2);
       responses2.forEach((response) => {
         response.hits.hits.forEach((run) => {
           if (intersectedRunIds.includes(run._source.run['run-uuid'])) {
@@ -1112,7 +1371,7 @@ getIters = function (
     }
   }
   // Now we can get all of the iterations for these run.run-uuids
-  var iterIdsFromRun = getIterations(url, intersectedRunIds);
+  var iterIdsFromRun = await getIterations(instance, intersectedRunIds);
 
   // Next, we must find the iterations that match the params filters.
   // We are trying to find iterations that have *all* params filters matching, not just one.
@@ -1132,19 +1391,19 @@ getIters = function (
     if (val != 'param-not-used') {
       var paramVal = { term: { 'param.val': val } };
       param_query.query.bool.filter.push(paramVal);
-      jsonArr.push('{"index": "' + getIndexBaseName() + 'param' + '" }');
+      jsonArr.push('{"index": "' + getIndexBaseName(instance) + 'param' + '" }');
       jsonArr.push(JSON.stringify(param_query));
     } else {
       // Find the run IDs which have this param name present (value does not matter).
       // Later, we will subtract these iteration IDs from the ones found with ndjson query.
-      jsonArr2 += '{"index": "' + getIndexBaseName() + 'param' + '" }\n';
+      jsonArr2 += '{"index": "' + getIndexBaseName(instance) + 'param' + '" }\n';
       jsonArr2 += JSON.stringify(param_query) + '\n';
     }
   });
 
   var iterIdsFromParam = [];
   if (jsonArr.length > 0) {
-    var resp = esJsonArrRequest(url, 'param/_msearch', jsonArr);
+    var resp = esJsonArrRequest(instance, 'param', '/_msearch', jsonArr);
     var responses = JSON.parse(resp.getBody());
     var iterationIds = [];
     responses.forEach((response) => {
@@ -1157,7 +1416,7 @@ getIters = function (
     iterIdsFromParam = intersectAllArrays(iterationIds);
 
     if (jsonArr2 != '') {
-      var resp2 = esJsonArrRequest(url, 'tag/_msearch', jsonArr2);
+      var resp2 = esJsonArrRequest(instance, 'tag', '/_msearch', jsonArr2);
       var responses2 = JSON.parse(resp2.getBody());
       responses2.forEach((response) => {
         response.hits.hits.forEach((hit) => {
@@ -1196,7 +1455,7 @@ getIters = function (
   // Now we can add any iterations from --add-runs and --add-iterations.
   // These options are not subject to the tags and params filters.
   if (typeof addRuns != 'undefined' && addRuns != []) {
-    var ids = getIterations(url, addRuns);
+    var ids = await getIterations(instance, addRuns);
     ids.forEach((id) => {
       if (!allIterIds.includes(id)) {
         allIterIds.push(id);
@@ -1221,13 +1480,12 @@ getIters = function (
   console.log('Total iterations: ' + allIterIds.length);
 
   console.log('Finding all tag names');
-  var iterRunIds = mgetRunFromIter(url, allIterIds);
-  //console.log("runIds from Iters:\n" + JSON.stringify(runIds, null, 2));
-  var iterTags = mgetTags(url, iterRunIds);
+  var iterRunIds = await mgetRunFromIter(instance, allIterIds);
+  var iterTags = await mgetTags(instance, iterRunIds);
   var allTagNames = getObjVals(consolidateAllArrays(iterTags), 'name');
   console.log('allTagNames:\n' + JSON.stringify(allTagNames, null, 2));
   console.log('Finding all param args');
-  var iterParams = mgetParams(url, allIterIds);
+  var iterParams = await mgetParams(instance, allIterIds);
   var allParamArgs = getObjVals(consolidateAllArrays(iterParams), 'arg');
   console.log('allParamArgs:\n' + JSON.stringify(allParamArgs, null, 2));
 
@@ -1240,10 +1498,8 @@ getIters = function (
   //allIterIds.forEach(iter => {
   for (j = 0; j < allIterIds.length; j++) {
     var iter = allIterIds[j];
-    //console.log("\niterId: " + iter);
-    //var params = getParams(url, iter);
+    //var params = await getParams(instance, iter);
     var params = iterParams[j];
-    //console.log("params:\n" + JSON.stringify(params, null, 2));
     // Need to consolidate multiple params with same arg but different values
     var paramIdx = {};
     var l = params.length;
@@ -1252,18 +1508,14 @@ getIters = function (
       if (typeof paramIdx[arg] !== 'undefined') {
         // This param arg was already found, combine this value with exiting param
         var existing_arg_idx = paramIdx[arg];
-        //console.log("i: " + i + "  This param arg (" + arg + ") was already found (idx: " + existing_arg_idx + "), combine this value: (" + JSON.stringify(params[i]) + "), with existing one (" + JSON.stringify(params[existing_arg_idx]) + ")");
         params[existing_arg_idx]['val'] += '_' + params[i]['val'];
         params.splice(i, 1);
         l--;
         i--;
       } else {
-        //console.log("Adding arg: " + arg + " to paramIdx[" + arg + "]:" + i);
         paramIdx[arg] = i;
       }
     }
-    //console.log("updated params:\n" + JSON.stringify(params, null, 2));
-    //var runId = getRunFromIter(url, iter);
     var tags = iterTags[j];
     var thisIter = { iterId: iter, tags: tags, params: params };
     var loggedParams = [];
@@ -1315,7 +1567,6 @@ getIters = function (
         }
         var index = allTagNames.indexOf(name);
         if (index !== -1) {
-          //console.log("Removing " + name + " from allTagNames");
           allTagNames.splice(index, 1);
           i--;
         }
@@ -1329,7 +1580,6 @@ getIters = function (
         }
         var index = allParamArgs.indexOf(arg);
         if (index !== -1) {
-          //console.log("Removing " + arg + " from allParamArgs");
           allParamArgs.splice(index, 1);
           i--;
         }
@@ -1343,19 +1593,16 @@ getIters = function (
   // For the notCommonTagNames, add this tag with a value of "tag-not-used"
   // to any iteration which has this tag missing
   notCommonTagNames.forEach((name) => {
-    //console.log("checking all iterations for tag " + name);
     for (var i = 0; i < iterations.length; i++) {
       var iterId = iterations[i]['iterId'];
       var foundTag = false;
       for (var j = 0; j < iterations[i]['tags'].length; j++) {
         if (iterations[i]['tags'][j]['name'] == name) {
-          //console.log("Found tag " + name);
           foundTag = true;
         }
       }
       if (foundTag == false) {
         var newTag = { name: name, val: 'tag-not-used' };
-        //console.log("Did not find tag " + name + ", so adding with val: tag-not-used");
         iterations[i]['tags'].push(newTag);
       }
     }
@@ -1369,13 +1616,11 @@ getIters = function (
       var foundParam = false;
       for (var j = 0; j < iterations[i]['params'].length; j++) {
         if (iterations[i]['params'][j]['arg'] == arg) {
-          //console.log("Found param " + arg);
           foundParam = true;
         }
       }
       if (foundParam == false) {
         var newParam = { arg: arg, val: 'param-not-used' };
-        //console.log("Did not find param " + arg + ", so adding with val: param-not-used");
         iterations[i]['params'].push(newParam);
       }
     }
@@ -1426,12 +1671,10 @@ getIters = function (
 
   // Build a lookup table of iterId->metrics
   console.log('mgetIterMetrics');
-  var results = mgetIterMetrics(url, allIterIds);
-  //console.log("results:\n" + JSON.stringify(results, null, 2));
+  var results = await mgetIterMetrics(instance, allIterIds);
 
-  //console.log("Build iterTree");
   iterTree = buildIterTree(
-    url,
+    instance,
     results,
     params,
     tags,
@@ -1448,7 +1691,7 @@ getIters = function (
 };
 exports.getIters = getIters;
 
-exports.getMetricSources = function (url, runId) {
+exports.getMetricSources = function (instance, runId) {
   var q = {
     query: { bool: { filter: [{ term: { 'run.run-uuid': runId } }] } },
     aggs: {
@@ -1456,8 +1699,7 @@ exports.getMetricSources = function (url, runId) {
     },
     size: 0
   };
-  //console.log("Q:\n" + JSON.stringify(q, null, 2));
-  var resp = esRequest(url, 'metric_desc/_search', q);
+  var resp = esRequest(instance, 'metric_desc', '/_search', q);
   var data = JSON.parse(resp.getBody());
   if (Array.isArray(data.aggregations.source.buckets)) {
     var sources = [];
@@ -1468,12 +1710,13 @@ exports.getMetricSources = function (url, runId) {
   }
 };
 
-exports.getDocCount = function (url, runId, docType) {
+getDocCount = function (instance, runId, docType) {
   var q = { query: { bool: { filter: [{ term: { 'run.run-uuid': runId } }] } } };
-  var resp = esRequest(url, docType + '/_count', q);
+  var resp = esRequest(instance, docType, '/_count', q);
   var data = JSON.parse(resp.getBody());
   return data.count;
 };
+exports.getDocCount = getDocCount;
 
 // Traverse a response from a nested aggregation to generate a set of filter terms
 // for each metric group.
@@ -1573,7 +1816,7 @@ getMetricGroupTermsByLabel = function (metricGroupTerms) {
   return metricGroupTermsByLabel;
 };
 
-mgetMetricIdsFromTerms = function (url, termsSets) {
+mgetMetricIdsFromTerms = async function (instance, termsSets) {
   // termsSets is an array of:
   // { 'period': x, 'run': y, 'termsByLabel': {} }
   // termsByLabel is a dict/hash of:
@@ -1581,13 +1824,11 @@ mgetMetricIdsFromTerms = function (url, termsSets) {
   var jsonArr = [];
   var totalReqs = 0;
   for (i = 0; i < termsSets.length; i++) {
-    //console.log("mgetMetricIdsFromTerms():  termsSets[" + i + "]:\n" + JSON.stringify(termsSets[i], null, 2));
     var periId = termsSets[i].period;
     var runId = termsSets[i].run;
     Object.keys(termsSets[i].termsByLabel)
       .sort()
       .forEach((label) => {
-        //console.log("mgetMetricIdsFromTerms():  label: '" + label + "'  terms string: '" + termsSets[i].termsByLabel[label] + "'");
         var terms_string = termsSets[i].termsByLabel[label];
         var q = {
           query: { bool: { filter: JSON.parse('[' + terms_string + ']') } },
@@ -1609,8 +1850,7 @@ mgetMetricIdsFromTerms = function (url, termsSets) {
         totalReqs++;
       });
   }
-  //console.log("jsonArr.length: " + jsonArr.length);
-  var responses = esJsonArrRequest(url, 'metric_desc/_msearch', jsonArr);
+  var responses = await esJsonArrRequest(instance, 'metric_desc', '/_msearch', jsonArr);
   if (totalReqs != responses.length) {
     console.log(
       'mgetMetricIdsFromTerms(): ERROR, number of _msearch responses (' +
@@ -1626,19 +1866,14 @@ mgetMetricIdsFromTerms = function (url, termsSets) {
     return;
   }
 
-  //console.log("data:\n" + JSON.stringify(data, null, 2));
   // Process the responses and assemble metric IDs into array
-  //console.log("\nmgetMetricIdsFromTerms():  termsSets.length: " + termsSets.length);
   var metricIdsSets = []; // eventual length = termsSets
   var count = 0;
   for (i = 0; i < termsSets.length; i++) {
-    //console.log("\nmgetMetricIdsFromTerms():  i: " + i);
     var thisMetricIds = {};
     Object.keys(termsSets[i].termsByLabel)
       .sort()
       .forEach((label) => {
-        //console.log("mgetMetricIdsFromTerms():  label: " + label);
-        //console.log("mgetMetricIdsFromTerms():  count: " + count);
         thisMetricIds[label] = [];
         if (responses[i] == null) {
           console.log('ERROR: responses[' + i + '] is null');
@@ -1661,18 +1896,13 @@ mgetMetricIdsFromTerms = function (url, termsSets) {
           console.log('ERROR: hits from returned query exceeded max size of ' + bigQuerySize);
           process.exit(1);
         }
-        //console.log("mgetMetricIdsFromTerms():  data.responses[" + count + "]:\n" + JSON.stringify(data.responses[count], null, 2));
-        //console.log("mgetMetricIdsFromTerms():  data.responses[" + count + "].hits.hits.length: " + data.responses[count].hits.hits.length);
         for (j = 0; j < responses[count].hits.hits.length; j++) {
-          //console.log("mgetMetricIdsFromTerms():  data.responses[" + count + "].hits.hits[" + j + "]:\n" + JSON.stringify(data.responses[count].hits.hits[j], null, 2));
-          //console.log("mgetMetricIdsFromTerms():  adding " + data.responses[count].hits.hits[j]._source.metric_desc.metric_desc-uuid);
           thisMetricIds[label].push(responses[count].hits.hits[j]._source.metric_desc['metric_desc-uuid']);
         }
         count++;
       });
     metricIdsSets.push(thisMetricIds);
   }
-  //console.log("mgetMetricIdsFromTerms:  metricIdsSets:\n" + JSON.stringify(metricIdsSets));
   return metricIdsSets;
 };
 exports.mgetMetricIdsFromTerms = mgetMetricIdsFromTerms;
@@ -1682,7 +1912,7 @@ exports.mgetMetricIdsFromTerms = mgetMetricIdsFromTerms;
 // wants to "break-out" the metric (by some metadatam like cpu-id, devtype, etc).
 // Find the number of groups needed based on the --breakout options, then find out
 // what metric IDs belong in each group.
-getMetricGroupsFromBreakouts = function (url, sets) {
+getMetricGroupsFromBreakouts = async function (instance, sets) {
   var metricGroupIdsByLabel = [];
   var indexjson = '{}\n';
   var index = JSON.parse(indexjson);
@@ -1721,7 +1951,7 @@ getMetricGroupsFromBreakouts = function (url, sets) {
     jsonArr.push(JSON.stringify(index));
     jsonArr.push(JSON.stringify(q));
   });
-  var responses = esJsonArrRequest(url, 'metric_desc/_msearch', jsonArr);
+  var responses = await esJsonArrRequest(instance, 'metric_desc', '/_msearch', jsonArr);
 
   var metricGroupIdsByLabelSets = [];
   var metricGroupTermsSets = [];
@@ -1740,12 +1970,12 @@ getMetricGroupsFromBreakouts = function (url, sets) {
     };
     termsSets.push(thisLabelSet);
   }
-  metricGroupIdsByLabelSets = mgetMetricIdsFromTerms(url, termsSets);
+  metricGroupIdsByLabelSets = await mgetMetricIdsFromTerms(instance, termsSets);
   return metricGroupIdsByLabelSets;
 };
 exports.getMetricGroupsFromBreakouts = getMetricGroupsFromBreakouts;
 
-getMetricGroupsFromBreakout = function (url, runId, periId, source, type, breakout) {
+getMetricGroupsFromBreakout = async function (instance, runId, periId, source, type, breakout) {
   var thisSet = {
     run: runId,
     period: periId,
@@ -1753,7 +1983,7 @@ getMetricGroupsFromBreakout = function (url, runId, periId, source, type, breako
     type: type,
     breakout: breakout
   };
-  var metricGroupIdsByLabelSets = getMetricGroupsFromBreakouts(url, [thisSet]);
+  var metricGroupIdsByLabelSets = await getMetricGroupsFromBreakouts(instance, [thisSet]);
   return metricGroupIdsByLabelSets[0];
 };
 exports.getMetricGroupsFromBreakout = getMetricGroupsFromBreakout;
@@ -1769,8 +1999,7 @@ exports.getMetricGroupsFromBreakout = getMetricGroupsFromBreakout;
 // function is called with begin=5 and end=1005, and there are 2 metric_data documents [having the same
 // metric_id in metricIds], and their respective (begin,end) are (0,500) and (501,2000),
 // then there are enough metric_data documents to compute the results.
-getMetricDataFromIdsSets = function (url, sets, metricGroupIdsByLabelSets) {
-  //console.log("metricGroupIdsByLabelSets:\n" + JSON.stringufy(metricGroupIdsByLabelSets, null, 2));
+getMetricDataFromIdsSets = async function (instance, sets, metricGroupIdsByLabelSets) {
   var jsonArr = [];
   for (var idx = 0; idx < metricGroupIdsByLabelSets.length; idx++) {
     Object.keys(metricGroupIdsByLabelSets[idx])
@@ -1807,7 +2036,7 @@ getMetricDataFromIdsSets = function (url, sets, metricGroupIdsByLabelSets) {
           //
           // This first request is for the weighted average, but does not include the
           // documents which are partially outside the time range we need.
-          indexjson = '{"index": "' + getIndexBaseName() + 'metric_data' + '" }\n';
+          indexjson = '{"index": "' + getIndexBaseName(instance) + getIndexName('metric_data', instance) + '" }\n';
           reqjson = '{';
           reqjson += '  "size": 0,';
           reqjson += '  "query": {';
@@ -1839,7 +2068,7 @@ getMetricDataFromIdsSets = function (url, sets, metricGroupIdsByLabelSets) {
           // This second request is for the total weight of the previous weighted average request.
           // We need this because we are going to recompute the weighted average by adding
           // a few more documents that are partially outside the time domain.
-          indexjson = '{"index": "' + getIndexBaseName() + 'metric_data' + '" }\n';
+          indexjson = '{"index": "' + getIndexBaseName(instance) + getIndexName('metric_data', instance) + '" }\n';
           reqjson = '{';
           reqjson += '  "size": 0,';
           reqjson += '  "query": {';
@@ -1863,7 +2092,7 @@ getMetricDataFromIdsSets = function (url, sets, metricGroupIdsByLabelSets) {
           jsonArr.push(JSON.stringify(req));
           // This third request is for documents that had its begin during or before the time range, but
           // its end was after the time range.
-          indexjson = '{"index": "' + getIndexBaseName() + 'metric_data' + '" }\n';
+          indexjson = '{"index": "' + getIndexBaseName(instance) + getIndexName('metric_data', instance) + '" }\n';
           reqjson = '{';
           reqjson += '  "size": ' + bigQuerySize + ',';
           reqjson += '  "query": {';
@@ -1882,7 +2111,7 @@ getMetricDataFromIdsSets = function (url, sets, metricGroupIdsByLabelSets) {
           jsonArr.push(JSON.stringify(req));
           // This fourth request is for documents that had its begin before the time range, but
           //  its end was during or after the time range
-          var indexjson = '{"index": "' + getIndexBaseName() + 'metric_data' + '" }\n';
+          var indexjson = '{"index": "' + getIndexBaseName(instance) + getIndexName('metric_data', instance) + '" }\n';
           var reqjson = '';
           reqjson += '{';
           reqjson += '  "size": ' + bigQuerySize + ',';
@@ -1914,7 +2143,7 @@ getMetricDataFromIdsSets = function (url, sets, metricGroupIdsByLabelSets) {
       });
   }
 
-  var responses = esJsonArrRequest(url, 'metric_data/_msearch', jsonArr);
+  var responses = await esJsonArrRequest(instance, 'metric_data', '/_msearch', jsonArr);
   var elements = responses.length;
 
   var valueSets = [];
@@ -2050,7 +2279,7 @@ getMetricDataFromIdsSets = function (url, sets, metricGroupIdsByLabelSets) {
 };
 exports.getMetricDataFromIdsSets = getMetricDataFromIdsSets;
 
-getMetricData = function (url, runId, periId, source, type, begin, end, resolution, breakout, filter) {
+getMetricData = async function (instance, runId, periId, source, type, begin, end, resolution, breakout, filter) {
   var sets = [];
   var thisSet = {
     run: runId,
@@ -2064,7 +2293,7 @@ getMetricData = function (url, runId, periId, source, type, begin, end, resoluti
     filter: filter
   };
   sets.push(thisSet);
-  var dataSets = getMetricDataSets(url, sets);
+  var dataSets = await getMetricDataSets(instance, sets);
   return dataSets[0];
 };
 exports.getMetricData = getMetricData;
@@ -2081,7 +2310,7 @@ exports.getMetricData = getMetricData;
 //   from this [benchmark-iteration-sample-]period (from doc which contains the periId)
 //   *if* the metric is from a benchmark.  If you want to query for corresponding
 //   tool data, use the same begin and end as the benchmark-iteration-sample-period.
-getMetricDataSets = function (url, sets) {
+getMetricDataSets = async function (instance, sets) {
   for (var i = 0; i < sets.length; i++) {
     // If a begin and end are not defined, get it from the period.begin & period.end.
     // If a begin and/or end are not defined, and the period is not defined, error out.
@@ -2089,7 +2318,7 @@ getMetricDataSets = function (url, sets) {
     // If a run and period are not defined, error out.
     if (typeof sets[i].run == 'undefined') {
       if (typeof sets[i].period != 'undefined') {
-        sets[i].run = getRunFromPeriod(url, sets[i].period);
+        sets[i].run = await getRunFromPeriod(instance, sets[i].period);
       } else {
         console.log('ERROR: run and period was not defined');
       }
@@ -2097,7 +2326,7 @@ getMetricDataSets = function (url, sets) {
     var periodRange;
     if (typeof sets[i].begin == 'undefined') {
       if (typeof sets[i].period != 'undefined') {
-        periodRange = getPeriodRange(url, sets[i].period);
+        periodRange = await getPeriodRange(instance, sets[i].period);
         sets[i]['begin'] = periodRange['begin'];
       } else {
         console.log('ERROR: begin is not defined and a period was not defined');
@@ -2106,7 +2335,7 @@ getMetricDataSets = function (url, sets) {
     if (typeof sets[i].end == 'undefined') {
       if (typeof sets[i].period != 'undefined') {
         if (typeof periodRange == 'undefined') {
-          periodRange = getPeriodRange(url, sets[i].period);
+          periodRange = await getPeriodRange(instance, sets[i].period);
         }
         sets[i].end = periodRange.end;
       } else {
@@ -2131,8 +2360,8 @@ getMetricDataSets = function (url, sets) {
     delete sets[i].period;
   }
 
-  var metricGroupIdsByLabelSets = getMetricGroupsFromBreakouts(url, sets);
-  var dataSets = getMetricDataFromIdsSets(url, sets, metricGroupIdsByLabelSets);
+  var metricGroupIdsByLabelSets = await getMetricGroupsFromBreakouts(instance, sets);
+  var dataSets = await getMetricDataFromIdsSets(instance, sets, metricGroupIdsByLabelSets);
 
   if (dataSets.length != sets.length) {
     console.log(
@@ -2154,7 +2383,7 @@ getMetricDataSets = function (url, sets) {
     sources[i] = sets[i].source;
     types[i] = sets[i].type;
   }
-  var setBreakouts = mgetMetricNames(url, runIds, sources, types);
+  var setBreakouts = await mgetMetricNames(instance, runIds, sources, types);
 
   for (var i = 0; i < sets.length; i++) {
     // Rearrange the actual data into 'values' section
@@ -2207,3 +2436,39 @@ getMetricDataSets = function (url, sets) {
   return dataSets;
 };
 exports.getMetricDataSets = getMetricDataSets;
+
+async function waitForDeletedDocs(instance, runId, docTypes) {
+  var numAttempts = 1;
+  var maxAttempts = 30;
+  var remainingDocTypes = docTypes;
+  var totalDocCount = 0;
+  var previousTotalDocCount = 0;
+  var interval = 3;
+  while (numAttempts <= maxAttempts && docTypes.length > 0) {
+    let promise = new Promise((resolve, reject) => {
+      setTimeout(() => resolve('done!'), interval * 1000);
+    });
+    let result = await promise;
+
+    console.log('\nConfirming all documents are in deleted OpenSearch (attempt #' + numAttempts + ')');
+    totalDocCount = 0;
+    for (let i = 0; i < docTypes.length; i++) {
+      var thisNumDocs = getDocCount(instance, runId, docTypes[i]);
+      console.log('  ' + docTypes[i] + ': doc count: ' + thisNumDocs);
+      totalDocCount += thisNumDocs;
+
+      if (thisNumDocs == 0) {
+        remainingDocTypes = remainingDocTypes.filter((val) => val !== docTypes[i]);
+      }
+    }
+    docTypes = remainingDocTypes;
+    numAttempts++;
+
+    if (previousTotalDocCount != 0) {
+      console.log('Document deletion rate: ' + (previousTotalDocCount - totalDocCount) / interval + ' documents/sec');
+    }
+    previousTotalDocCount = totalDocCount;
+  }
+  return docTypes.lenth;
+}
+exports.waitForDeletedDocs = waitForDeletedDocs;
