@@ -210,10 +210,9 @@ async function main() {
         typeList += metricTypes[i][j] + ' ';
       }
       logOutput(typeList, program.outputFormat);
-      var thisMetric = { 'source': metricSources[i], 'types': metricTypes[i] };
+      var thisMetric = { source: metricSources[i], types: metricTypes[i] };
       thisRun['metrics'].push(thisMetric);
     }
-
 
     // build the sets for the mega-query
     var metricDataSetsChunks = [];
@@ -295,7 +294,7 @@ async function main() {
             }
           });
         logOutput(paramList);
-        thisIteration['unique-params'] = iterParams[i].sort((a, b) => (a.arg < b.arg ? -1 : 1));;
+        thisIteration['unique-params'] = iterParams[i].sort((a, b) => (a.arg < b.arg ? -1 : 1));
       }
 
       logOutput('      primary-period name: ' + iterPrimaryPeriodNames[i]);
@@ -448,7 +447,7 @@ async function main() {
     }
     if (program.outputFormat.includes('yaml')) {
       try {
-        fs.writeFileSync(program.outputDir + '/' + 'result-summary.yaml', yaml.dump(summary, { "sort-keys": true }));
+        fs.writeFileSync(program.outputDir + '/' + 'result-summary.yaml', yaml.dump(summary, { 'sort-keys': true }));
       } catch (err) {
         console.error(err);
       }
