@@ -1,7 +1,9 @@
 //# vim: autoindent tabstop=2 shiftwidth=2 expandtab softtabstop=2 filetype=javascript
 var cdm = require('./cdm');
+var yaml = require('js-yaml');
 var program = require('commander');
 var instances = [];
+var summary = {};
 
 function list(val) {
   return val.split(',');
@@ -43,7 +45,7 @@ program
   .option('--userpass <user:pass>', 'The user and password for the most recent --host', save_userpass)
   .option('--ver <v7dev|v8dev|v9dev>', 'The Common Data Model version to use for the most recent --host', save_ver)
   .option('--output-dir <path>, if not used, output is to console only')
-  .option('--output-format <fmt>, fmta[,fmtb]', 'one or more output formats: txt html', list, [])
+  .option('--output-format <fmt>, fmta[,fmtb]', 'one or more output formats: txt, json, yaml', list, [])
   .parse(process.argv);
 
 var termKeys = [];
@@ -72,15 +74,10 @@ if (!program.outputDir) {
 if (!program.outputFormat) {
   program.outputFormat = [''];
 }
-var noHtml = subtractTwoArrays(program.outputFormat, ['html']);
 var txt_summary = '';
-var html_summary = '<pre>';
 
 function logOutput(str, formats) {
   txt_summary += str + '\n';
-  if (formats.includes('html')) {
-    html_summary += str + '\n';
-  }
 }
 
 async function main() {
@@ -118,16 +115,22 @@ async function main() {
   }
 
   cdm.debuglog('runIds:\n' + JSON.stringify(runIds, null, 2));
+  summary['runs'] = [];
   for (runIdx = 0; runIdx < runIds.length; runIdx++) {
     cdm.debuglog('runIdx:\n' + runIdx);
+    var thisRun = {};
     const runId = runIds[runIdx];
     cdm.debuglog('instances:\n' + JSON.stringify(instances, null, 2));
     var instance = await findInstanceFromRun(instances, runId);
     cdm.debuglog('instance: ' + JSON.stringify(instance, null, 2));
     logOutput('\nrun-id: ' + runId, program.outputFormat);
+    thisRun['run-id'] = runId;
+    thisRun['iterations'] = [];
     var tags = await cdm.getTags(instance, runId);
     tags.sort((a, b) => (a.name < b.name ? -1 : 1));
+    thisRun['tags'] = tags;
     var tagList = '  tags: ';
+
     tags.forEach((tag) => {
       tagList += tag.name + '=' + tag.val + ' ';
     });
@@ -182,6 +185,7 @@ async function main() {
         }
       }
       commonParams.sort();
+      thisRun['common-params'] = commonParams;
       var commonParamsStr = '  common params: ';
       commonParams.forEach((param) => {
         commonParamsStr += param + ' ';
@@ -192,19 +196,24 @@ async function main() {
     logOutput('  metrics:', program.outputFormat);
     var metricSources = await cdm.getMetricSources(instance, runId);
     var theseRunIds = [];
+    thisRun['metrics'] = [];
     for (var i = 0; i < metricSources.length; i++) {
       theseRunIds[i] = runId;
     }
     var metricTypes = await cdm.mgetMetricTypes(instance, theseRunIds, metricSources);
 
     for (var i = 0; i < metricSources.length; i++) {
+      var thisMetricSourceName = metricSources[i];
       logOutput('    source: ' + metricSources[i], program.outputFormat);
       var typeList = '      types: ';
       for (var j = 0; j < metricTypes[i].length; j++) {
         typeList += metricTypes[i][j] + ' ';
       }
       logOutput(typeList, program.outputFormat);
+      var thisMetric = { 'source': metricSources[i], 'types': metricTypes[i] };
+      thisRun['metrics'].push(thisMetric);
     }
+
 
     // build the sets for the mega-query
     var metricDataSetsChunks = [];
@@ -265,8 +274,10 @@ async function main() {
     for (var i = 0; i < benchIterations.length; i++) {
       var primaryMetrics = list(iterPrimaryMetrics[i]);
       var series = {};
-      logOutput('    iteration-id: ' + benchIterations[i], noHtml);
-
+      logOutput('    iteration-id: ' + benchIterations[i]);
+      var thisIteration = {};
+      thisIteration['iteration-id'] = benchIterations[i];
+      thisIteration['unique-params'] = [];
       if (primaryMetrics.length == 1) {
         var paramList = '      unique params: ';
         series['label'] = '';
@@ -283,46 +294,26 @@ async function main() {
               }
             }
           });
-        logOutput(paramList, noHtml);
+        logOutput(paramList);
+        thisIteration['unique-params'] = iterParams[i].sort((a, b) => (a.arg < b.arg ? -1 : 1));;
       }
 
-      logOutput('      primary-period name: ' + iterPrimaryPeriodNames[i], noHtml);
+      logOutput('      primary-period name: ' + iterPrimaryPeriodNames[i]);
+      thisIteration['primary-period'] = iterPrimaryPeriodNames[i];
       var primaryMetric = iterPrimaryMetrics[i];
+      thisIteration['primary-metric'] = iterPrimaryMetrics[i];
       if (typeof data[primaryMetric] == 'undefined') {
         data[primaryMetric] = [];
         numIter[primaryMetric] = 0;
       }
       numIter[primaryMetric]++;
-      logOutput('      samples:', noHtml);
+      logOutput('      samples:');
+      thisIteration['samples'] = [];
+      var thisSample = {};
       var msampleCount = 0;
       var msampleTotal = 0;
       var msampleVals = [];
       var msampleList = '';
-
-      /*
-      samples.forEach(sample => {
-        if (cdm.getSampleStatus(instance, sample) == "pass") {
-          logOutput("        sample-id: " + sample, noHtml);
-          var primaryPeriodId = cdm.getPrimaryPeriodId(instance, sample, primaryPeriodName);
-          if (primaryPeriodId == undefined || primaryPeriodId == null) {
-            logOutput("          the primary perdiod-id for this sample is not valid, exiting\n", noHtml);
-            process.exit(1);
-          }
-          logOutput("          primary period-id: " + primaryPeriodId, noHtml);
-          var range = cdm.getPeriodRange(instance, primaryPeriodId);
-          if (range == undefined || range == null) {
-            logOutput("          the range for the primary period is undefined, exiting", noHtml);
-            process.exit(1);
-          }
-          logOutput("          period range: begin: " + range.begin + " end: " + range.end, noHtml);
-          var breakout = []; // By default we do not break-out a benchmark metric, so this is empty
-          // Needed for getMetricDataSets further below:
-          var set = { "run": runId, "period": primaryPeriodId, "source": benchName, "type": primaryMetric, "begin": range.begin, "end": range.end, "resolution": 1, "breakout": [] };
-          sets.push(set);
-        }
-      });
-  */
-
       var allBenchMsampleVals = [];
       var allBenchMsampleTotal = [];
       var allBenchMsampleFixedList = [];
@@ -333,28 +324,35 @@ async function main() {
           iterPrimaryPeriodRanges[i][j].begin !== undefined &&
           iterPrimaryPeriodRanges[i][j].end !== undefined
         ) {
-          logOutput('        sample-id: ' + iterSampleIds[i][j], noHtml);
-          logOutput('          primary period-id: ' + iterPrimaryPeriodIds[i][j], noHtml);
+          var thisSample = {};
+          logOutput('        sample-id: ' + iterSampleIds[i][j]);
+          thisSample['sample-id'] = iterSampleIds[i][j];
+          logOutput('          primary period-id: ' + iterPrimaryPeriodIds[i][j]);
+          thisSample['primary-period-id'] = iterPrimaryPeriodIds[i][j];
           logOutput(
             '          period range: begin: ' +
               iterPrimaryPeriodRanges[i][j].begin +
               ' end: ' +
-              iterPrimaryPeriodRanges[i][j].end,
-            noHtml
+              iterPrimaryPeriodRanges[i][j].end
           );
+          thisSample['begin'] = iterPrimaryPeriodRanges[i][j].begin;
+          thisSample['end'] = iterPrimaryPeriodRanges[i][j].end;
+
           logOutput(
             '          period length: ' +
               (iterPrimaryPeriodRanges[i][j].end - iterPrimaryPeriodRanges[i][j].begin) / 1000 +
-              ' seconds',
-            noHtml
+              ' seconds'
           );
+          thisSample['length'] = iterPrimaryPeriodRanges[i][j].length;
           //for (var k=0; k<benchmarks.length; k++) {
           var primaryMetrics = list(iterPrimaryMetrics[i]);
+          thisSample['values'] = {};
           for (var k = 0; k < primaryMetrics.length; k++) {
             var sourceType = primaryMetrics[k].split('::');
             var thisChunk = Math.floor(idx / batchedQuerySize);
             var thisIdx = idx % batchedQuerySize;
             msampleVal = parseFloat(metricDataSetsChunks[thisChunk][thisIdx].values[''][0].value);
+            thisSample['values'][primaryMetrics[k]] = msampleVal;
             if (allBenchMsampleVals[k] == null) {
               allBenchMsampleVals[k] = [];
             }
@@ -378,10 +376,13 @@ async function main() {
             allBenchMsampleCount[k]++;
             idx++;
           }
+          thisIteration['samples'].push(thisSample);
         }
       }
+      thisIteration['results'] = [];
       for (var k = 0; k < primaryMetrics.length; k++) {
         var sourceType = primaryMetrics[k].split('::');
+        var thisValue = {};
         if (allBenchMsampleCount[k] > 0) {
           var mean = allBenchMsampleTotal[k] / allBenchMsampleCount[k];
           var diff = 0;
@@ -407,34 +408,25 @@ async function main() {
               ' stddev: ' +
               parseFloat(mstddev).toFixed(6) +
               ' stddevpct: ' +
-              parseFloat(mstddevpct).toFixed(6),
-            noHtml
+              parseFloat(mstddevpct).toFixed(6)
           );
+          thisValue['primary-metric'] = primaryMetrics[k];
+          thisValue['mean'] = mean;
+          thisValue['min'] = Math.min(...allBenchMsampleVals[k]);
+          thisValue['max'] = Math.max(...allBenchMsampleVals[k]);
+          thisValue['stddev'] = mstddev;
+          thisValue['stddevpct'] = mstddevpct;
+          thisValue['max'] = Math.max(...allBenchMsampleVals[k]);
+          thisIteration['results'].push(thisValue);
           series['mean'] = mean;
           series['min'] = Math.min(...allBenchMsampleVals[k]);
           series['max'] = Math.max(...allBenchMsampleVals[k]);
         }
       }
       data[primaryMetric].push(series);
+      thisRun['iterations'].push(thisIteration);
     }
-
-    html_summary += '</pre>\n';
-    var html_resources =
-      '<!-- Resources -->\n' +
-      '<script src="https://cdn.amcharts.com/lib/5/index.js"></script>\n' +
-      '<script src="https://cdn.amcharts.com/lib/5/xy.js"></script>\n' +
-      '<script src="https://cdn.amcharts.com/lib/5/themes/Animated.js"></script>\n' +
-      '<script src="data.js"></script>\n' +
-      '<script src="chart.js"></script>\n';
-    var html_styles = '<!-- Styles -->\n' + '<style>\n';
-    var html_div = '';
-    Object.keys(numIter).forEach((pri) => {
-      html_div += '<div id="' + pri + '"></div>\n';
-      html_styles +=
-        '#' + pri + ' {\n' + '  width: 1000px;\n' + '  height: ' + (120 + 25 * numIter[pri]) + 'px;\n' + '}\n';
-    });
-    html_styles += '</style>\n';
-    var html = html_styles + html_resources + html_summary + html_div;
+    summary['runs'].push(thisRun);
 
     // Maintain default behavior of sending to stdout
     console.log(txt_summary);
@@ -447,24 +439,20 @@ async function main() {
         console.error(err);
       }
     }
-    if (program.outputFormat.includes('html')) {
+    if (program.outputFormat.includes('json')) {
       try {
-        fs.writeFileSync(program.outputDir + '/' + 'data.js', 'var data = ' + JSON.stringify(data, null, 2));
+        fs.writeFileSync(program.outputDir + '/' + 'result-summary.json', JSON.stringify(summary, null, 2));
       } catch (err) {
         console.error(err);
-      }
-      try {
-        fs.writeFileSync(program.outputDir + '/' + 'result-summary.html', html);
-      } catch (err) {
-        console.error(err);
-      }
-      try {
-        fs.copyFileSync('chart.js', program.outputDir + '/' + 'chart.js');
-      } catch (err) {
-        console.log(err);
       }
     }
-    //});
+    if (program.outputFormat.includes('yaml')) {
+      try {
+        fs.writeFileSync(program.outputDir + '/' + 'result-summary.yaml', yaml.dump(summary, { "sort-keys": true }));
+      } catch (err) {
+        console.error(err);
+      }
+    }
   }
 }
 
