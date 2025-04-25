@@ -2,7 +2,333 @@
 var request = require('sync-request');
 var thenRequest = require('then-request');
 var bigQuerySize = 262144;
+const docTypes = {
+  'v7dev': [ 'run', 'tag', 'iteration', 'param', 'sample', 'period', 'metric_desc', 'metric_data' ],
+  'v8dev': [ 'run', 'tag', 'iteration', 'param', 'sample', 'period', 'metric_desc', 'metric_data' ],
+  'v9dev': [ 'run', 'tag', 'iteration', 'param', 'sample', 'period', 'metric_desc', 'metric_data', 'metric_def' ]
+};
+const supportedCdmVersions = Object.keys(docTypes);
+exports.supportedCdmVersions = supportedCdmVersions;
 const debugOut = 0;
+const indexSettings = {
+  "number_of_shards": 1,
+  "number_of_replicas": 1,  // even on clusters?
+  "max_result_window": 262144,
+  "max_terms_count": 262144,
+  "codec" : "best_compression",
+  "refresh_interval" : "5s"
+};
+
+
+// Index definitions
+
+var indexDefs = { 'v7dev': {}, 'v8dev': {}, 'v9dev': {} };
+
+// Most index mappings inherit mappings from other indices.  Copies of these indices
+// are done with JSON.parse(JSON.stringify(src_index)) to facilitate deep copies.
+
+// run_micro is a smaller version of the run mapping, used only for metric_data doc
+// There is no actual run_micro index
+indexDefs['v8dev']['run_micro'] = {
+  "settings": indexSettings,
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "cdm": {
+        "properties": {
+          "ver": { "type": "keyword" },
+          "doctype": { "type": "keyword" }
+        }
+      },
+      "run": {
+        "properties": {
+          "run-uuid": { "type": "keyword" },
+        }
+      }
+    }
+  }
+}
+indexDefs['v9dev']['run_micro'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['run_micro']));
+
+// run is used for all mappings except metric_data
+indexDefs['v8dev']['run'] = {
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 1,
+    "max_result_window": 262144,
+    "max_terms_count": 262144,
+    "codec" : "best_compression",
+    "refresh_interval" : "5s"
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "cdm": {
+        "properties": {
+          "ver": { "type": "keyword" },
+          "doctype": { "type": "keyword" }
+        }
+      },
+      "run": {
+        "properties": {
+          "run-uuid": { "type": "keyword" },
+          "begin": { "type": "date" },
+          "end": { "type": "date" },
+          "harness": { "type": "keyword" },
+          "benchmark": { "type": "keyword" },
+          "host": { "type": "keyword" },
+          "email": { "type": "keyword" },
+          "name": { "type": "keyword" },
+          "desc": { "type": "text", "analyzer": "standard" },
+          "tags": { "type": "text", "analyzer": "whitespace", "fields": { "raw": { "type":  "keyword" } } },
+          "source": { "type": "keyword" }
+        }
+      }
+    }
+  }
+};
+indexDefs['v9dev']['run'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['run']));
+
+// both tag and iteration start with the run mapping
+indexDefs['v8dev']['tag'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['run']));
+indexDefs['v8dev']['tag']['mappings']['properties']['tag'] = {
+  "properties": {
+    "tag-uuid": { "type": "keyword" },
+    "name": { "type": "keyword" },
+    "val": { "type": "keyword" }
+  }
+};
+indexDefs['v9dev']['tag'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['tag']));
+
+indexDefs['v8dev']['iteration'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['run']));
+indexDefs['v8dev']['iteration']['mappings']['properties']['iteration'] = {
+  "properties": {
+    "iteration-uuid": { "type": "keyword" },
+    "num": { "type": "unsigned_long" },
+    "status": { "type": "keyword" },
+    "path": { "type": "keyword" },
+    "primary-metric": { "type": "keyword" },
+    "primary-period": { "type": "keyword" }
+  }
+};
+indexDefs['v9dev']['iteration'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['iteration']));
+
+// param and sample mappings start with the iteration mapping (which includes the run mapping)
+indexDefs['v8dev']['param'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['iteration']));
+indexDefs['v8dev']['param']['mappings']['properties']['param'] = {
+  "properties": {
+    "param-uuid": { "type": "keyword" },
+    "id": { "type": "keyword" },
+    "arg": { "type": "keyword" },
+    "role": { "type": "keyword" },
+    "val": { "type": "keyword" }
+  }
+};
+indexDefs['v9dev']['param'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['param']));
+
+indexDefs['v8dev']['sample'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['iteration']));
+indexDefs['v8dev']['sample']['mappings']['properties']['sample'] = {
+  "properties": {
+    "sample-uuid": { "type": "keyword" },
+    "num": { "type": "unsigned_long" },
+    "status": { "type": "keyword" },
+    "path": { "type": "keyword" }
+  }
+};
+indexDefs['v9dev']['sample'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['sample']));
+
+// period mapping starts with the sample mapping (which has iteration, which has run)
+indexDefs['v8dev']['period'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['sample']));
+indexDefs['v8dev']['period']['mappings']['properties']['period'] = {
+  "properties": {
+    "period-uuid" : { "type": "keyword" },
+    "begin" : { "type" : "date" },
+    "end" : { "type" : "date" },
+    "name" : { "type": "keyword" },
+    "prev_id" : { "type": "keyword" }
+  }
+};
+indexDefs['v9dev']['period'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['period']));
+
+// metric_desc mapping starts with period mapping (which has sample, which has iteration, which has run)
+indexDefs['v8dev']['metric_desc'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['period']));
+indexDefs['v8dev']['metric_desc']['mappings']['properties']['metric_desc'] = {
+  "properties": {
+    "metric_desc-uuid": { "type": "keyword" },
+    //"aggregation-method": { "type": "keyword" }, to be used for cdmv9
+    "class": { "type": "keyword" },
+    "type": { "type": "keyword" },
+    "source": { "type": "keyword" },
+    "names-list": { "type": "keyword" },
+    "names": {
+      "properties": {
+        "tool-name": { "type": "keyword" },
+        "benchmark-name": { "type": "keyword" },
+        "benchmark-group": { "type": "keyword" },
+        "benchmark-id": { "type": "keyword" },
+        "benchmark-role": { "type": "keyword" },
+        "hostname": { "type": "keyword" },
+        "engine-type": { "type": "keyword" },
+        "engine-role": { "type": "keyword" },
+        "engine-id": { "type": "keyword" },
+        "userenv": { "type": "keyword" },
+        "osruntime": { "type": "keyword" },
+        "endpoint-label": { "type": "keyword" },
+        "hypervisor-host": { "type": "keyword" },
+        "hosted-by": { "type": "keyword" },
+        "interface-type": { "type": "keyword" },
+        "bridge": { "type": "keyword" },
+        "interface": { "type": "keyword" },
+        "id": { "type": "keyword" },
+        "num": { "type": "double" },
+        "class": { "type": "keyword" },
+        "type": { "type": "keyword" },
+        "host": { "type": "keyword" },
+        "role": { "type": "keyword" },
+        "dev": { "type": "keyword" },
+        "cmd": { "type": "keyword" },
+        "tid": { "type": "keyword" },
+        "pid": { "type": "keyword" },
+        "job": { "type": "keyword" },
+        "group": { "type": "keyword" },
+        "tier": { "type": "keyword" },
+        "level": { "type": "keyword" },
+        "package": { "type": "keyword" },
+        "die": { "type": "keyword" },
+        "core": { "type": "keyword" },
+        "thread": { "type": "keyword" },
+        "kthread": { "type": "keyword" },
+        "node": { "type": "keyword" },
+        "mode": { "type": "keyword" },
+        "socket": { "type": "keyword" },
+        "domain": { "type": "keyword" },
+        "cluster": { "type": "keyword" },
+        "container": { "type": "keyword" },
+        "cgroup": { "type": "keyword" },
+        "parent": { "type": "keyword" },
+        "source": { "type": "keyword" },
+        "controller": { "type": "keyword" },
+        "pod": { "type": "keyword" },
+        "port": { "type": "keyword" },
+        "tx_port": { "type": "keyword" },
+        "rx_port": { "type": "keyword" },
+        "port_pair": { "type": "keyword" },
+        "status": { "type": "keyword" },
+        "error": { "type": "keyword" },
+        "stream": { "type": "keyword" },
+        "direction": { "type": "keyword" },
+        "clientserver": { "type": "keyword" },
+        "protocol": { "type": "keyword" },
+        "action": { "type": "keyword" },
+        "cpu": { "type": "keyword" },
+        "irq": { "type": "keyword" },
+        "desc": { "type": "keyword" },
+        "counter": { "type": "keyword" },
+        "cstype": { "type": "keyword" },
+        "csid": { "type": "keyword" },
+        "cookie": { "type": "keyword" },
+        "table": { "type": "keyword" },
+        "priority": { "type": "keyword" },
+        "reg14": { "type": "keyword" },
+        "metadata": { "type": "keyword" },
+        "dp": { "type": "keyword" },
+        "flags": { "type": "keyword" },
+        "recirc_id": { "type": "keyword" },
+        "dp_hash": { "type": "keyword" },
+        "skb_priority": { "type": "keyword" },
+        "skb_mark": { "type": "keyword" },
+        "ct_state": { "type": "keyword" },
+        "ct_zone": { "type": "keyword" },
+        "ct_mark": { "type": "keyword" },
+        "ct_label": { "type": "keyword" },
+        "icmp_type": { "type": "keyword" },
+        "icmp_code": { "type": "keyword" },
+        "in_port": { "type": "keyword" },
+        "ipv4_src": { "type": "keyword" },
+        "ipv4_dst": { "type": "keyword" },
+        "ipv4_proto": { "type": "keyword" },
+        "ipv4_frag": { "type": "keyword" },
+        "udp_src": { "type": "keyword" },
+        "udp_dst": { "type": "keyword" },
+        "tcp_src": { "type": "keyword" },
+        "tcp_dst": { "type": "keyword" },
+        "eth_src": { "type": "keyword" },
+        "eth_dst": { "type": "keyword" },
+        "eth_type": { "type": "keyword" },
+        "vlan": { "type": "keyword" },
+        "dl_dst": { "type": "keyword" },
+        "dl_src": { "type": "keyword" },
+        "dl_vlan": { "type": "keyword" },
+        "ipv6_src": { "type": "keyword" },
+        "ipv6_dst": { "type": "keyword" },
+        "actions": { "type": "keyword" },
+        "ufid": { "type": "keyword" },
+        "src": { "type": "keyword" },
+        "dst": { "type": "keyword" },
+        "sport": { "type": "keyword" },
+        "dport": { "type": "keyword" },
+        "mark": { "type": "keyword" },
+        "output": { "type": "keyword" },
+        "use": { "type": "keyword" },
+        "step": { "type": "keyword" },
+        "epoch": { "type": "keyword" },
+        "batch": { "type": "keyword" },
+        "slot": { "type": "keyword" },
+        "blade": { "type": "keyword" },
+        "rank": { "type": "keyword" }
+      }
+    },
+    "value-format": { "type": "keyword" },
+    "values": {
+      "properties": {
+        "pass": { "type": "keyword" },
+        "fail": { "type": "keyword" }
+      }
+    }
+  }
+};
+indexDefs['v9dev']['metric_desc'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['metric_desc']));
+
+// TODO: add new names for cdmv9
+
+// ONLY for cdmv9 and newer: A metric_def mapping provides a definition of specific breakout.
+// Documents for this index are optional but encouraged.  Tools and benchmarks define these documents
+// when post-processing their collected data.
+//
+// For example, for mpstat:
+// <doc1>
+// mestric_desc-uuid:  same uuid in metric_desc doc that has source: mpstat, type: Busy-CPU
+// name: cpu
+// definition: A logical CPU ID, as found in lscpu, /proc/cpu, and /sys/devices/system/cpu/cpu*
+//
+// <doc2>
+// mestric_desc-uuid:  same uuid in metric_desc doc that has source: mpstat, type: Busy-CPU
+// name: package
+// definition: The ID of a physical grouping of CPU cores on a single chip.  Often the same as a NUMA node ID.
+indexDefs['v9dev']['metric_def'] = JSON.parse(JSON.stringify(indexDefs['v9dev']['period']));
+indexDefs['v9dev']['metric_def']['mappings']['properties']['metric_def'] = {
+  "properties": {
+    "metric_desc-uuid": { "type": "keyword" },
+    "name": { "type": "keyword" },
+    "definition": { "type": "text" },
+  }
+};
+
+indexDefs['v8dev']['metric_data'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['run_micro']));
+indexDefs['v8dev']['metric_data']['mappings']['properties']['metric_desc'] = {
+  "properties": {
+    "metric_desc-uuid": { "type": "keyword" }
+  }
+};
+indexDefs['v8dev']['metric_data']['mappings']['properties']['metric_data'] = {
+  "properties": {
+    "value": { "type": "double" },
+    "begin": { "type" : "date" },
+    "end": { "type" : "date" },
+    "duration": { "type": "long" }
+  }
+};
+indexDefs['v9dev']['metric_data'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['metric_data']));
 
 function getCdmVer(instance) {
   return instance['ver'];
@@ -21,16 +347,67 @@ exports.debuglog = debuglog;
 // policy, might as well do the same for earlier CDM versions.
 // This will eliminate the need for other projects (like Crucible)
 // to maintain the indices.
-function checkCreateIndex(instance, docType) {
-  const index = getIndexBaseName(instance) + getIndexName(index, instance);
-  const cdmver = getCdmVer(instance);
-  if (Object.keys(instance.indices[cdmver]).includes(index)) {
+checkCreateIndex = function (instance, index) {
+  const cdmVer = getCdmVer(instance);
+
+  if (Object.keys(instance['indices'][cdmVer]).includes(index)) {
     return;
   }
-  //create index
-  //query opensearch for index
-  instance['indices'][cdmver].push(index);
+
+  const docType = getDocType(index, cdmVer);
+  debuglog("got docType: [" + docType + "]");
+  if (instance['indices'][cdmVer].includes(index)) {
+    debuglog('No need to create index because it exists');
+  } else {
+    var url = 'http://' + instance['host'] + "/" + index;
+    var resp = request('PUT', url, { headers: instance['header'], body: JSON.stringify(indexDefs[cdmVer][docType]) });
+    var data = JSON.parse(resp.getBody());
+    debuglog("response:::\n" + JSON.stringify(data, null, 2));
+    instance['indices'][cdmVer].push(index);
+  }
+  //TODO: query opensearch to verify index is present
   return;
+};
+exports.checkCreateIndex = checkCreateIndex;
+
+function getDocType(index, cdmVer) {
+  debuglog('cdmver: [' + cdmVer + ']');
+  if (cdmVer == 'v7dev' || cdmVer == 'v8dev') {
+    var regExp = /^cdmv[7|8]dev-(.+)/;
+    var matches = regExp.exec(index);
+    if (matches) {
+      docType = matches[1];
+      if (docTypes[cdmVer].includes(docType)) {
+        return docType;
+      } else {
+        console.log("ERROR: index [" + index + "] does not match a docType: " + docTypes[cdmVer]);
+        process.exit(1);
+      }
+    } else {
+      console.log("ERROR: index name [" + index + "] does not match cdmv7/8 format");
+      process.exit(1);
+    }
+  }
+
+  if (cdmVer == 'v9dev') {
+    var regExp = /^cdm-v9dev-([^@]+)@\d\d\d\d\.\d\d/;
+    var matches = regExp.exec(index);
+    if (matches) {
+      docType = matches[1];
+      if (docTypes[cdmVer].includes(docType)) {
+        return docType;
+      } else {
+        console.log("ERROR: index [" + index + "] does not match a docType: " + docTypes[cdmVer]);
+        process.exit(1);
+      }
+    } else {
+      console.log("ERROR: index name [" + index + "] does not match cdmv9 format");
+      process.exit(1);
+    }
+  }
+
+  console.log("ERROR: the cdmVer provided [" + cdmVer + "] is not supported");
+  process.exit(1);
 }
 
 function getIndexBaseName(instance) {
@@ -51,13 +428,17 @@ function getIndexBaseName(instance) {
 }
 
 function getIndexName(docType, instance) {
+  const baseName = getIndexBaseName(instance);
   cdmVer = getCdmVer(instance);
   if (cdmVer == 'v7dev' || cdmVer == 'v8dev') {
-    return docType;
+    name = docType;
   } else {
     //TODO: return correct year.month(s)
-    return docType + '@2025.02';
+    name = docType + '@2025.02';
   }
+  fullName = baseName + name
+  checkCreateIndex(instance, fullName);
+  return fullName;
 }
 
 // Return subtraction of two 1-dimensional arrays
@@ -179,7 +560,7 @@ esJsonArrRequest = async function (instance, index, action, jsonArr) {
     // Expect to have the Index and action in the jsonArr itself
     url = 'http://' + instance['host'] + '/_bulk';
   } else {
-    url = 'http://' + instance['host'] + '/' + getIndexBaseName(instance) + getIndexName(index, instance) + action;
+    url = 'http://' + instance['host'] + '/' + getIndexName(index, instance) + action;
   }
   var max = 16384;
   var idx = 0;
@@ -229,7 +610,8 @@ exports.esJsonArrRequest = esJsonArrRequest;
 
 function esRequest(instance, idx, action, q) {
   // This is the only http request remainig that still uses a sync-request
-  var url = 'http://' + instance['host'] + '/' + getIndexBaseName(instance) + getIndexName(idx, instance) + action;
+  var url = 'http://' + instance['host'] + '/' + getIndexName(idx, instance) + action;
+  debuglog("esRequest() url: " + url);
   // The var q can be an object or a string.  If you are submitting NDJSON
   // for a _msearch, it must be a [multi-line] string.
   if (typeof q === 'object') {
@@ -410,7 +792,9 @@ getPrimaryPeriodName = async function (instance, iteration) {
 exports.getPrimaryPeriodName = getPrimaryPeriodName;
 
 mgetSamples = async function (instance, iters) {
-  return await mSearch(instance, 'sample', ['iteration.iteration-uuid'], [iters], 'sample.sample-uuid');
+  return await mSearch(instance, 'sample', ['iteration.iteration-uuid'], [iters], 'sample.sample-uuid', null, 1000, [
+    { 'sample.num': { order: 'asc', numeric_type: 'long' } }
+  ]);
 };
 exports.mgetSamples = mgetSamples;
 
@@ -442,9 +826,40 @@ getMetricNames = async function (instance, runId, source, type) {
   return metricNames[0];
 };
 
-mgetSampleStatus = async function (instance, Ids) {
+mgetSampleNums = async function (instance, Ids) {
   var sampleIds = [];
-  var perSamplePeriNames = [];
+  var idx = 0;
+  for (var i = 0; i < Ids.length; i++) {
+    for (j = 0; j < Ids[i].length; j++) {
+      sampleIds[idx] = Ids[i][j];
+      idx++;
+    }
+  }
+
+  var data = await mSearch(instance, 'sample', ['sample.sample-uuid'], [sampleIds], 'sample.num', null, 1);
+  var sampleNums = []; // Will be 2D array of [iter][sampIds];
+  idx = 0;
+  for (var i = 0; i < Ids.length; i++) {
+    for (j = 0; j < Ids[i].length; j++) {
+      if (typeof sampleNums[i] == 'undefined') {
+        sampleNums[i] = [];
+      }
+      sampleNums[i][j] = data[idx][0];
+      idx++;
+    }
+  }
+  return sampleNums;
+};
+exports.mgetSampleNums = mgetSampleNums;
+
+getSampleNum = async function (instance, sampId) {
+  var sampleNum = await mgetSampleNums(instance, [sampId]);
+  return sampleNums[0][0];
+};
+exports.getSampleNum = getSampleNum;
+
+mgetSampleStatuses = async function (instance, Ids) {
+  var sampleIds = [];
   var idx = 0;
   for (var i = 0; i < Ids.length; i++) {
     for (j = 0; j < Ids[i].length; j++) {
@@ -467,10 +882,10 @@ mgetSampleStatus = async function (instance, Ids) {
   }
   return sampleStatus;
 };
-exports.mgetSampleStatus = mgetSampleStatus;
+exports.mgetSampleStatuses = mgetSampleStatuses;
 
 getSampleStatus = async function (instance, sampId) {
-  var sampleStatuses = await mgetSampleStatus(instance, [sampId]);
+  var sampleStatuses = await mgetSampleStatuses(instance, [sampId]);
   return sampleStatuses[0][0];
 };
 exports.getSampleStatus = getSampleStatus;
@@ -674,6 +1089,7 @@ getInstancesInfo = function (instances) {
     }
     if (typeof resp != 'undefined') {
       var indices = JSON.parse(resp.getBody());
+      debuglog("indices:\n" + JSON.stringify(indices, null, 2));
       instances[inst_idx]['indices'] = {};
       for (const index of indices) {
         var name = index['index'];
@@ -687,7 +1103,11 @@ getInstancesInfo = function (instances) {
         }
       }
     }
-    if (Object.keys(instances[inst_idx]['indices']).length != 0 && !Object.keys(instances[inst_idx]).includes('ver')) {
+    if (Object.keys(instances[inst_idx]).includes('ver')) {
+      // User has already requested a specific cdm version
+      return;
+    }
+    if (Object.keys(instances[inst_idx]['indices']).length != 0) {
       // If mulitple versions of indices exist, default to the latest version
       // (this can be overridden with --ver <v7dev|v8dev|v9dev> after --host)
       // Note: if you index a new data into a newer CDM version, that will
@@ -695,22 +1115,22 @@ getInstancesInfo = function (instances) {
       // default to the newer cdm version.
       var cdmvers = Object.keys(instances[inst_idx]['indices']).sort();
       instances[inst_idx]['ver'] = cdmvers[cdmvers.length - 1];
-    } else {
-      // There are no cdm indices at all, so we have to pick a default cdm version.
-      // Currently this is v8dev until this code is well tested for v8dev, then
-      // it will move to 9dev
-      instances[inst_idx]['ver'] = 'v8dev';
+      return;
     }
+    // There are no cdm indices at all, so we have to pick a default cdm version.
+    // Currently this is v8dev until this code is well tested for v8dev, then
+    // it will move to 9dev
+    instances[inst_idx]['ver'] = 'v8dev';
   }
 };
 
 invalidInstance = function (instance) {
   if (!instance['online']) {
-    //console.log("invalidInstance(): Not using instance " + instance['host'] + " becasue it cannot be reached");
+    debuglog("invalidInstance(): Not using instance " + instance['host'] + " becasue it cannot be reached");
     return true;
   }
   if (!Object.keys(instance).includes('indices') || Object.keys(instance['indices']).length == 0) {
-    //console.log("invalidInstance(): Not using instance " + instance['host'] + " becasue it does not have indices for any cdm version");
+    debuglog("invalidInstance(): Not using instance " + instance['host'] + " becasue it does not have indices for any cdm version");
     return true;
   }
   if (!Object.keys(instance['indices']).includes(instance['ver'])) {
@@ -938,7 +1358,10 @@ getIterMetrics = async function (instance, iterId) {
 
 deleteDocs = function (instance, docTypes, q) {
   docTypes.forEach((docType) => {
+    debuglog("deleteDocs() q: " + JSON.stringify(q, null, 2));
     var resp = esRequest(instance, docType, '/_delete_by_query?wait_for_completion=false', q);
+    var responses = JSON.parse(resp.getBody());
+    debuglog(JSON.stringify(responses, null, 2));
   });
 };
 exports.deleteDocs = deleteDocs;
@@ -2036,7 +2459,7 @@ getMetricDataFromIdsSets = async function (instance, sets, metricGroupIdsByLabel
           //
           // This first request is for the weighted average, but does not include the
           // documents which are partially outside the time range we need.
-          indexjson = '{"index": "' + getIndexBaseName(instance) + getIndexName('metric_data', instance) + '" }\n';
+          indexjson = '{"index": "' + getIndexName('metric_data', instance) + '" }\n';
           reqjson = '{';
           reqjson += '  "size": 0,';
           reqjson += '  "query": {';
@@ -2068,7 +2491,7 @@ getMetricDataFromIdsSets = async function (instance, sets, metricGroupIdsByLabel
           // This second request is for the total weight of the previous weighted average request.
           // We need this because we are going to recompute the weighted average by adding
           // a few more documents that are partially outside the time domain.
-          indexjson = '{"index": "' + getIndexBaseName(instance) + getIndexName('metric_data', instance) + '" }\n';
+          indexjson = '{"index": "' + getIndexName('metric_data', instance) + '" }\n';
           reqjson = '{';
           reqjson += '  "size": 0,';
           reqjson += '  "query": {';
@@ -2092,7 +2515,7 @@ getMetricDataFromIdsSets = async function (instance, sets, metricGroupIdsByLabel
           jsonArr.push(JSON.stringify(req));
           // This third request is for documents that had its begin during or before the time range, but
           // its end was after the time range.
-          indexjson = '{"index": "' + getIndexBaseName(instance) + getIndexName('metric_data', instance) + '" }\n';
+          indexjson = '{"index": "' + getIndexName('metric_data', instance) + '" }\n';
           reqjson = '{';
           reqjson += '  "size": ' + bigQuerySize + ',';
           reqjson += '  "query": {';
@@ -2111,7 +2534,7 @@ getMetricDataFromIdsSets = async function (instance, sets, metricGroupIdsByLabel
           jsonArr.push(JSON.stringify(req));
           // This fourth request is for documents that had its begin before the time range, but
           //  its end was during or after the time range
-          var indexjson = '{"index": "' + getIndexBaseName(instance) + getIndexName('metric_data', instance) + '" }\n';
+          var indexjson = '{"index": "' + getIndexName('metric_data', instance) + '" }\n';
           var reqjson = '';
           reqjson += '{';
           reqjson += '  "size": ' + bigQuerySize + ',';
@@ -2450,25 +2873,32 @@ async function waitForDeletedDocs(instance, runId, docTypes) {
     });
     let result = await promise;
 
-    console.log('\nConfirming all documents are in deleted OpenSearch (attempt #' + numAttempts + ')');
     totalDocCount = 0;
+    docWaitStr = '';
     for (let i = 0; i < docTypes.length; i++) {
       var thisNumDocs = getDocCount(instance, runId, docTypes[i]);
-      console.log('  ' + docTypes[i] + ': doc count: ' + thisNumDocs);
-      totalDocCount += thisNumDocs;
-
+      if (thisNumDocs > 0) {
+        //console.log('  ' + docTypes[i] + ': doc count: ' + thisNumDocs);
+        docWaitStr += '  ' + docTypes[i] + ': doc count: ' + thisNumDocs + '\n';
+        totalDocCount += thisNumDocs;
+      }
       if (thisNumDocs == 0) {
         remainingDocTypes = remainingDocTypes.filter((val) => val !== docTypes[i]);
       }
     }
-    docTypes = remainingDocTypes;
-    numAttempts++;
-
     if (previousTotalDocCount != 0) {
       console.log('Document deletion rate: ' + (previousTotalDocCount - totalDocCount) / interval + ' documents/sec');
     }
+    if (totalDocCount > 0) {
+      console.log('\nWaiting for the following documents to be deleted in OpenSearch (attempt #' + numAttempts + ')');
+      console.log(docWaitStr);
+    }
+    docTypes = remainingDocTypes;
+    numAttempts++;
+
     previousTotalDocCount = totalDocCount;
   }
+  console.log('');
   return docTypes.lenth;
 }
 exports.waitForDeletedDocs = waitForDeletedDocs;
