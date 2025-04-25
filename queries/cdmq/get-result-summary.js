@@ -120,7 +120,6 @@ async function main() {
     cdm.debuglog('runIdx:\n' + runIdx);
     var thisRun = {};
     const runId = runIds[runIdx];
-    cdm.debuglog('instances:\n' + JSON.stringify(instances, null, 2));
     var instance = await findInstanceFromRun(instances, runId);
     cdm.debuglog('instance: ' + JSON.stringify(instance, null, 2));
     logOutput('\nrun-id: ' + runId, program.outputFormat);
@@ -152,8 +151,7 @@ async function main() {
     var iterSampleIds = await cdm.mgetSamples(instance, benchIterations);
     //input: 2D array iterSampleIds: [iter][samp]
     //output: 2D array [iter][samp]
-    var iterSampleStatus = await cdm.mgetSampleStatus(instance, iterSampleIds);
-    cdm.debuglog('sampleStatus:\n' + JSON.stringify(iterSampleStatus, null, 2));
+    var iterSampleStatuses = await cdm.mgetSampleStatuses(instance, iterSampleIds);
     //needs 2D array iterSampleIds: [iter][samp] and 1D array iterPrimaryPeriodNames [iter]
     //returns 2D array [iter][samp]
     var iterPrimaryPeriodIds = await cdm.mgetPrimaryPeriodId(instance, iterSampleIds, iterPrimaryPeriodNames);
@@ -319,7 +317,7 @@ async function main() {
       var allBenchMsampleCount = [];
       for (var j = 0; j < iterSampleIds[i].length; j++) {
         if (
-          iterSampleStatus[i][j] == 'pass' &&
+          iterSampleStatuses[i][j] == 'pass' &&
           iterPrimaryPeriodRanges[i][j].begin !== undefined &&
           iterPrimaryPeriodRanges[i][j].end !== undefined
         ) {
