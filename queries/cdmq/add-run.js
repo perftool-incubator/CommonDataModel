@@ -1,3 +1,5 @@
+//# vim: autoindent tabstop=2 shiftwidth=2 expandtab softtabstop=2 filetype=javascript
+
 var cdm = require('./cdm');
 var fs = require('fs');
 var xz = require('xz');
@@ -91,23 +93,48 @@ async function processDir(instance, dir, mode) {
       console.error('Error processing NDJSON.XZ file:', error);
     }
   }
+
   if (mode == 'index') {
     var responses = await esJsonArrRequest(instance, '', '/_bulk', jsonArr);
-  } else if (mode == 'getruns') {
-    var runIds = [];
+  } else if (mode == 'getinfo') {
+    var info = { runIds: [], indices: {} };
+    console.log('going to process ' + jsonArr.length + ' lines');
     for (var k = 1; k < jsonArr.length; k += 2) {
       try {
-        var obj = JSON.parse(jsonArr[k]);
+        var action = JSON.parse(jsonArr[k - 1]);
+        var doc = JSON.parse(jsonArr[k]);
       } catch (jsonError) {
         console.log('Could not porse: [' + jsonArr[k] + ']');
         continue;
       }
-      runId = obj['run']['run-uuid'];
-      if (!runIds.includes(runId)) {
-        runIds.push(runId);
+      runId = doc['run']['run-uuid'];
+      if (!info['runIds'].includes(runId)) {
+        info['runIds'].push(runId);
+      }
+      // { "index": { "_index": "cdmv8dev-metric_data" } }
+      if (Object.keys(action).includes('index') && Object.keys(action['index']).includes('_index')) {
+        const indexName = action['index']['_index'];
+        const regExp = /^cdm-*(v7dev|v8dev|v9dev)-([^@]+)(@\d\d\d\d\.\d\d)*$/;
+        var matches = regExp.exec(indexName);
+        if (matches) {
+          cdmVer = matches[1];
+          if (!Object.keys(info['indices']).includes(cdmVer)) {
+            info['indices'][cdmVer] = [];
+          }
+          if (!info['indices'][cdmVer].includes(indexName)) {
+            debuglog('going to add indexname to info[indices][' + cdmVer + ']: ' + indexName);
+            info['indices'][cdmVer].push(indexName);
+          }
+        } else {
+          console.log('ERROR: the index name [' + indexName + '] was not recognized');
+          process.exit(1);
+        }
+      } else {
+        console.log('the ndjson action [' + action + '] was not valid');
+        process.exit(1);
       }
     }
-    return runIds;
+    return info;
   } else {
     console.log('mode [' + mode + '] is not supported');
   }
@@ -128,24 +155,58 @@ async function main() {
   }
 
   getInstancesInfo(instances);
+  // Always use the last instance (last --host) provided by the user
+  var instance = instances[instances.length - 1];
   if (program.dir) {
     var allDocTypes = ['run', 'iteration', 'sample', 'period', 'param', 'tag', 'metric_desc', 'metric_data'];
-    var runIds = await processDir(instances[instances.length - 1], program.dir, 'getruns');
-    for (i = 0; i < runIds.length; i++) {
-      console.log('Deleting any existing documents for runId ' + runIds[i]);
-      var runId = runIds[i];
+    var info = await processDir(instance, program.dir, 'getinfo');
+    //  The cdmVer going forward must be set based on the data found in the ndjson files.
+    //  We cannot rely on automatic detection of cdmVer based on what is present in the instance
+    //  because the instance may contain only cdmVer that is different from the *new* data we are adding.
+    //
+    //  Also, the cdm version is embedded in this new data that will be indexed.  It is not possible
+    //  (without significant effort) to index data already in one cdm version to another [directly].
+    if (Object.keys(info['indices']).length == 1) {
+      const cdmVer = Object.keys(info['indices'])[0];
+      if (!cdm.supportedCdmVersions.includes(cdmVer)) {
+        console.log(
+          'ERROR: the CDM version found in the documents to be indexed [' +
+            cdmver +
+            '] is not included in the list of supported CDM versions [' +
+            cdm.supportedCdmVersions +
+            ']'
+        );
+        process.exit(1);
+      }
+      instance['cdmVer'] = cdmVer;
+      if (!Object.keys(instance['indices']).includes(cdmVer)) {
+        instance['indices'][cdmVer] = [];
+      }
+    } else {
+      console.log('ERROR: there was not exactly one CDM version found in the data to be indexed:\n');
+      console.log(Object.keys(info['indices']));
+      console.log('info\n' + JSON.stringify(info['indices'], null, 2));
+      process.exit(1);
+    }
+    for (i = 0; i < info['runIds'].length; i++) {
+      console.log('Deleting any existing documents for runId ' + info['runIds'][i]);
+      var runId = info['runIds'][i];
       var q = { query: { bool: { filter: [{ term: { 'run.run-uuid': runId } }] } } };
-      cdm.deleteDocs(instances[instances.length - 1], allDocTypes, q);
+      cdm.deleteDocs(instance, allDocTypes, q);
       var numDocTypes = await cdm.waitForDeletedDocs(instances[instances.length - 1], runId, allDocTypes);
       if (numDocTypes > 0) {
         console.log('Warning: could not delete all documents for ' + docTypes + ' with ' + numAttempts);
         console.log(
           'These documents may continue to be deleted in the background.  To check on the status, run this utility again'
         );
+        process.exit(1);
       }
     }
+    for (i = 0; i < info['indices'].length; i++) {
+      cdm.checkCreateIndex(instance, info['indices'][i]);
+    }
     console.log('Indexing documents');
-    await processDir(instances[instances.length - 1], program.dir, 'index');
+    await processDir(instance, program.dir, 'index');
   } else {
     console.log('You must provide a --dir <directory with ndjsons>');
     process.exit(1);
