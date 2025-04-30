@@ -46,11 +46,11 @@ async function main() {
     save_host('localhost:9200');
   }
   getInstancesInfo(instances);
-  console.log("index: " + program.index);
+  console.log('index: ' + program.index);
   if (program.index) {
     cdm.checkCreateIndex(instances[instances.length - 1], program.index);
   } else {
-    console.log("--index <index-nane> is required");
+    console.log('--index <index-nane> is required');
   }
   console.log('create-index is complete');
 }

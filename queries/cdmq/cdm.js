@@ -3,26 +3,25 @@ var request = require('sync-request');
 var thenRequest = require('then-request');
 var bigQuerySize = 262144;
 const docTypes = {
-  'v7dev': [ 'run', 'tag', 'iteration', 'param', 'sample', 'period', 'metric_desc', 'metric_data' ],
-  'v8dev': [ 'run', 'tag', 'iteration', 'param', 'sample', 'period', 'metric_desc', 'metric_data' ],
-  'v9dev': [ 'run', 'tag', 'iteration', 'param', 'sample', 'period', 'metric_desc', 'metric_data', 'metric_def' ]
+  v7dev: ['run', 'tag', 'iteration', 'param', 'sample', 'period', 'metric_desc', 'metric_data'],
+  v8dev: ['run', 'tag', 'iteration', 'param', 'sample', 'period', 'metric_desc', 'metric_data'],
+  v9dev: ['run', 'tag', 'iteration', 'param', 'sample', 'period', 'metric_desc', 'metric_data', 'metric_def']
 };
 const supportedCdmVersions = Object.keys(docTypes);
 exports.supportedCdmVersions = supportedCdmVersions;
 const debugOut = 0;
 const indexSettings = {
-  "number_of_shards": 1,
-  "number_of_replicas": 1,  // even on clusters?
-  "max_result_window": 262144,
-  "max_terms_count": 262144,
-  "codec" : "best_compression",
-  "refresh_interval" : "5s"
+  number_of_shards: 1,
+  number_of_replicas: 1, // even on clusters?
+  max_result_window: 262144,
+  max_terms_count: 262144,
+  codec: 'best_compression',
+  refresh_interval: '5s'
 };
-
 
 // Index definitions
 
-var indexDefs = { 'v7dev': {}, 'v8dev': {}, 'v9dev': {} };
+var indexDefs = { v7dev: {}, v8dev: {}, v9dev: {} };
 
 // Most index mappings inherit mappings from other indices.  Copies of these indices
 // are done with JSON.parse(JSON.stringify(src_index)) to facilitate deep copies.
@@ -30,58 +29,58 @@ var indexDefs = { 'v7dev': {}, 'v8dev': {}, 'v9dev': {} };
 // run_micro is a smaller version of the run mapping, used only for metric_data doc
 // There is no actual run_micro index
 indexDefs['v8dev']['run_micro'] = {
-  "settings": indexSettings,
-  "mappings": {
-    "dynamic": "strict",
-    "properties": {
-      "cdm": {
-        "properties": {
-          "ver": { "type": "keyword" },
-          "doctype": { "type": "keyword" }
+  settings: indexSettings,
+  mappings: {
+    dynamic: 'strict',
+    properties: {
+      cdm: {
+        properties: {
+          ver: { type: 'keyword' },
+          doctype: { type: 'keyword' }
         }
       },
-      "run": {
-        "properties": {
-          "run-uuid": { "type": "keyword" },
+      run: {
+        properties: {
+          'run-uuid': { type: 'keyword' }
         }
       }
     }
   }
-}
+};
 indexDefs['v9dev']['run_micro'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['run_micro']));
 
 // run is used for all mappings except metric_data
 indexDefs['v8dev']['run'] = {
-  "settings": {
-    "number_of_shards": 1,
-    "number_of_replicas": 1,
-    "max_result_window": 262144,
-    "max_terms_count": 262144,
-    "codec" : "best_compression",
-    "refresh_interval" : "5s"
+  settings: {
+    number_of_shards: 1,
+    number_of_replicas: 1,
+    max_result_window: 262144,
+    max_terms_count: 262144,
+    codec: 'best_compression',
+    refresh_interval: '5s'
   },
-  "mappings": {
-    "dynamic": "strict",
-    "properties": {
-      "cdm": {
-        "properties": {
-          "ver": { "type": "keyword" },
-          "doctype": { "type": "keyword" }
+  mappings: {
+    dynamic: 'strict',
+    properties: {
+      cdm: {
+        properties: {
+          ver: { type: 'keyword' },
+          doctype: { type: 'keyword' }
         }
       },
-      "run": {
-        "properties": {
-          "run-uuid": { "type": "keyword" },
-          "begin": { "type": "date" },
-          "end": { "type": "date" },
-          "harness": { "type": "keyword" },
-          "benchmark": { "type": "keyword" },
-          "host": { "type": "keyword" },
-          "email": { "type": "keyword" },
-          "name": { "type": "keyword" },
-          "desc": { "type": "text", "analyzer": "standard" },
-          "tags": { "type": "text", "analyzer": "whitespace", "fields": { "raw": { "type":  "keyword" } } },
-          "source": { "type": "keyword" }
+      run: {
+        properties: {
+          'run-uuid': { type: 'keyword' },
+          begin: { type: 'date' },
+          end: { type: 'date' },
+          harness: { type: 'keyword' },
+          benchmark: { type: 'keyword' },
+          host: { type: 'keyword' },
+          email: { type: 'keyword' },
+          name: { type: 'keyword' },
+          desc: { type: 'text', analyzer: 'standard' },
+          tags: { type: 'text', analyzer: 'whitespace', fields: { raw: { type: 'keyword' } } },
+          source: { type: 'keyword' }
         }
       }
     }
@@ -92,23 +91,23 @@ indexDefs['v9dev']['run'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['run'])
 // both tag and iteration start with the run mapping
 indexDefs['v8dev']['tag'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['run']));
 indexDefs['v8dev']['tag']['mappings']['properties']['tag'] = {
-  "properties": {
-    "tag-uuid": { "type": "keyword" },
-    "name": { "type": "keyword" },
-    "val": { "type": "keyword" }
+  properties: {
+    'tag-uuid': { type: 'keyword' },
+    name: { type: 'keyword' },
+    val: { type: 'keyword' }
   }
 };
 indexDefs['v9dev']['tag'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['tag']));
 
 indexDefs['v8dev']['iteration'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['run']));
 indexDefs['v8dev']['iteration']['mappings']['properties']['iteration'] = {
-  "properties": {
-    "iteration-uuid": { "type": "keyword" },
-    "num": { "type": "unsigned_long" },
-    "status": { "type": "keyword" },
-    "path": { "type": "keyword" },
-    "primary-metric": { "type": "keyword" },
-    "primary-period": { "type": "keyword" }
+  properties: {
+    'iteration-uuid': { type: 'keyword' },
+    num: { type: 'unsigned_long' },
+    status: { type: 'keyword' },
+    path: { type: 'keyword' },
+    'primary-metric': { type: 'keyword' },
+    'primary-period': { type: 'keyword' }
   }
 };
 indexDefs['v9dev']['iteration'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['iteration']));
@@ -116,23 +115,23 @@ indexDefs['v9dev']['iteration'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['
 // param and sample mappings start with the iteration mapping (which includes the run mapping)
 indexDefs['v8dev']['param'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['iteration']));
 indexDefs['v8dev']['param']['mappings']['properties']['param'] = {
-  "properties": {
-    "param-uuid": { "type": "keyword" },
-    "id": { "type": "keyword" },
-    "arg": { "type": "keyword" },
-    "role": { "type": "keyword" },
-    "val": { "type": "keyword" }
+  properties: {
+    'param-uuid': { type: 'keyword' },
+    id: { type: 'keyword' },
+    arg: { type: 'keyword' },
+    role: { type: 'keyword' },
+    val: { type: 'keyword' }
   }
 };
 indexDefs['v9dev']['param'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['param']));
 
 indexDefs['v8dev']['sample'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['iteration']));
 indexDefs['v8dev']['sample']['mappings']['properties']['sample'] = {
-  "properties": {
-    "sample-uuid": { "type": "keyword" },
-    "num": { "type": "unsigned_long" },
-    "status": { "type": "keyword" },
-    "path": { "type": "keyword" }
+  properties: {
+    'sample-uuid': { type: 'keyword' },
+    num: { type: 'unsigned_long' },
+    status: { type: 'keyword' },
+    path: { type: 'keyword' }
   }
 };
 indexDefs['v9dev']['sample'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['sample']));
@@ -140,12 +139,12 @@ indexDefs['v9dev']['sample'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['sam
 // period mapping starts with the sample mapping (which has iteration, which has run)
 indexDefs['v8dev']['period'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['sample']));
 indexDefs['v8dev']['period']['mappings']['properties']['period'] = {
-  "properties": {
-    "period-uuid" : { "type": "keyword" },
-    "begin" : { "type" : "date" },
-    "end" : { "type" : "date" },
-    "name" : { "type": "keyword" },
-    "prev_id" : { "type": "keyword" }
+  properties: {
+    'period-uuid': { type: 'keyword' },
+    begin: { type: 'date' },
+    end: { type: 'date' },
+    name: { type: 'keyword' },
+    prev_id: { type: 'keyword' }
   }
 };
 indexDefs['v9dev']['period'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['period']));
@@ -153,136 +152,136 @@ indexDefs['v9dev']['period'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['per
 // metric_desc mapping starts with period mapping (which has sample, which has iteration, which has run)
 indexDefs['v8dev']['metric_desc'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['period']));
 indexDefs['v8dev']['metric_desc']['mappings']['properties']['metric_desc'] = {
-  "properties": {
-    "metric_desc-uuid": { "type": "keyword" },
+  properties: {
+    'metric_desc-uuid': { type: 'keyword' },
     //"aggregation-method": { "type": "keyword" }, to be used for cdmv9
-    "class": { "type": "keyword" },
-    "type": { "type": "keyword" },
-    "source": { "type": "keyword" },
-    "names-list": { "type": "keyword" },
-    "names": {
-      "properties": {
-        "tool-name": { "type": "keyword" },
-        "benchmark-name": { "type": "keyword" },
-        "benchmark-group": { "type": "keyword" },
-        "benchmark-id": { "type": "keyword" },
-        "benchmark-role": { "type": "keyword" },
-        "hostname": { "type": "keyword" },
-        "engine-type": { "type": "keyword" },
-        "engine-role": { "type": "keyword" },
-        "engine-id": { "type": "keyword" },
-        "userenv": { "type": "keyword" },
-        "osruntime": { "type": "keyword" },
-        "endpoint-label": { "type": "keyword" },
-        "hypervisor-host": { "type": "keyword" },
-        "hosted-by": { "type": "keyword" },
-        "interface-type": { "type": "keyword" },
-        "bridge": { "type": "keyword" },
-        "interface": { "type": "keyword" },
-        "id": { "type": "keyword" },
-        "num": { "type": "double" },
-        "class": { "type": "keyword" },
-        "type": { "type": "keyword" },
-        "host": { "type": "keyword" },
-        "role": { "type": "keyword" },
-        "dev": { "type": "keyword" },
-        "cmd": { "type": "keyword" },
-        "tid": { "type": "keyword" },
-        "pid": { "type": "keyword" },
-        "job": { "type": "keyword" },
-        "group": { "type": "keyword" },
-        "tier": { "type": "keyword" },
-        "level": { "type": "keyword" },
-        "package": { "type": "keyword" },
-        "die": { "type": "keyword" },
-        "core": { "type": "keyword" },
-        "thread": { "type": "keyword" },
-        "kthread": { "type": "keyword" },
-        "node": { "type": "keyword" },
-        "mode": { "type": "keyword" },
-        "socket": { "type": "keyword" },
-        "domain": { "type": "keyword" },
-        "cluster": { "type": "keyword" },
-        "container": { "type": "keyword" },
-        "cgroup": { "type": "keyword" },
-        "parent": { "type": "keyword" },
-        "source": { "type": "keyword" },
-        "controller": { "type": "keyword" },
-        "pod": { "type": "keyword" },
-        "port": { "type": "keyword" },
-        "tx_port": { "type": "keyword" },
-        "rx_port": { "type": "keyword" },
-        "port_pair": { "type": "keyword" },
-        "status": { "type": "keyword" },
-        "error": { "type": "keyword" },
-        "stream": { "type": "keyword" },
-        "direction": { "type": "keyword" },
-        "clientserver": { "type": "keyword" },
-        "protocol": { "type": "keyword" },
-        "action": { "type": "keyword" },
-        "cpu": { "type": "keyword" },
-        "irq": { "type": "keyword" },
-        "desc": { "type": "keyword" },
-        "counter": { "type": "keyword" },
-        "cstype": { "type": "keyword" },
-        "csid": { "type": "keyword" },
-        "cookie": { "type": "keyword" },
-        "table": { "type": "keyword" },
-        "priority": { "type": "keyword" },
-        "reg14": { "type": "keyword" },
-        "metadata": { "type": "keyword" },
-        "dp": { "type": "keyword" },
-        "flags": { "type": "keyword" },
-        "recirc_id": { "type": "keyword" },
-        "dp_hash": { "type": "keyword" },
-        "skb_priority": { "type": "keyword" },
-        "skb_mark": { "type": "keyword" },
-        "ct_state": { "type": "keyword" },
-        "ct_zone": { "type": "keyword" },
-        "ct_mark": { "type": "keyword" },
-        "ct_label": { "type": "keyword" },
-        "icmp_type": { "type": "keyword" },
-        "icmp_code": { "type": "keyword" },
-        "in_port": { "type": "keyword" },
-        "ipv4_src": { "type": "keyword" },
-        "ipv4_dst": { "type": "keyword" },
-        "ipv4_proto": { "type": "keyword" },
-        "ipv4_frag": { "type": "keyword" },
-        "udp_src": { "type": "keyword" },
-        "udp_dst": { "type": "keyword" },
-        "tcp_src": { "type": "keyword" },
-        "tcp_dst": { "type": "keyword" },
-        "eth_src": { "type": "keyword" },
-        "eth_dst": { "type": "keyword" },
-        "eth_type": { "type": "keyword" },
-        "vlan": { "type": "keyword" },
-        "dl_dst": { "type": "keyword" },
-        "dl_src": { "type": "keyword" },
-        "dl_vlan": { "type": "keyword" },
-        "ipv6_src": { "type": "keyword" },
-        "ipv6_dst": { "type": "keyword" },
-        "actions": { "type": "keyword" },
-        "ufid": { "type": "keyword" },
-        "src": { "type": "keyword" },
-        "dst": { "type": "keyword" },
-        "sport": { "type": "keyword" },
-        "dport": { "type": "keyword" },
-        "mark": { "type": "keyword" },
-        "output": { "type": "keyword" },
-        "use": { "type": "keyword" },
-        "step": { "type": "keyword" },
-        "epoch": { "type": "keyword" },
-        "batch": { "type": "keyword" },
-        "slot": { "type": "keyword" },
-        "blade": { "type": "keyword" },
-        "rank": { "type": "keyword" }
+    class: { type: 'keyword' },
+    type: { type: 'keyword' },
+    source: { type: 'keyword' },
+    'names-list': { type: 'keyword' },
+    names: {
+      properties: {
+        'tool-name': { type: 'keyword' },
+        'benchmark-name': { type: 'keyword' },
+        'benchmark-group': { type: 'keyword' },
+        'benchmark-id': { type: 'keyword' },
+        'benchmark-role': { type: 'keyword' },
+        hostname: { type: 'keyword' },
+        'engine-type': { type: 'keyword' },
+        'engine-role': { type: 'keyword' },
+        'engine-id': { type: 'keyword' },
+        userenv: { type: 'keyword' },
+        osruntime: { type: 'keyword' },
+        'endpoint-label': { type: 'keyword' },
+        'hypervisor-host': { type: 'keyword' },
+        'hosted-by': { type: 'keyword' },
+        'interface-type': { type: 'keyword' },
+        bridge: { type: 'keyword' },
+        interface: { type: 'keyword' },
+        id: { type: 'keyword' },
+        num: { type: 'double' },
+        class: { type: 'keyword' },
+        type: { type: 'keyword' },
+        host: { type: 'keyword' },
+        role: { type: 'keyword' },
+        dev: { type: 'keyword' },
+        cmd: { type: 'keyword' },
+        tid: { type: 'keyword' },
+        pid: { type: 'keyword' },
+        job: { type: 'keyword' },
+        group: { type: 'keyword' },
+        tier: { type: 'keyword' },
+        level: { type: 'keyword' },
+        package: { type: 'keyword' },
+        die: { type: 'keyword' },
+        core: { type: 'keyword' },
+        thread: { type: 'keyword' },
+        kthread: { type: 'keyword' },
+        node: { type: 'keyword' },
+        mode: { type: 'keyword' },
+        socket: { type: 'keyword' },
+        domain: { type: 'keyword' },
+        cluster: { type: 'keyword' },
+        container: { type: 'keyword' },
+        cgroup: { type: 'keyword' },
+        parent: { type: 'keyword' },
+        source: { type: 'keyword' },
+        controller: { type: 'keyword' },
+        pod: { type: 'keyword' },
+        port: { type: 'keyword' },
+        tx_port: { type: 'keyword' },
+        rx_port: { type: 'keyword' },
+        port_pair: { type: 'keyword' },
+        status: { type: 'keyword' },
+        error: { type: 'keyword' },
+        stream: { type: 'keyword' },
+        direction: { type: 'keyword' },
+        clientserver: { type: 'keyword' },
+        protocol: { type: 'keyword' },
+        action: { type: 'keyword' },
+        cpu: { type: 'keyword' },
+        irq: { type: 'keyword' },
+        desc: { type: 'keyword' },
+        counter: { type: 'keyword' },
+        cstype: { type: 'keyword' },
+        csid: { type: 'keyword' },
+        cookie: { type: 'keyword' },
+        table: { type: 'keyword' },
+        priority: { type: 'keyword' },
+        reg14: { type: 'keyword' },
+        metadata: { type: 'keyword' },
+        dp: { type: 'keyword' },
+        flags: { type: 'keyword' },
+        recirc_id: { type: 'keyword' },
+        dp_hash: { type: 'keyword' },
+        skb_priority: { type: 'keyword' },
+        skb_mark: { type: 'keyword' },
+        ct_state: { type: 'keyword' },
+        ct_zone: { type: 'keyword' },
+        ct_mark: { type: 'keyword' },
+        ct_label: { type: 'keyword' },
+        icmp_type: { type: 'keyword' },
+        icmp_code: { type: 'keyword' },
+        in_port: { type: 'keyword' },
+        ipv4_src: { type: 'keyword' },
+        ipv4_dst: { type: 'keyword' },
+        ipv4_proto: { type: 'keyword' },
+        ipv4_frag: { type: 'keyword' },
+        udp_src: { type: 'keyword' },
+        udp_dst: { type: 'keyword' },
+        tcp_src: { type: 'keyword' },
+        tcp_dst: { type: 'keyword' },
+        eth_src: { type: 'keyword' },
+        eth_dst: { type: 'keyword' },
+        eth_type: { type: 'keyword' },
+        vlan: { type: 'keyword' },
+        dl_dst: { type: 'keyword' },
+        dl_src: { type: 'keyword' },
+        dl_vlan: { type: 'keyword' },
+        ipv6_src: { type: 'keyword' },
+        ipv6_dst: { type: 'keyword' },
+        actions: { type: 'keyword' },
+        ufid: { type: 'keyword' },
+        src: { type: 'keyword' },
+        dst: { type: 'keyword' },
+        sport: { type: 'keyword' },
+        dport: { type: 'keyword' },
+        mark: { type: 'keyword' },
+        output: { type: 'keyword' },
+        use: { type: 'keyword' },
+        step: { type: 'keyword' },
+        epoch: { type: 'keyword' },
+        batch: { type: 'keyword' },
+        slot: { type: 'keyword' },
+        blade: { type: 'keyword' },
+        rank: { type: 'keyword' }
       }
     },
-    "value-format": { "type": "keyword" },
-    "values": {
-      "properties": {
-        "pass": { "type": "keyword" },
-        "fail": { "type": "keyword" }
+    'value-format': { type: 'keyword' },
+    values: {
+      properties: {
+        pass: { type: 'keyword' },
+        fail: { type: 'keyword' }
       }
     }
   }
@@ -307,25 +306,25 @@ indexDefs['v9dev']['metric_desc'] = JSON.parse(JSON.stringify(indexDefs['v8dev']
 // definition: The ID of a physical grouping of CPU cores on a single chip.  Often the same as a NUMA node ID.
 indexDefs['v9dev']['metric_def'] = JSON.parse(JSON.stringify(indexDefs['v9dev']['period']));
 indexDefs['v9dev']['metric_def']['mappings']['properties']['metric_def'] = {
-  "properties": {
-    "metric_desc-uuid": { "type": "keyword" },
-    "name": { "type": "keyword" },
-    "definition": { "type": "text" },
+  properties: {
+    'metric_desc-uuid': { type: 'keyword' },
+    name: { type: 'keyword' },
+    definition: { type: 'text' }
   }
 };
 
 indexDefs['v8dev']['metric_data'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['run_micro']));
 indexDefs['v8dev']['metric_data']['mappings']['properties']['metric_desc'] = {
-  "properties": {
-    "metric_desc-uuid": { "type": "keyword" }
+  properties: {
+    'metric_desc-uuid': { type: 'keyword' }
   }
 };
 indexDefs['v8dev']['metric_data']['mappings']['properties']['metric_data'] = {
-  "properties": {
-    "value": { "type": "double" },
-    "begin": { "type" : "date" },
-    "end": { "type" : "date" },
-    "duration": { "type": "long" }
+  properties: {
+    value: { type: 'double' },
+    begin: { type: 'date' },
+    end: { type: 'date' },
+    duration: { type: 'long' }
   }
 };
 indexDefs['v9dev']['metric_data'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['metric_data']));
@@ -350,22 +349,22 @@ exports.debuglog = debuglog;
 checkCreateIndex = function (instance, index) {
   const cdmVer = getCdmVer(instance);
 
-  debuglog("instance:\n" + JSON.stringify(instance, null, 2));
-  debuglog("index: " + index);
+  debuglog('instance:\n' + JSON.stringify(instance, null, 2));
+  debuglog('index: ' + index);
   if (Object.keys(instance['indices']).includes(cdmVer)) {
-    debuglog("found cdmver: " + cdmVer);
+    debuglog('found cdmver: ' + cdmVer);
     if (instance['indices'][cdmVer].includes(index)) {
-      debuglog("found index: " + index);
+      debuglog('found index: ' + index);
       return;
     }
   }
 
   const docType = getDocType(index, cdmVer);
-  debuglog("got docType: [" + docType + "]");
-  var url = 'http://' + instance['host'] + "/" + index;
+  debuglog('got docType: [' + docType + ']');
+  var url = 'http://' + instance['host'] + '/' + index;
   var resp = request('PUT', url, { headers: instance['header'], body: JSON.stringify(indexDefs[cdmVer][docType]) });
   var data = JSON.parse(resp.getBody());
-  debuglog("response:::\n" + JSON.stringify(data, null, 2));
+  debuglog('response:::\n' + JSON.stringify(data, null, 2));
   if (!Object.keys(instance['indices']).includes(cdmVer)) {
     push(instance['indices'], cdmver);
   }
@@ -385,11 +384,11 @@ function getDocType(index, cdmVer) {
       if (docTypes[cdmVer].includes(docType)) {
         return docType;
       } else {
-        console.log("ERROR: index [" + index + "] does not match a docType: " + docTypes[cdmVer]);
+        console.log('ERROR: index [' + index + '] does not match a docType: ' + docTypes[cdmVer]);
         process.exit(1);
       }
     } else {
-      console.log("ERROR: index name [" + index + "] does not match cdmv7/8 format");
+      console.log('ERROR: index name [' + index + '] does not match cdmv7/8 format');
       process.exit(1);
     }
   }
@@ -402,16 +401,16 @@ function getDocType(index, cdmVer) {
       if (docTypes[cdmVer].includes(docType)) {
         return docType;
       } else {
-        console.log("ERROR: index [" + index + "] does not match a docType: " + docTypes[cdmVer]);
+        console.log('ERROR: index [' + index + '] does not match a docType: ' + docTypes[cdmVer]);
         process.exit(1);
       }
     } else {
-      console.log("ERROR: index name [" + index + "] does not match cdmv9 format");
+      console.log('ERROR: index name [' + index + '] does not match cdmv9 format');
       process.exit(1);
     }
   }
 
-  console.log("ERROR: the cdmVer provided [" + cdmVer + "] is not supported");
+  console.log('ERROR: the cdmVer provided [' + cdmVer + '] is not supported');
   process.exit(1);
 }
 
@@ -441,7 +440,7 @@ function getIndexName(docType, instance) {
     //TODO: return correct year.month(s)
     name = docType + '@2025.02';
   }
-  fullName = baseName + name
+  fullName = baseName + name;
   checkCreateIndex(instance, fullName);
   return fullName;
 }
@@ -616,7 +615,7 @@ exports.esJsonArrRequest = esJsonArrRequest;
 function esRequest(instance, idx, action, q) {
   // This is the only http request remainig that still uses a sync-request
   var url = 'http://' + instance['host'] + '/' + getIndexName(idx, instance) + action;
-  debuglog("esRequest() url: " + url);
+  debuglog('esRequest() url: ' + url);
   // The var q can be an object or a string.  If you are submitting NDJSON
   // for a _msearch, it must be a [multi-line] string.
   if (typeof q === 'object') {
@@ -1094,7 +1093,7 @@ getInstancesInfo = function (instances) {
     }
     if (typeof resp != 'undefined') {
       var indices = JSON.parse(resp.getBody());
-      debuglog("indices:\n" + JSON.stringify(indices, null, 2));
+      debuglog('indices:\n' + JSON.stringify(indices, null, 2));
       instances[inst_idx]['indices'] = {};
       for (const index of indices) {
         var name = index['index'];
@@ -1131,11 +1130,15 @@ getInstancesInfo = function (instances) {
 
 invalidInstance = function (instance) {
   if (!instance['online']) {
-    debuglog("invalidInstance(): Not using instance " + instance['host'] + " becasue it cannot be reached");
+    debuglog('invalidInstance(): Not using instance ' + instance['host'] + ' becasue it cannot be reached');
     return true;
   }
   if (!Object.keys(instance).includes('indices') || Object.keys(instance['indices']).length == 0) {
-    debuglog("invalidInstance(): Not using instance " + instance['host'] + " becasue it does not have indices for any cdm version");
+    debuglog(
+      'invalidInstance(): Not using instance ' +
+        instance['host'] +
+        ' becasue it does not have indices for any cdm version'
+    );
     return true;
   }
   if (!Object.keys(instance['indices']).includes(instance['ver'])) {
@@ -1363,7 +1366,7 @@ getIterMetrics = async function (instance, iterId) {
 
 deleteDocs = function (instance, docTypes, q) {
   docTypes.forEach((docType) => {
-    debuglog("deleteDocs() q: " + JSON.stringify(q, null, 2));
+    debuglog('deleteDocs() q: ' + JSON.stringify(q, null, 2));
     var resp = esRequest(instance, docType, '/_delete_by_query?wait_for_completion=false', q);
     var responses = JSON.parse(resp.getBody());
     debuglog(JSON.stringify(responses, null, 2));

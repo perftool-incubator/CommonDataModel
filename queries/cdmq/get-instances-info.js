@@ -45,7 +45,7 @@ async function main() {
     save_host('localhost:9200');
   }
   getInstancesInfo(instances);
-  console.log("instances:\n" + JSON.stringify(instances, null, 2));
+  console.log('instances:\n' + JSON.stringify(instances, null, 2));
 }
 
 main();

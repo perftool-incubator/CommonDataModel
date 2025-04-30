@@ -96,13 +96,12 @@ async function processDir(instance, dir, mode) {
 
   if (mode == 'index') {
     var responses = await esJsonArrRequest(instance, '', '/_bulk', jsonArr);
-
   } else if (mode == 'getinfo') {
-    var info = { 'runIds': [], 'indices': {} };
-    console.log("going to process " + jsonArr.length + " lines");
+    var info = { runIds: [], indices: {} };
+    console.log('going to process ' + jsonArr.length + ' lines');
     for (var k = 1; k < jsonArr.length; k += 2) {
       try {
-        var action = JSON.parse(jsonArr[k-1]);
+        var action = JSON.parse(jsonArr[k - 1]);
         var doc = JSON.parse(jsonArr[k]);
       } catch (jsonError) {
         console.log('Could not porse: [' + jsonArr[k] + ']');
@@ -123,19 +122,17 @@ async function processDir(instance, dir, mode) {
             info['indices'][cdmVer] = [];
           }
           if (!info['indices'][cdmVer].includes(indexName)) {
-            debuglog("going to add indexname to info[indices][" + cdmVer + "]: " + indexName);
+            debuglog('going to add indexname to info[indices][' + cdmVer + ']: ' + indexName);
             info['indices'][cdmVer].push(indexName);
           }
         } else {
           console.log('ERROR: the index name [' + indexName + '] was not recognized');
           process.exit(1);
         }
-
       } else {
         console.log('the ndjson action [' + action + '] was not valid');
         process.exit(1);
       }
-
     }
     return info;
   } else {
@@ -172,7 +169,13 @@ async function main() {
     if (Object.keys(info['indices']).length == 1) {
       const cdmVer = Object.keys(info['indices'])[0];
       if (!cdm.supportedCdmVersions.includes(cdmVer)) {
-        console.log("ERROR: the CDM version found in the documents to be indexed [" + cdmver + "] is not included in the list of supported CDM versions [" + cdm.supportedCdmVersions + "]");
+        console.log(
+          'ERROR: the CDM version found in the documents to be indexed [' +
+            cdmver +
+            '] is not included in the list of supported CDM versions [' +
+            cdm.supportedCdmVersions +
+            ']'
+        );
         process.exit(1);
       }
       instance['cdmVer'] = cdmVer;
@@ -200,7 +203,7 @@ async function main() {
       }
     }
     for (i = 0; i < info['indices'].length; i++) {
-        cdm.checkCreateIndex(instance, info['indices'][i]);
+      cdm.checkCreateIndex(instance, info['indices'][i]);
     }
     console.log('Indexing documents');
     await processDir(instance, program.dir, 'index');
