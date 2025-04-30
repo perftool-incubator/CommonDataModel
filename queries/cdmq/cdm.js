@@ -350,21 +350,26 @@ exports.debuglog = debuglog;
 checkCreateIndex = function (instance, index) {
   const cdmVer = getCdmVer(instance);
 
-  if (Object.keys(instance['indices'][cdmVer]).includes(index)) {
-    return;
+  debuglog("instance:\n" + JSON.stringify(instance, null, 2));
+  debuglog("index: " + index);
+  if (Object.keys(instance['indices']).includes(cdmVer)) {
+    debuglog("found cdmver: " + cdmVer);
+    if (instance['indices'][cdmVer].includes(index)) {
+      debuglog("found index: " + index);
+      return;
+    }
   }
 
   const docType = getDocType(index, cdmVer);
   debuglog("got docType: [" + docType + "]");
-  if (instance['indices'][cdmVer].includes(index)) {
-    debuglog('No need to create index because it exists');
-  } else {
-    var url = 'http://' + instance['host'] + "/" + index;
-    var resp = request('PUT', url, { headers: instance['header'], body: JSON.stringify(indexDefs[cdmVer][docType]) });
-    var data = JSON.parse(resp.getBody());
-    debuglog("response:::\n" + JSON.stringify(data, null, 2));
-    instance['indices'][cdmVer].push(index);
+  var url = 'http://' + instance['host'] + "/" + index;
+  var resp = request('PUT', url, { headers: instance['header'], body: JSON.stringify(indexDefs[cdmVer][docType]) });
+  var data = JSON.parse(resp.getBody());
+  debuglog("response:::\n" + JSON.stringify(data, null, 2));
+  if (!Object.keys(instance['indices']).includes(cdmVer)) {
+    push(instance['indices'], cdmver);
   }
+  instance['indices'][cdmVer].push(index);
   //TODO: query opensearch to verify index is present
   return;
 };
