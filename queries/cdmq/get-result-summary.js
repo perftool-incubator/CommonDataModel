@@ -88,6 +88,7 @@ async function main() {
 
   getInstancesInfo(instances);
   cdm.debuglog(JSON.stringify(instances, null, 2));
+  console.log(JSON.stringify(instances, null, 2));
 
   // Since this query is looking for run ids (and may not inlcude run-uuid as a search term), we
   // need to check all instances.
@@ -97,7 +98,7 @@ async function main() {
       continue;
     }
     cdm.debuglog('main(): calling cdm.mSearch()');
-    var instanceRunIds = await cdm.mSearch(instance, 'run', termKeys, values, 'run.run-uuid', null, 1000);
+    var instanceRunIds = await cdm.mSearch(instance, 'run', '@*', termKeys, values, 'run.run-uuid', null, 1000);
     cdm.debuglog('main(): returned from cdm.mSearch()');
     cdm.debuglog('instanceRunIds:\n' + JSON.stringify(instanceRunIds, null, 2));
     if (typeof instanceRunIds[0] != 'undefined') {
@@ -121,11 +122,11 @@ async function main() {
     var thisRun = {};
     const runId = runIds[runIdx];
     var instance = await findInstanceFromRun(instances, runId);
-    cdm.debuglog('instance: ' + JSON.stringify(instance, null, 2));
+    var yearDotMonth = await findYearDotMonthFromRun(instance, runId);
     logOutput('\nrun-id: ' + runId, program.outputFormat);
     thisRun['run-id'] = runId;
     thisRun['iterations'] = [];
-    var tags = await cdm.getTags(instance, runId);
+    var tags = await cdm.getTags(instance, runId, yearDotMonth);
     tags.sort((a, b) => (a.name < b.name ? -1 : 1));
     thisRun['tags'] = tags;
     var tagList = '  tags: ';
@@ -134,31 +135,36 @@ async function main() {
       tagList += tag.name + '=' + tag.val + ' ';
     });
     logOutput(tagList, program.outputFormat);
-    var benchName = await cdm.getBenchmarkName(instance, runId);
+    var benchName = await cdm.getBenchmarkName(instance, runId, yearDotMonth);
     var benchmarks = list(benchName);
     logOutput('  benchmark: ' + benchName, program.outputFormat);
-    var benchIterations = await cdm.getIterations(instance, runId);
+    var benchIterations = await cdm.getIterations(instance, runId, yearDotMonth);
     if (benchIterations.length == 0) {
       cdm.debuglog('There were no iterations found, exiting');
       process.exit(1);
     }
 
-    var iterParams = await cdm.mgetParams(instance, benchIterations);
+    var iterParams = await cdm.mgetParams(instance, benchIterations, yearDotMonth);
     //returns 1D array [iter]
-    var iterPrimaryPeriodNames = await cdm.mgetPrimaryPeriodName(instance, benchIterations);
+    var iterPrimaryPeriodNames = await cdm.mgetPrimaryPeriodName(instance, benchIterations, yearDotMonth);
     //input: 1D array
     //output: 2D array [iter][samp]
-    var iterSampleIds = await cdm.mgetSamples(instance, benchIterations);
+    var iterSampleIds = await cdm.mgetSamples(instance, benchIterations, yearDotMonth);
     //input: 2D array iterSampleIds: [iter][samp]
     //output: 2D array [iter][samp]
-    var iterSampleStatuses = await cdm.mgetSampleStatuses(instance, iterSampleIds);
+    var iterSampleStatuses = await cdm.mgetSampleStatuses(instance, iterSampleIds, yearDotMonth);
     //needs 2D array iterSampleIds: [iter][samp] and 1D array iterPrimaryPeriodNames [iter]
     //returns 2D array [iter][samp]
-    var iterPrimaryPeriodIds = await cdm.mgetPrimaryPeriodId(instance, iterSampleIds, iterPrimaryPeriodNames);
-    var iterPrimaryPeriodRanges = await cdm.mgetPeriodRange(instance, iterPrimaryPeriodIds);
+    var iterPrimaryPeriodIds = await cdm.mgetPrimaryPeriodId(
+      instance,
+      iterSampleIds,
+      iterPrimaryPeriodNames,
+      yearDotMonth
+    );
+    var iterPrimaryPeriodRanges = await cdm.mgetPeriodRange(instance, iterPrimaryPeriodIds, yearDotMonth);
 
     // Find the params which are the same in every iteration
-    var iterPrimaryMetrics = await cdm.mgetPrimaryMetric(instance, benchIterations);
+    var iterPrimaryMetrics = await cdm.mgetPrimaryMetric(instance, benchIterations, yearDotMonth);
     var primaryMetrics = list(iterPrimaryMetrics[0]);
     // For now only dump params when 1 primary metric is used
     if (primaryMetrics.length == 1) {
@@ -192,13 +198,13 @@ async function main() {
     }
 
     logOutput('  metrics:', program.outputFormat);
-    var metricSources = await cdm.getMetricSources(instance, runId);
+    var metricSources = await cdm.getMetricSources(instance, runId, yearDotMonth);
     var theseRunIds = [];
     thisRun['metrics'] = [];
     for (var i = 0; i < metricSources.length; i++) {
       theseRunIds[i] = runId;
     }
-    var metricTypes = await cdm.mgetMetricTypes(instance, theseRunIds, metricSources);
+    var metricTypes = await cdm.mgetMetricTypes(instance, theseRunIds, metricSources, yearDotMonth);
 
     for (var i = 0; i < metricSources.length; i++) {
       var thisMetricSourceName = metricSources[i];
@@ -234,7 +240,7 @@ async function main() {
             source = sourceType[0];
             type = sourceType[1];
           } else {
-            console.log('sourceType array is an unexpected length, ' + sourceType.length);
+            console.log('ERROR: sourceType array is an unexpected length, ' + sourceType.length);
             process.exit(1);
           }
           var set = {
@@ -250,7 +256,7 @@ async function main() {
           sets.push(set);
           if (sets.length == batchedQuerySize) {
             // Submit a chunk of the query and save the result
-            metricDataSetsChunks[chunkNum] = await cdm.getMetricDataSets(instance, sets);
+            metricDataSetsChunks[chunkNum] = await cdm.getMetricDataSets(instance, sets, yearDotMonth);
             chunkNum++;
             sets = [];
           }
@@ -259,7 +265,7 @@ async function main() {
     }
     if (sets.length > 0) {
       // Submit a chunk of the query and save the result
-      metricDataSetsChunks[chunkNum] = await cdm.getMetricDataSets(instance, sets);
+      metricDataSetsChunks[chunkNum] = await cdm.getMetricDataSets(instance, sets, yearDotMonth);
       chunkNum++;
       sets = [];
     }
