@@ -14,7 +14,8 @@
     "sprintf-js": "^1.1.2",
     "sync-request": "^6.1.0",
     "then-request": "^6.0.2",
-    "xz": "^2.0.2"
+    "xz": "^2.0.2",
+    "xz-decompress": "^0.2.2"
   },
   "devDependencies": {
     "prettier": "3.0.3"
