@@ -1,7 +1,6 @@
 //# vim: autoindent tabstop=2 shiftwidth=2 expandtab softtabstop=2 filetype=javascript
 var request = require('sync-request');
 var thenRequest = require('then-request');
-const sizeof = require('object-sizeof');
 var bigQuerySize = 262144;
 const docTypes = {
   v7dev: ['run', 'tag', 'iteration', 'param', 'sample', 'period', 'metric_desc', 'metric_data'],
