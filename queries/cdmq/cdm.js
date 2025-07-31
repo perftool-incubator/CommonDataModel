@@ -1304,6 +1304,7 @@ findYearDotMonthFromRun = async function (instance, runId) {
     return matches[1];
   }
 };
+exports.findYearDotMonthFromRun = findYearDotMonthFromRun;
 
 findInstanceFromRun = async function (instances, runId) {
   var foundInstance;
@@ -1325,6 +1326,7 @@ findInstanceFromRun = async function (instances, runId) {
   debuglog('findInstanceFromRun(): about to return');
   return foundInstance;
 };
+exports.findInstanceFromRun = findInstanceFromRun;
 
 findInstanceFromPeriod = async function (instances, periId) {
   var foundInstance;
@@ -1341,6 +1343,7 @@ findInstanceFromPeriod = async function (instances, periId) {
   }
   return foundInstance;
 };
+exports.findInstanceFromPeriod = findInstanceFromPeriod;
 
 mgetParams = async function (instance, iterIds, yearDotMonth) {
   return await mSearch(instance, 'param', yearDotMonth, ['iteration.iteration-uuid'], [iterIds], 'param', null, 1000);

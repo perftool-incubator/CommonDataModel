@@ -88,7 +88,6 @@ async function main() {
 
   getInstancesInfo(instances);
   cdm.debuglog(JSON.stringify(instances, null, 2));
-  console.log(JSON.stringify(instances, null, 2));
 
   // Since this query is looking for run ids (and may not inlcude run-uuid as a search term), we
   // need to check all instances.

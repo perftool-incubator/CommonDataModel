@@ -62,7 +62,7 @@ async function main() {
     // to delete just any copy of this run.
     //
     // In order to delete, we must first find out which year and date the run comes from
-    const yearDotMonth = cdm.getYearDotMonth(program.run);
+    const yearDotMonth = cdm.findYearDotMonthFromRun(instances[instances.length - 1], program.run);
     cdm.deleteDocs(instances[instances.length - 1], allDocTypes, q);
     var numDocTypes = await cdm.waitForDeletedDocs(instances[instances.length - 1], program.run, allDocTypes);
     if (numDocTypes > 0) {
