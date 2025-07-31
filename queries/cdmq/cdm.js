@@ -329,6 +329,26 @@ indexDefs['v8dev']['metric_data']['mappings']['properties']['metric_data'] = {
 };
 indexDefs['v9dev']['metric_data'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['metric_data']));
 
+function memUsage() {
+  const memUsage = process.memoryUsage();
+  debuglog({
+    rss: `${Math.round(memUsage.rss / 1024 / 1024)} MB`, // Resident Set Size
+    heapTotal: `${Math.round(memUsage.heapTotal / 1024 / 1024)} MB`, // Total heap size
+    heapUsed: `${Math.round(memUsage.heapUsed / 1024 / 1024)} MB`, // Used heap size
+    external: `${Math.round(memUsage.external / 1024 / 1024)} MB` // External memory
+  });
+}
+exports.memUsage = memUsage;
+
+function numMBytes(a, str) {
+  var totalBytes = 0;
+  a.forEach((element) => {
+    totalBytes += JSON.stringify(element).length;
+  });
+  var mb = totalBytes / 1024 / 1024;
+  return mb;
+}
+
 function getCdmVer(instance) {
   return instance['ver'];
 }
@@ -340,6 +360,18 @@ debuglog = function (str) {
 };
 exports.debuglog = debuglog;
 
+getCdmVerFromIndex = function (index) {
+  var regExp = /^cdm-*v([\d+])dev-(.+)/;
+  var matches = regExp.exec(index);
+  if (matches) {
+    cdmVer = 'v' + matches[1] + 'dev';
+  } else {
+    console.log('ERROR: index [' + index + '] is not recognized');
+    process.exit(1);
+  }
+  return cdmVer;
+};
+
 // cdmv9 adds indices dynamically based on year and month, so
 // we need a way to check for existence of the index and create
 // if not found.  Since this moves toward a auto-create index
@@ -347,26 +379,36 @@ exports.debuglog = debuglog;
 // This will eliminate the need for other projects (like Crucible)
 // to maintain the indices.
 checkCreateIndex = function (instance, index) {
-  const cdmVer = getCdmVer(instance);
+  const cdmVer = getCdmVerFromIndex(index);
+  //if (!Object.keys(instance).includes('indices')) {
+  //instance['indices'] = {};
+  //}
 
-  debuglog('instance:\n' + JSON.stringify(instance, null, 2));
-  debuglog('index: ' + index);
+  //debuglog('instance:\n' + JSON.stringify(instance, null, 2));
+  //debuglog('index: ' + index);
   if (Object.keys(instance['indices']).includes(cdmVer)) {
-    debuglog('found cdmver: ' + cdmVer);
+    //debuglog('found cdmver: ' + cdmVer);
     if (instance['indices'][cdmVer].includes(index)) {
-      debuglog('found index: ' + index);
+      //debuglog('found index: ' + index);
       return;
     }
   }
 
-  const docType = getDocType(index, cdmVer);
-  debuglog('got docType: [' + docType + ']');
+  var regExp = /\*$/;
+  var matches = regExp.exec(index);
+  if (matches) {
+    //debuglog('Not going to create index because it includes a wildcard: [' + index + ']');
+    return;
+  }
+
+  const docType = getDocType(index);
+  debuglog('checkCreateIndex(): got docType: [' + docType + ']');
   var url = 'http://' + instance['host'] + '/' + index;
   var resp = request('PUT', url, { headers: instance['header'], body: JSON.stringify(indexDefs[cdmVer][docType]) });
   var data = JSON.parse(resp.getBody());
   debuglog('response:::\n' + JSON.stringify(data, null, 2));
   if (!Object.keys(instance['indices']).includes(cdmVer)) {
-    push(instance['indices'], cdmver);
+    instance['indices'][cdmver] = [];
   }
   instance['indices'][cdmVer].push(index);
   //TODO: query opensearch to verify index is present
@@ -374,8 +416,10 @@ checkCreateIndex = function (instance, index) {
 };
 exports.checkCreateIndex = checkCreateIndex;
 
-function getDocType(index, cdmVer) {
-  debuglog('cdmver: [' + cdmVer + ']');
+function getDocType(index) {
+  const cdmVer = getCdmVerFromIndex(index);
+
+  //debuglog('cdmver: [' + cdmVer + ']');
   if (cdmVer == 'v7dev' || cdmVer == 'v8dev') {
     var regExp = /^cdmv[7|8]dev-(.+)/;
     var matches = regExp.exec(index);
@@ -394,7 +438,7 @@ function getDocType(index, cdmVer) {
   }
 
   if (cdmVer == 'v9dev') {
-    var regExp = /^cdm-v9dev-([^@]+)@\d\d\d\d\.\d\d/;
+    var regExp = /^cdm-v9dev-([^@]+)(@\d\d\d\d\.\d\d|\*)/;
     var matches = regExp.exec(index);
     if (matches) {
       docType = matches[1];
@@ -417,7 +461,7 @@ function getDocType(index, cdmVer) {
 function getIndexBaseName(instance) {
   // CDM version support is effectively determined here
   cdmVer = getCdmVer(instance);
-  debuglog('cdmver: [' + cdmVer + ']');
+  //debuglog('cdmver: [' + cdmVer + ']');
   if (cdmVer == 'v7dev' || cdmVer == 'v8dev') {
     return 'cdm' + cdmVer + '-';
   } else if (cdmVer == 'v9dev') {
@@ -431,16 +475,17 @@ function getIndexBaseName(instance) {
   }
 }
 
-function getIndexName(docType, instance) {
+function getIndexName(docType, instance, yearDotMonth) {
   const baseName = getIndexBaseName(instance);
   cdmVer = getCdmVer(instance);
   if (cdmVer == 'v7dev' || cdmVer == 'v8dev') {
     name = docType;
   } else {
-    //TODO: return correct year.month(s)
-    name = docType + '@2025.02';
+    name = docType + yearDotMonth;
   }
   fullName = baseName + name;
+  //debuglog('getIndexName() fullName: [' + fullName + ']');
+  // necessary?
   checkCreateIndex(instance, fullName);
   return fullName;
 }
@@ -502,7 +547,8 @@ intersectAllArrays = function (a2D) {
 exports.intersectAllArrays = intersectAllArrays;
 
 async function fetchBatchedData(instance, reqs, batchSize = 16) {
-  debuglog('fetchBatchedData() begin');
+  //debuglog('fetchBatchedData() begin');
+  //debuglog('fetchBatchedData() reqs.length: ' + reqs.length);
   const responses = [];
   const batches = [];
 
@@ -511,21 +557,21 @@ async function fetchBatchedData(instance, reqs, batchSize = 16) {
   }
 
   for (const batch of batches) {
-    debuglog('fetchBatchedData() processing batch');
+    //debuglog('fetchBatchedData() processing batch');
     const promises = batch.map(async (req) => {
       try {
         // thenRequest will abolutely *not* work unless this header is converted to string and back
         const headerStr = JSON.stringify(instance['header']);
         const hdrs = JSON.parse(headerStr);
-        debuglog('fetchBatchedData() calling thenRequest()');
+        //debuglog('fetchBatchedData() calling thenRequest()');
         const response = await thenRequest('POST', req.url, { body: req.body, headers: hdrs });
-        debuglog('fetchBatchedData() returned from thenRequest()');
+        //debuglog('fetchBatchedData() returned from thenRequest()');
         if (response.statusCode >= 200 && response.statusCode < 300) {
           try {
-            debuglog('fetchBatchedData() about to return with JSON.parse');
+            //debuglog('fetchBatchedData() about to return with JSON.parse');
             return JSON.parse(response.getBody('utf8')); // Attempt JSON parsing
           } catch (jsonError) {
-            debuglog('fetchBatchedData() about to return with JSON(no-parse)');
+            //debuglog('fetchBatchedData() about to return with JSON(no-parse)');
             return response.getBody('utf8'); // return text if JSON parsing fails
           }
         } else {
@@ -538,7 +584,7 @@ async function fetchBatchedData(instance, reqs, batchSize = 16) {
     });
 
     const batchResults = await Promise.all(promises);
-    debuglog('fetchBatchedData() batchResults.length:\n' + batchResults.length);
+    //debuglog('fetchBatchedData() batchResults.length:' + batchResults.length);
     for (const batchResult of batchResults) {
       const keys = Object.keys(batchResult);
       // items present if this is document creation
@@ -550,21 +596,32 @@ async function fetchBatchedData(instance, reqs, batchSize = 16) {
           responses.push(...batchResult.responses);
         }
       }
+      //debuglog('fetchBatchedData() responses.length so far:' + responses.length);
+      //debuglog('fetchBatchedData() responses[-1]:\n' + JSON.stringify(responses[responses.length - 1], null, 2));
     }
   }
 
-  debuglog('fetchBatchedData() responses.length:\n' + responses.length);
+  //debuglog('fetchBatchedData() responses.length:' + responses.length);
   return responses;
 }
 
-esJsonArrRequest = async function (instance, index, action, jsonArr) {
-  debuglog('esJsonArrRequest() begin');
+esJsonArrRequest = async function (instance, docType, action, jsonArr, yearDotMonth) {
+  //debuglog('esJsonArrRequest begin: yearDotMonth: ' + yearDotMonth);
+  debuglog('esJsonArrRequest jsonArr.length: ' + jsonArr.length);
+  memUsage();
+  debuglog('jsonArr MB at beginning of esJsonArrRequest: ' + numMBytes(jsonArr));
+
+  //if (jsonArr.length > 500) {
+  //process.exit(1);
+  //}
+
+  var thisJson = '';
   var url = '';
-  if (index == '') {
+  if (docType == '') {
     // Expect to have the Index and action in the jsonArr itself
     url = 'http://' + instance['host'] + '/_bulk';
   } else {
-    url = 'http://' + instance['host'] + '/' + getIndexName(index, instance) + action;
+    url = 'http://' + instance['host'] + '/' + getIndexName(docType, instance, yearDotMonth) + action;
   }
   var max = 16384;
   var idx = 0;
@@ -576,45 +633,65 @@ esJsonArrRequest = async function (instance, index, action, jsonArr) {
   var allResponses = [];
   // Process queries in chunks no larger than 'max' chars
   while (idx < jsonArr.length) {
-    // Add the first request (2 lines) even if it exceeds our limit (we don't really have a choice)
-    // The limit we have is likely much lower than what can be handled, but if this becomes a
-    // problem, we'll have to look at either an alternate way to submit a huge request, or we will
-    // have to break up the request into mulitple requests with fewer metric_id's, then sum the
-    // responses.
-    q_count++;
-    ndjson += jsonArr[idx] + '\n' + jsonArr[idx + 1] + '\n';
-    idx += 2;
-    // Add more requests if are any left and the max will not be exceeded
-    if (idx + 2 < jsonArr.length && ndjson.length + jsonArr[idx].length + jsonArr[idx + 1].length < max) {
+    while (reqs.length < 64 && idx < jsonArr.length) {
+      // Limit size in order to not exhaust heap
+      // Add the first request (2 lines) even if it exceeds our limit (we don't really have a choice)
+      // The limit we have is likely much lower than what can be handled, but if this becomes a
+      // problem, we'll have to look at either an alternate way to submit a huge request, or we will
+      // have to break up the request into mulitple requests with fewer metric_id's, then sum the
+      // responses.
       q_count++;
       ndjson += jsonArr[idx] + '\n' + jsonArr[idx + 1] + '\n';
       idx += 2;
-    } else {
+      // Add more requests if are any left and the max will not be exceeded
+      if (idx + 2 < jsonArr.length && ndjson.length + jsonArr[idx].length + jsonArr[idx + 1].length < max) {
+        q_count++;
+        ndjson += jsonArr[idx] + '\n' + jsonArr[idx + 1] + '\n';
+        // Remove data from jsonArr to conserve memory (should be cleaned up by GC)
+        delete jsonArr[idx];
+        delete jsonArr[idx + 1];
+        idx += 2;
+      } else {
+        req_count++;
+        q_count = 0;
+        const req = { url: url, body: ndjson };
+        reqs.push(req);
+        ndjson = '';
+      }
+    } //while
+    // Max was not exceeded but there are some requests that have not been submitted
+    if (ndjson != '') {
       req_count++;
       q_count = 0;
       const req = { url: url, body: ndjson };
       reqs.push(req);
-      ndjson = '';
     }
-  } //while
-  // Max was not exceeded but there are some requests that have not been submitted
-  if (ndjson != '') {
-    req_count++;
-    q_count = 0;
-    const req = { url: url, body: ndjson };
-    reqs.push(req);
+
+    debuglog('esJsonArrRequest reqs.length:\n' + reqs.length);
+    var responses = await fetchBatchedData(instance, reqs);
+    reqs = [];
+
+    debuglog('esJsonArrRequest jsonArr MB: ' + numMBytes(jsonArr));
+    debuglog('esJsonArrRequest responses MB: ' + numMBytes(responses));
+    memUsage();
+
+    allResponses.push(...responses);
+    responses = [];
+
+    debuglog('esJsonArrRequest responses MB after clearing: ' + numMBytes(responses));
+    memUsage();
   }
-  debuglog('esJsonArrRequest(): There are ' + reqs.length + ' requests:\n' + JSON.stringify(reqs, null, 2));
-  const responses = await fetchBatchedData(instance, reqs);
-  debuglog('esJsonArrRequest(): responses.length:\n' + responses.length);
+
+  debuglog('iesJsonArrRequest allResponses ' + numMBytes(allResponses));
+
   debuglog('esJsonArrRequest end');
-  return responses;
+  return allResponses;
 };
 exports.esJsonArrRequest = esJsonArrRequest;
 
-function esRequest(instance, idx, action, q) {
+function esRequest(instance, docType, action, q, yearDotMonth) {
   // This is the only http request remainig that still uses a sync-request
-  var url = 'http://' + instance['host'] + '/' + getIndexName(idx, instance) + action;
+  var url = 'http://' + instance['host'] + '/' + getIndexName(docType, instance, yearDotMonth) + action;
   debuglog('esRequest() url: ' + url);
   // The var q can be an object or a string.  If you are submitting NDJSON
   // for a _msearch, it must be a [multi-line] string.
@@ -635,7 +712,7 @@ function esRequest(instance, idx, action, q) {
 // of http requests.
 // Note: termKeys is a 1D array, while values is a 2D array.
 // termKeys[x] uses list of values from values[x]
-mSearch = async function (instance, index, termKeys, values, source, aggs, size, sort) {
+mSearch = async function (instance, index, yearDotMonth, termKeys, values, source, aggs, size, sort) {
   if (typeof termKeys !== typeof []) return;
   if (typeof values !== typeof []) return;
   var jsonArr = [];
@@ -664,8 +741,9 @@ mSearch = async function (instance, index, termKeys, values, source, aggs, size,
     jsonArr.push(JSON.stringify(req));
   }
   debuglog('mSearch(): calling esJsonArrRequest()');
-  var responses = await esJsonArrRequest(instance, index, '/_msearch', jsonArr);
-  debuglog('mSearch(): returned from calling esJsonArrRequest(), responses:\n' + JSON.stringify(responses, null, 2));
+  var responses = await esJsonArrRequest(instance, index, '/_msearch', jsonArr, yearDotMonth);
+  //debuglog('mSearch(): returned from calling esJsonArrRequest(), responses:\n' + JSON.stringify(responses, null, 2));
+  memUsage();
 
   // Unpack response and organize in array of arrays
   var retData = [];
@@ -747,10 +825,11 @@ exports.mSearch = mSearch;
 // but these functions just wrap the value in 2D array for msearch (and a key in a 1D array).  Effectively
 // all query functions use msearch, even if there is a single query.
 
-mgetPrimaryMetric = async function (instance, iterations) {
+mgetPrimaryMetric = async function (instance, iterations, yearDotMonth) {
   var metrics = await mSearch(
     instance,
     'iteration',
+    yearDotMonth,
     ['iteration.iteration-uuid'],
     [iterations],
     'iteration.primary-metric'
@@ -765,16 +844,17 @@ mgetPrimaryMetric = async function (instance, iterations) {
 };
 exports.mgetPrimaryMetric = mgetPrimaryMetric;
 
-getPrimaryMetric = async function (instance, iteration) {
-  var primaryMetrics = await mgetPrimaryMetric(instance, [iteration]);
+getPrimaryMetric = async function (instance, iteration, yearDotMonth) {
+  var primaryMetrics = await mgetPrimaryMetric(instance, [iteration], yearDotMonth);
   return primaryMetrics[0][0];
 };
 exports.getPrimaryMetric = getPrimaryMetric;
 
-mgetPrimaryPeriodName = async function (instance, iterations) {
+mgetPrimaryPeriodName = async function (instance, iterations, yearDotMonth) {
   var data = await mSearch(
     instance,
     'iteration',
+    yearDotMonth,
     ['iteration.iteration-uuid'],
     [iterations],
     'iteration.primary-period'
@@ -789,21 +869,29 @@ mgetPrimaryPeriodName = async function (instance, iterations) {
 };
 exports.mgetPrimaryPeriodName = mgetPrimaryPeriodName;
 
-getPrimaryPeriodName = async function (instance, iteration) {
-  var primaryPeriodNames = await mgetPrimaryPeriodName(instance, [iteration]);
+getPrimaryPeriodName = async function (instance, iteration, yearDotMonth) {
+  var primaryPeriodNames = await mgetPrimaryPeriodName(instance, [iteration], yearDotMonth);
   return primaryPeriodNames[0][0];
 };
 exports.getPrimaryPeriodName = getPrimaryPeriodName;
 
-mgetSamples = async function (instance, iters) {
-  return await mSearch(instance, 'sample', ['iteration.iteration-uuid'], [iters], 'sample.sample-uuid', null, 1000, [
-    { 'sample.num': { order: 'asc', numeric_type: 'long' } }
-  ]);
+mgetSamples = async function (instance, iters, yearDotMonth) {
+  return await mSearch(
+    instance,
+    'sample',
+    yearDotMonth,
+    ['iteration.iteration-uuid'],
+    [iters],
+    'sample.sample-uuid',
+    null,
+    1000,
+    [{ 'sample.num': { order: 'asc', numeric_type: 'long' } }]
+  );
 };
 exports.mgetSamples = mgetSamples;
 
-getSamples = async function (instance, iter) {
-  var samples = await mgetSamples(instance, [iter]);
+getSamples = async function (instance, iter, yearDotMonth) {
+  var samples = await mgetSamples(instance, [iter], yearDotMonth);
   return samples[0];
 };
 exports.getSamples = getSamples;
@@ -812,25 +900,25 @@ exports.getSamples = getSamples;
 // find all the metadata names shared among all
 // found metric docs.  These names are what can be
 // used for "breakouts".
-mgetMetricNames = async function (instance, runIds, sources, types) {
+mgetMetricNames = async function (instance, runIds, sources, types, yearDotMonth) {
   return await mSearch(
     instance,
     'metric_desc',
+    yearDotMonth,
     ['run.run-uuid', 'metric_desc.source', 'metric_desc.type'],
     [runIds, sources, types],
     '',
-    { source: { terms: { field: 'metric_desc.names-list', size: bigQuerySize } } },
-    0
+    { source: { terms: { field: 'metric_desc.names-list', size: bigQuerySize } } }
   );
 };
 exports.mgetMetricNames = mgetMetricNames;
 
-getMetricNames = async function (instance, runId, source, type) {
-  var metricNames = await mgetMetricNames(instance, [runId], [source], [type]);
+getMetricNames = async function (instance, runId, source, type, yearDotMonth) {
+  var metricNames = await mgetMetricNames(instance, [runId], [source], [type], yearDotMonth);
   return metricNames[0];
 };
 
-mgetSampleNums = async function (instance, Ids) {
+mgetSampleNums = async function (instance, Ids, yearDotMonth) {
   var sampleIds = [];
   var idx = 0;
   for (var i = 0; i < Ids.length; i++) {
@@ -840,7 +928,16 @@ mgetSampleNums = async function (instance, Ids) {
     }
   }
 
-  var data = await mSearch(instance, 'sample', ['sample.sample-uuid'], [sampleIds], 'sample.num', null, 1);
+  var data = await mSearch(
+    instance,
+    'sample',
+    yearDotMonth,
+    ['sample.sample-uuid'],
+    [sampleIds],
+    'sample.num',
+    null,
+    1
+  );
   var sampleNums = []; // Will be 2D array of [iter][sampIds];
   idx = 0;
   for (var i = 0; i < Ids.length; i++) {
@@ -856,13 +953,13 @@ mgetSampleNums = async function (instance, Ids) {
 };
 exports.mgetSampleNums = mgetSampleNums;
 
-getSampleNum = async function (instance, sampId) {
-  var sampleNum = await mgetSampleNums(instance, [sampId]);
+getSampleNum = async function (instance, sampId, yearDotMonth) {
+  var sampleNum = await mgetSampleNums(instance, [sampId], yearDotMonth);
   return sampleNums[0][0];
 };
 exports.getSampleNum = getSampleNum;
 
-mgetSampleStatuses = async function (instance, Ids) {
+mgetSampleStatuses = async function (instance, Ids, yearDotMonth) {
   var sampleIds = [];
   var idx = 0;
   for (var i = 0; i < Ids.length; i++) {
@@ -872,7 +969,16 @@ mgetSampleStatuses = async function (instance, Ids) {
     }
   }
 
-  var data = await mSearch(instance, 'sample', ['sample.sample-uuid'], [sampleIds], 'sample.status', null, 1);
+  var data = await mSearch(
+    instance,
+    'sample',
+    yearDotMonth,
+    ['sample.sample-uuid'],
+    [sampleIds],
+    'sample.status',
+    null,
+    1
+  );
   var sampleStatus = []; // Will be 2D array of [iter][sampIds];
   idx = 0;
   for (var i = 0; i < Ids.length; i++) {
@@ -894,7 +1000,7 @@ getSampleStatus = async function (instance, sampId) {
 };
 exports.getSampleStatus = getSampleStatus;
 
-mgetPrimaryPeriodId = async function (instance, sampIds, periNames) {
+mgetPrimaryPeriodId = async function (instance, sampIds, periNames, yearDotMonth) {
   // needs 2D array iterSampleIds: [iter][samp] and 1D array iterPrimaryPeriodNames [iter]
   // returns 2D array [iter][samp]
   if (periNames.length == 1) {
@@ -915,6 +1021,7 @@ mgetPrimaryPeriodId = async function (instance, sampIds, periNames) {
   var data = await mSearch(
     instance,
     'period',
+    yearDotMonth,
     ['sample.sample-uuid', 'period.name'],
     [sampleIds, perSamplePeriNames],
     'period.period-uuid',
@@ -945,7 +1052,7 @@ getPrimaryPeriodId = async function (instance, sampId, periName) {
 };
 exports.getPrimaryPeriodId = getPrimaryPeriodId;
 
-mgetPeriodRange = async function (instance, periodIds) {
+mgetPeriodRange = async function (instance, periodIds, yearDotMonth) {
   // needs 2D array periodIds: [iter][peri]
   // returns 2D array [iter][samp] of { "begin": x, "end": y }
 
@@ -958,7 +1065,7 @@ mgetPeriodRange = async function (instance, periodIds) {
       idx++;
     }
   }
-  var data = await mSearch(instance, 'period', ['period.period-uuid'], [Ids], 'period', null, 1);
+  var data = await mSearch(instance, 'period', yearDotMonth, ['period.period-uuid'], [Ids], 'period', null, 1);
   // mSearch returns a 2D array, in other words, a list of values (inner array) for each query (outer array)
   // In this case, the queries are 1 per sampleId/periodName (for all iterations ordered), and the list of values
   // happens to be exactly 1 value, the primaryPeriodId.
@@ -981,16 +1088,17 @@ mgetPeriodRange = async function (instance, periodIds) {
 };
 exports.mgetPeriodRange = mgetPeriodRange;
 
-getPeriodRange = async function (instance, periId) {
-  var periodRanges = await mgetPeriodRange(instance, [[periId]]);
+getPeriodRange = async function (instance, periId, yearDotMonth) {
+  var periodRanges = await mgetPeriodRange(instance, [[periId]], yearDotMonth);
   return periodRanges[0][0];
 };
 exports.getPeriodRange = getPeriodRange;
 
-mgetMetricDescs = async function (instance, runIds) {
+mgetMetricDescs = async function (instance, runIds, yearDotMonth) {
   return await mSearch(
     instance,
     'metric_desc',
+    yearDotMonth,
     ['run.run-uuid'],
     [runIds],
     'metric_desc.metric_desc-uuid',
@@ -1005,8 +1113,17 @@ getMetricDescs = async function (instance, runId) {
 };
 exports.getMetricDescs = getMetricDescs;
 
-mgetMetricDataDocs = async function (instance, metricIds) {
-  return await mSearch(instance, 'metric_data', ['metric_desc.metric_desc-uuid'], [metricIds], '', null, bigQuerySize);
+mgetMetricDataDocs = async function (instance, metricIds, yearDotMonth) {
+  return await mSearch(
+    instance,
+    'metric_data',
+    yearDotMonth,
+    ['metric_desc.metric_desc-uuid'],
+    [metricIds],
+    '',
+    null,
+    bigQuerySize
+  );
 };
 
 getMetricDataDocs = async function (instance, metricId) {
@@ -1015,10 +1132,11 @@ getMetricDataDocs = async function (instance, metricId) {
 };
 exports.getMetricDataDocs = getMetricDataDocs;
 
-mgetMetricTypes = async function (instance, runIds, metricSources) {
+mgetMetricTypes = async function (instance, runIds, metricSources, yearDotMonth) {
   return await mSearch(
     instance,
     'metric_desc',
+    yearDotMonth,
     ['run.run-uuid', 'metric_desc.source'],
     [runIds, metricSources],
     null,
@@ -1034,44 +1152,61 @@ getMetricTypes = async function (instance, runId, metricSource) {
 };
 exports.getMetricTypes = getMetricTypes;
 
-mgetIterations = async function (instance, runIds) {
-  return await mSearch(instance, 'iteration', ['run.run-uuid'], [runIds], 'iteration.iteration-uuid', null, 1000, [
-    { 'iteration.num': { order: 'asc', numeric_type: 'long' } }
-  ]);
+mgetIterations = async function (instance, runIds, yearDotMonth) {
+  return await mSearch(
+    instance,
+    'iteration',
+    yearDotMonth,
+    ['run.run-uuid'],
+    [runIds],
+    'iteration.iteration-uuid',
+    null,
+    1000,
+    [{ 'iteration.num': { order: 'asc', numeric_type: 'long' } }]
+  );
 };
 
-getIterations = async function (instance, runId) {
-  var iterations = await mgetIterations(instance, [runId]);
+getIterations = async function (instance, runId, yearDotMonth) {
+  var iterations = await mgetIterations(instance, [runId], yearDotMonth);
   return iterations[0];
 };
 exports.getIterations = getIterations;
 
-mgetTags = async function (instance, runIds) {
-  return await mSearch(instance, 'tag', ['run.run-uuid'], [runIds], 'tag', null, 1000);
+mgetTags = async function (instance, runIds, yearDotMonth) {
+  return await mSearch(instance, 'tag', yearDotMonth, ['run.run-uuid'], [runIds], 'tag', null, 1000);
 };
 
-getTags = async function (instance, runId) {
-  var tags = await mgetTags(instance, [runId]);
+getTags = async function (instance, runId, yearDotMonth) {
+  var tags = await mgetTags(instance, [runId], yearDotMonth);
   return tags[0];
 };
 exports.getTags = getTags;
 
-mgetRunFromIter = async function (instance, iterIds) {
-  return await mSearch(instance, 'iteration', ['iteration.iteration-uuid'], [iterIds], 'run.run-uuid', null, 1000);
+mgetRunFromIter = async function (instance, iterIds, yearDotMonth) {
+  return await mSearch(
+    instance,
+    'iteration',
+    yearDotMonth,
+    ['iteration.iteration-uuid'],
+    [iterIds],
+    'run.run-uuid',
+    null,
+    1000
+  );
 };
 
-getRunFromIter = async function (instance, iterId) {
-  var runsFromIter = await mgetRunFromIter(instance, [iterId]);
+getRunFromIter = async function (instance, iterId, yearDotMonth) {
+  var runsFromIter = await mgetRunFromIter(instance, [iterId], yearDotMonth);
   return runsFromIter[0][0];
 };
 exports.getRunFromIter = getRunFromIter;
 
-mgetRunFromPeriod = async function (instance, periIds) {
-  return await mSearch(instance, 'period', ['period.period-uuid'], [periIds], 'run.run-uuid', null, 1);
+mgetRunFromPeriod = async function (instance, periIds, yearDotMonth) {
+  return await mSearch(instance, 'period', yearDotMonth, ['period.period-uuid'], [periIds], 'run.run-uuid', null, 1);
 };
 
-getRunFromPeriod = async function (instance, periId) {
-  var runFromPeriods = await mgetRunFromPeriod(instance, [periId]);
+getRunFromPeriod = async function (instance, periId, yearDotMonth) {
+  var runFromPeriods = await mgetRunFromPeriod(instance, [periId], yearDotMonth);
   return runFromPeriods[0][0];
 };
 exports.getRunFromPeriod = getRunFromPeriod;
@@ -1093,11 +1228,11 @@ getInstancesInfo = function (instances) {
     }
     if (typeof resp != 'undefined') {
       var indices = JSON.parse(resp.getBody());
-      debuglog('indices:\n' + JSON.stringify(indices, null, 2));
       instances[inst_idx]['indices'] = {};
       for (const index of indices) {
         var name = index['index'];
         if (/^cdm/.exec(name)) {
+          debuglog('index:\n' + JSON.stringify(index, null, 2));
           const match = name.match(/^cdm[-]{0,1}(v[\d+]dev)/);
           const cdmver = match[1];
           if (!Object.keys(instances[inst_idx]['indices']).includes(cdmver)) {
@@ -1109,7 +1244,7 @@ getInstancesInfo = function (instances) {
     }
     if (Object.keys(instances[inst_idx]).includes('ver')) {
       // User has already requested a specific cdm version
-      return;
+      continue;
     }
     if (Object.keys(instances[inst_idx]['indices']).length != 0) {
       // If mulitple versions of indices exist, default to the latest version
@@ -1119,12 +1254,10 @@ getInstancesInfo = function (instances) {
       // default to the newer cdm version.
       var cdmvers = Object.keys(instances[inst_idx]['indices']).sort();
       instances[inst_idx]['ver'] = cdmvers[cdmvers.length - 1];
-      return;
+      continue;
     }
     // There are no cdm indices at all, so we have to pick a default cdm version.
-    // Currently this is v8dev until this code is well tested for v8dev, then
-    // it will move to 9dev
-    instances[inst_idx]['ver'] = 'v8dev';
+    instances[inst_idx]['ver'] = 'v9dev';
   }
 };
 
@@ -1156,6 +1289,24 @@ invalidInstance = function (instance) {
   return false;
 };
 
+findYearDotMonthFromRun = async function (instance, runId) {
+  // Versions older than v9dev don't have a year and month
+  if (instance['ver'] == 'v7dev' || instance['ver'] == 'v8dev') {
+    return '';
+  }
+
+  var q = { query: { bool: { filter: [{ term: { 'run.run-uuid': runId } }] } } };
+  var resp = esRequest(instance, 'run', '/_search', q, '@*');
+  var data = JSON.parse(resp.getBody());
+  var index = data['hits']['hits'][0]['_index'];
+  var regExp = /(@\d\d\d\d\.\d\d)$/;
+  var matches = regExp.exec(index);
+  if (matches) {
+    return matches[1];
+  }
+};
+exports.findYearDotMonthFromRun = findYearDotMonthFromRun;
+
 findInstanceFromRun = async function (instances, runId) {
   var foundInstance;
   for (const instance of instances) {
@@ -1165,7 +1316,7 @@ findInstanceFromRun = async function (instances, runId) {
     }
     // Use any function which searches by run id and always returns something if the run id is present
     debuglog('findInstanceFromRun(): about to call getIterations()');
-    var result = await getIterations(instance, runId);
+    var result = await getIterations(instance, runId, '@*');
     debuglog('findInstanceFromRun(): returned from calling getIterations()');
     if (typeof result != 'undefined') {
       debuglog('found valid instance: ' + JSON.stringify(instance, null, 2));
@@ -1176,6 +1327,7 @@ findInstanceFromRun = async function (instances, runId) {
   debuglog('findInstanceFromRun(): about to return');
   return foundInstance;
 };
+exports.findInstanceFromRun = findInstanceFromRun;
 
 findInstanceFromPeriod = async function (instances, periId) {
   var foundInstance;
@@ -1184,7 +1336,7 @@ findInstanceFromPeriod = async function (instances, periId) {
       continue;
     }
     //var result = await mgetRunFromPeriod(instance, [periId])[0][0];
-    var result = await getRunFromPeriod(instance, [periId]);
+    var result = await getRunFromPeriod(instance, [periId], '@*');
     if (typeof result != 'undefined') {
       foundInstance = instance;
       break;
@@ -1192,53 +1344,63 @@ findInstanceFromPeriod = async function (instances, periId) {
   }
   return foundInstance;
 };
+exports.findInstanceFromPeriod = findInstanceFromPeriod;
 
-mgetParams = async function (instance, iterIds) {
-  return await mSearch(instance, 'param', ['iteration.iteration-uuid'], [iterIds], 'param', null, 1000);
+mgetParams = async function (instance, iterIds, yearDotMonth) {
+  return await mSearch(instance, 'param', yearDotMonth, ['iteration.iteration-uuid'], [iterIds], 'param', null, 1000);
 };
 exports.mgetParams = mgetParams;
 
-getParams = async function (instance, iterId) {
-  return await mgetParams(instance, [iterId])[0];
+getParams = async function (instance, iterId, yearDotMonth) {
+  return await mgetParams(instance, [iterId], yearDotMonth)[0];
 };
 exports.getParams = getParams;
 
-mgetIterationDoc = async function (instance, iterIds) {
-  return await mSearch(instance, 'iteration', ['iteration.iteration-uuid'], [iterIds], '', null, 1000);
+mgetIterationDoc = async function (instance, iterIds, yearDotMonth) {
+  return await mSearch(instance, 'iteration', yearDotMonth, ['iteration.iteration-uuid'], [iterIds], '', null, 1000);
 };
 
-getIterationDoc = async function (instance, iterId) {
-  var iterationDocs = await mgetIterationDoc(instance, [iterId]);
+getIterationDoc = async function (instance, iterId, yearDotMonth) {
+  var iterationDocs = await mgetIterationDoc(instance, [iterId], yearDotMonth);
   return iterationDocs[0][0];
 };
 exports.getIterationDoc = getIterationDoc;
 
-mgetBenchmarkNameFromIter = async function (instance, Ids) {
-  return await mSearch(instance, 'iteration', ['iteration.iteration-uuid'], [Ids], 'run.benchmark', null, 1);
+mgetBenchmarkNameFromIter = async function (instance, Ids, yearDotMonth) {
+  return await mSearch(
+    instance,
+    'iteration',
+    yearDotMonth,
+    ['iteration.iteration-uuid'],
+    [Ids],
+    'run.benchmark',
+    null,
+    1
+  );
 };
 
-getBenchmarkNameFromIter = async function (instance, Id) {
-  var benchmarkNameforIters = await mgetBenchmarkNameFromIter(instance, [Id]);
+getBenchmarkNameFromIter = async function (instance, Id, yearDotMonth) {
+  var benchmarkNameforIters = await mgetBenchmarkNameFromIter(instance, [Id], yearDotMonth);
   return benchmarkNameFromIters[0][0];
 };
 exports.getBenchmarkNameFromIter = getBenchmarkNameFromIter;
 
-mgetBenchmarkName = async function (instance, runIds) {
-  return await mSearch(instance, 'run', ['run.run-uuid'], [runIds], 'run.benchmark', null, 1);
+mgetBenchmarkName = async function (instance, runIds, yearDotMonth) {
+  return await mSearch(instance, 'run', yearDotMonth, ['run.run-uuid'], [runIds], 'run.benchmark', null, 1);
 };
 
-getBenchmarkName = async function (instance, runId) {
-  var benchmarkNames = await mgetBenchmarkName(instance, [runId]);
+getBenchmarkName = async function (instance, runId, yearDotMonth) {
+  var benchmarkNames = await mgetBenchmarkName(instance, [runId], yearDotMonth);
   return benchmarkNames[0][0];
 };
 exports.getBenchmarkName = getBenchmarkName;
 
-mgetRunData = async function (instance, runIds) {
-  return await mSearch(instance, 'run', ['run.run-uuid'], [runIds], '', null, 1000);
+mgetRunData = async function (instance, runIds, yearDotMonth) {
+  return await mSearch(instance, 'run', yearDotMonth, ['run.run-uuid'], [runIds], '', null, 1000);
 };
 
-getRunData = async function (instance, runId) {
-  var runData = await mgetRunData(instance, [runId]);
+getRunData = async function (instance, runId, yearDotMonth) {
+  var runData = await mgetRunData(instance, [runId], yearDotMonth);
   return runData[0];
 };
 exports.getRunData = getRunData;
@@ -1364,10 +1526,10 @@ getIterMetrics = async function (instance, iterId) {
   return await mgetIterMetrics(instance, [iterId]);
 };
 
-deleteDocs = function (instance, docTypes, q) {
+deleteDocs = function (instance, docTypes, q, yearDotMonth) {
   docTypes.forEach((docType) => {
     debuglog('deleteDocs() q: ' + JSON.stringify(q, null, 2));
-    var resp = esRequest(instance, docType, '/_delete_by_query?wait_for_completion=false', q);
+    var resp = esRequest(instance, docType, '/_delete_by_query?wait_for_completion=false', q, yearDotMonth);
     var responses = JSON.parse(resp.getBody());
     debuglog(JSON.stringify(responses, null, 2));
   });
@@ -2122,7 +2284,7 @@ getIters = async function (
 };
 exports.getIters = getIters;
 
-exports.getMetricSources = function (instance, runId) {
+exports.getMetricSources = function (instance, runId, yearDotMonth) {
   var q = {
     query: { bool: { filter: [{ term: { 'run.run-uuid': runId } }] } },
     aggs: {
@@ -2130,7 +2292,7 @@ exports.getMetricSources = function (instance, runId) {
     },
     size: 0
   };
-  var resp = esRequest(instance, 'metric_desc', '/_search', q);
+  var resp = esRequest(instance, 'metric_desc', '/_search', q, yearDotMonth);
   var data = JSON.parse(resp.getBody());
   if (Array.isArray(data.aggregations.source.buckets)) {
     var sources = [];
@@ -2141,9 +2303,9 @@ exports.getMetricSources = function (instance, runId) {
   }
 };
 
-getDocCount = function (instance, runId, docType) {
+getDocCount = function (instance, runId, docType, yearDotMonth) {
   var q = { query: { bool: { filter: [{ term: { 'run.run-uuid': runId } }] } } };
-  var resp = esRequest(instance, docType, '/_count', q);
+  var resp = esRequest(instance, docType, '/_count', q, yearDotMonth);
   var data = JSON.parse(resp.getBody());
   return data.count;
 };
@@ -2247,7 +2409,7 @@ getMetricGroupTermsByLabel = function (metricGroupTerms) {
   return metricGroupTermsByLabel;
 };
 
-mgetMetricIdsFromTerms = async function (instance, termsSets) {
+mgetMetricIdsFromTerms = async function (instance, termsSets, yearDotMonth) {
   // termsSets is an array of:
   // { 'period': x, 'run': y, 'termsByLabel': {} }
   // termsByLabel is a dict/hash of:
@@ -2281,7 +2443,7 @@ mgetMetricIdsFromTerms = async function (instance, termsSets) {
         totalReqs++;
       });
   }
-  var responses = await esJsonArrRequest(instance, 'metric_desc', '/_msearch', jsonArr);
+  var responses = await esJsonArrRequest(instance, 'metric_desc', '/_msearch', jsonArr, yearDotMonth);
   if (totalReqs != responses.length) {
     console.log(
       'mgetMetricIdsFromTerms(): ERROR, number of _msearch responses (' +
@@ -2343,7 +2505,7 @@ exports.mgetMetricIdsFromTerms = mgetMetricIdsFromTerms;
 // wants to "break-out" the metric (by some metadatam like cpu-id, devtype, etc).
 // Find the number of groups needed based on the --breakout options, then find out
 // what metric IDs belong in each group.
-getMetricGroupsFromBreakouts = async function (instance, sets) {
+getMetricGroupsFromBreakouts = async function (instance, sets, yearDotMonth) {
   var metricGroupIdsByLabel = [];
   var indexjson = '{}\n';
   var index = JSON.parse(indexjson);
@@ -2382,7 +2544,7 @@ getMetricGroupsFromBreakouts = async function (instance, sets) {
     jsonArr.push(JSON.stringify(index));
     jsonArr.push(JSON.stringify(q));
   });
-  var responses = await esJsonArrRequest(instance, 'metric_desc', '/_msearch', jsonArr);
+  var responses = await esJsonArrRequest(instance, 'metric_desc', '/_msearch', jsonArr, yearDotMonth);
 
   var metricGroupIdsByLabelSets = [];
   var metricGroupTermsSets = [];
@@ -2401,7 +2563,7 @@ getMetricGroupsFromBreakouts = async function (instance, sets) {
     };
     termsSets.push(thisLabelSet);
   }
-  metricGroupIdsByLabelSets = await mgetMetricIdsFromTerms(instance, termsSets);
+  metricGroupIdsByLabelSets = await mgetMetricIdsFromTerms(instance, termsSets, yearDotMonth);
   return metricGroupIdsByLabelSets;
 };
 exports.getMetricGroupsFromBreakouts = getMetricGroupsFromBreakouts;
@@ -2419,6 +2581,358 @@ getMetricGroupsFromBreakout = async function (instance, runId, periId, source, t
 };
 exports.getMetricGroupsFromBreakout = getMetricGroupsFromBreakout;
 
+sendMetricReq = async function (
+  jsonArr,
+  jsonArrTracker,
+  jsonArrIdx,
+  responses,
+  valueSets,
+  set,
+  label,
+  lastPass,
+  instance,
+  begin,
+  end,
+  resolution,
+  metricIds,
+  yearDotMonth
+) {
+  debuglog('sendMetricReq begin');
+  debuglog(
+    'sendMetricReq, jsonArr MB [' +
+      numMBytes(jsonArr) +
+      ']  responses MB [' +
+      numMBytes(responses) +
+      ']  jsonArrIdx: [' +
+      jsonArrIdx +
+      ']'
+  );
+
+  // When jsonArr goes over this, submit the requests we have so far, so we can
+  // get responses and delete these reqs from jsonArr and process and delete the
+  // matching responses.
+  var chunkMBytes = 32;
+
+  // Create a query for each data-point in a line graph.  Resolution = number of data-points
+  // These vars are used for defining the requests and are altered in each loop cycle below (while)
+  // These are not used for processing responses, as response processing is triggered on demand,
+  // and these vars won't have the correct info.
+  //
+  // The resolution determines how many times we compute a value, each value for a
+  // different "slice" in the original begin-to-end time domain.
+  var duration = Math.floor((end - begin) / resolution);
+  var thisBegin = begin;
+  var thisEnd = begin + duration;
+
+  // To have the correct info for processing responses, it is stoted in this array, where the array index*2
+  // corresponds to the index in the jsonArr request.
+  //var info = { 'label': label, 'set': set, 'begin': thisBegin, 'end': thisEnd, 'numMetricIds': metricIds.length };
+
+  while (true) {
+    // Calculating a single value representing an average for thisBegin - thisEnd
+    // relies on an [weighted average] aggregation, plus a few other queries.  An
+    // alternative method would involve querying all documents for the orignal
+    // begin - end time range, then [locally] computing a weighted average per
+    // thisBegin - thisEnd slice. Each method has pros/cons depending on the
+    // resolution and the total number of metric_data documents.
+    //
+    // This first request is for the weighted average, but does not include the
+    // documents which are partially outside the time range we need.
+    indexjson = '{"index": "' + getIndexName('metric_data', instance, yearDotMonth) + '" }\n';
+    reqjson = '{';
+    reqjson += '  "size": 0,';
+    reqjson += '  "query": {';
+    reqjson += '    "bool": {';
+    reqjson += '      "filter": [';
+    reqjson += '        {"range": {"metric_data.end": { "lte": "' + thisEnd + '"}}},';
+    reqjson += '        {"range": {"metric_data.begin": { "gte": "' + thisBegin + '"}}},';
+    reqjson += '        {"terms": {"metric_desc.metric_desc-uuid": ' + JSON.stringify(metricIds) + '}}';
+    reqjson += '      ]';
+    reqjson += '    }';
+    reqjson += '  },';
+    reqjson += '  "aggs": {';
+    reqjson += '    "metric_avg": {';
+    reqjson += '      "weighted_avg": {';
+    reqjson += '        "value": {';
+    reqjson += '          "field": "metric_data.value"';
+    reqjson += '        },';
+    reqjson += '        "weight": {';
+    reqjson += '          "field": "metric_data.duration"';
+    reqjson += '        }';
+    reqjson += '      }';
+    reqjson += '    }';
+    reqjson += '  }';
+    reqjson += '}';
+    var index = JSON.parse(indexjson);
+    var req = JSON.parse(reqjson);
+    jsonArr.push(JSON.stringify(index));
+    jsonArr.push(JSON.stringify(req));
+    jsonArrTracker.push({ label: label, set: set, begin: thisBegin, end: thisEnd, numMetricIds: metricIds.length });
+    // This second request is for the total weight of the previous weighted average request.
+    // We need this because we are going to recompute the weighted average by adding
+    // a few more documents that are partially outside the time domain.
+    indexjson = '{"index": "' + getIndexName('metric_data', instance, yearDotMonth) + '" }\n';
+    reqjson = '{';
+    reqjson += '  "size": 0,';
+    reqjson += '  "query": {';
+    reqjson += '    "bool": {';
+    reqjson += '      "filter": [';
+    reqjson += '        {"range": {"metric_data.end": { "lte": "' + thisEnd + '"}}},';
+    reqjson += '        {"range": {"metric_data.begin": { "gte": "' + thisBegin + '"}}},';
+    reqjson += '        {"terms": {"metric_desc.metric_desc-uuid": ' + JSON.stringify(metricIds) + '}}';
+    reqjson += '      ]';
+    reqjson += '    }';
+    reqjson += '  },';
+    reqjson += '  "aggs": {';
+    reqjson += '    "total_weight": {';
+    reqjson += '      "sum": {"field": "metric_data.duration"}';
+    reqjson += '    }';
+    reqjson += '  }';
+    reqjson += '}\n';
+    index = JSON.parse(indexjson);
+    req = JSON.parse(reqjson);
+    jsonArr.push(JSON.stringify(index));
+    jsonArr.push(JSON.stringify(req));
+    jsonArrTracker.push({});
+    // This third request is for documents that had its begin during or before the time range, but
+    // its end was after the time range.
+    //
+    // Due to some limitations in how many documents can be returned from a query,
+    // (in spite of using size:<huge number>)
+    // the number of metricIds inlcuded in the search is limited to 10,000.  If there
+    // are more than 10,000 metric IDs to query for, use more queries.
+    const chunkSize = 10000;
+    for (let i = 0; i < metricIds.length; i += chunkSize) {
+      indexjson = '{"index": "' + getIndexName('metric_data', instance, yearDotMonth) + '" }\n';
+      reqjson = '{';
+      reqjson += '  "size": ' + bigQuerySize + ',';
+      reqjson += '  "_source": ["metric_data.begin", "metric_data.end", "metric_data.value"],';
+      reqjson += '  "query": {';
+      reqjson += '    "bool": {';
+      reqjson += '      "filter": [';
+      reqjson += '        {"range": {"metric_data.end": { "gt": "' + thisEnd + '"}}},';
+      reqjson += '        {"range": {"metric_data.begin": { "lte": "' + thisEnd + '"}}},';
+      reqjson +=
+        '        {"terms": {"metric_desc.metric_desc-uuid": ' +
+        JSON.stringify(metricIds.slice(i, i + chunkSize)) +
+        '}}\n';
+      reqjson += '      ]';
+      reqjson += '    }';
+      reqjson += '  }';
+      reqjson += '}';
+      index = JSON.parse(indexjson);
+      req = JSON.parse(reqjson);
+      jsonArr.push(JSON.stringify(index));
+      jsonArr.push(JSON.stringify(req));
+      jsonArrTracker.push({});
+      // This fourth request is for documents that had its begin before the time range, but
+      //  its end was during or after the time range
+      var indexjson = '{"index": "' + getIndexName('metric_data', instance, yearDotMonth) + '" }\n';
+      var reqjson = '';
+      reqjson += '{';
+      reqjson += '  "size": ' + bigQuerySize + ',';
+      reqjson += '  "_source": ["metric_data.begin", "metric_data.end", "metric_data.value"],';
+      reqjson += '  "query": {';
+      reqjson += '    "bool": {';
+      reqjson += '      "filter": [';
+      reqjson += '        {"range": {"metric_data.end": { "gte": ' + thisBegin + '}}},';
+      reqjson += '        {"range": {"metric_data.begin": { "lt": ' + thisBegin + '}}},';
+      reqjson +=
+        '        {"terms": {"metric_desc.metric_desc-uuid": ' +
+        JSON.stringify(metricIds.slice(i, i + chunkSize)) +
+        '}}\n';
+      reqjson += '      ]';
+      reqjson += '    }';
+      reqjson += '  }';
+      reqjson += '}\n';
+      index = JSON.parse(indexjson);
+      req = JSON.parse(reqjson);
+      jsonArr.push(JSON.stringify(index));
+      jsonArr.push(JSON.stringify(req));
+      jsonArrTracker.push({});
+    }
+
+    debuglog('jsonArrTracker.length: ' + jsonArrTracker.length);
+    debuglog('jsonArrTracker right before begin and end are updated: ' + JSON.stringify(jsonArrTracker, null, 2));
+
+    // Cycle through every "slice" of the time domain, adding the requests for the entire time domain
+    thisBegin = thisEnd + 1;
+    thisEnd += duration + 1;
+    if (thisEnd > end) {
+      thisEnd = end;
+    }
+
+    // We can't let the jsonArr or the responses arrays to grow too big, so
+    // we have to work them down as we submit requests.
+    // Two things can trigger submitting the request:
+    // 1) The jsonArr has grown too large
+    // 2) The jsonArr may does not exceed the size threshold, but
+    //    This is the final call to sendMetricReq() and on the final data-point,
+    //    so this is the last opportunity to submit the request.
+    if (numMBytes(jsonArr) > chunkMBytes || (thisBegin > thisEnd && lastPass)) {
+      debuglog('sendMetricReq jsonArr size MB: ' + numMBytes(jsonArr));
+      debuglog('sendMetricReq responses size MB: ' + numMBytes(responses));
+      const theseResponses = await esJsonArrRequest(instance, 'metric_data', '/_msearch', jsonArr, yearDotMonth);
+      responses.push(...theseResponses);
+      jsonArr.length = 0; // No longer needed since we have the response; Deleting to save memory.
+
+      // Now that there are some responses available, we process those so we can also delete the data
+      // in the reeponses array.  The elements in the responses array can get very big relative
+      // to the data calculated and stored in the valueSets.
+      // Note: the number of elements on responses should be exaclty half the number of
+      // elements in jsonArr, because each request in the jsonArr uses one entry for the index
+      // and another entry for the query, which generates a single entry in the responses array.
+      debuglog('sendMetricReq jsonArrTracker.length:' + jsonArrTracker.length);
+      debuglog('sendMetricReq jsonArrTracker:' + JSON.stringify(jsonArrTracker, null, 2));
+      debuglog('jsonArrIdx:' + jsonArrIdx);
+      while (jsonArrIdx < responses.length * 2) {
+        const setIdx = jsonArrTracker[jsonArrIdx / 2]['set'];
+        const label = jsonArrTracker[jsonArrIdx / 2]['label'];
+        debuglog('sendMetricReq setIdx: [' + setIdx + ']  label: [' + label + ']');
+        if (typeof valueSets[setIdx] == 'undefined') {
+          valueSets[setIdx] = {};
+        }
+        if (typeof valueSets[setIdx][label] == 'undefined') {
+          valueSets[setIdx][label] = [];
+        }
+        jsonArrIdx = calcAvg(
+          jsonArrTracker[jsonArrIdx / 2]['begin'],
+          jsonArrTracker[jsonArrIdx / 2]['end'],
+          responses,
+          jsonArrIdx,
+          jsonArrTracker,
+          jsonArrTracker[jsonArrIdx / 2]['numMetricIds'],
+          valueSets[setIdx][label]
+        );
+      }
+    }
+
+    if (thisBegin > thisEnd) {
+      // why not thisBegin > end ?
+      break;
+    }
+  }
+
+  debuglog('sendMetricReq end, jsonArr MB [' + numMBytes(jsonArr) + ']  responses MB [' + numMBytes(responses) + ']');
+  debuglog('sendMetricReq end, lastPass: ' + lastPass);
+};
+
+calcAvg = function (thisBegin, thisEnd, responses, jsonArrIdx, jsonArrTracker, numMetricIds, values) {
+  debuglog('calcAvg start');
+  debuglog(
+    'calcAvg jsonArrIdx: [' +
+      jsonArrIdx +
+      ']  thisBegin: [' +
+      thisBegin +
+      ']  thisEnd: [' +
+      thisEnd +
+      ']  numMetricIds: [' +
+      numMetricIds +
+      ']'
+  );
+
+  var timeWindowDuration = thisEnd - thisBegin + 1;
+  var totalWeightTimesMetrics = timeWindowDuration * numMetricIds;
+  var aggAvg;
+  var aggWeight;
+  var aggAvgTimesWeight;
+  var newWeight;
+  debuglog('calcAvg responses[' + jsonArrIdx / 2 + ']:' + JSON.stringify(responses[jsonArrIdx / 2], null, 2));
+  aggAvg = responses[jsonArrIdx / 2].aggregations.metric_avg.value;
+  if (typeof aggAvg != 'undefined') {
+    // We have the weighted average for documents that don't overlap the time range,
+    // but we need to combine that with the documents that are partially outside
+    // the time range.  We need to know the total weight from the documents we
+    // just finished in order to add the new documents and recompute the new weighted
+    // average.
+    aggWeight = responses[jsonArrIdx / 2 + 1].aggregations.total_weight.value;
+    aggAvgTimesWeight = aggAvg * aggWeight;
+  } else {
+    // It is possible that the aggregation returned no results because all of the documents
+    // were partially outside the time domain.  This can happen when
+    //  1) A  metric does not change during the entire test, and therefore only 1 document
+    //  is created with a huge duration with begin before the time range and after after the
+    //  time range.
+    //  2) The time domain we have is really small because the resolution we are using is
+    //  very big.
+    //
+    //  In eithr case, we have to set the average and total_weight to 0, and then the
+    //  recompuation of the weighted average [with the last two requests in this set, finding
+    //  all of th docs that are partially in the time domain] will work.
+    aggAvg = 0;
+    aggWeight = 0;
+    aggAvgTimesWeight = 0;
+  }
+
+  // Process the remaining responses in the 'set'.  These are typically 2 or more documents.
+  // Since these docs have a time range partially outside the time range we want,
+  // we have to get a new, reduced duration and use that to agment our weighted average.
+  var sumValueTimesWeight = 0;
+  var sumWeight = 0;
+  // It is possible to have the same document returned from these remaining queries.
+  // This can happen when the document's begin is before $this_begin *and* the document's end
+  // if after $this_end.
+  // You must not process the document twice.  Perform a consolidation by organizing by the
+  //  returned document's '_id'
+  var partialDocs = {};
+  var k;
+  delete responses[jsonArrIdx / 2];
+  delete responses[jsonArrIdx / 2 + 1];
+  delete jsonArrTracker[jsonArrIdx / 2];
+  delete jsonArrTracker[jsonArrIdx / 2 + 1];
+  jsonArrIdx += 4; //advance to the non-aggreation responses
+  // There can be 1 to many multiples of 2 of these types of responses here.
+  // We know these type of responses have ended when the next response does
+  // have an aggregation in it.
+  while (jsonArrIdx / 2 < responses.length && !Object.keys(responses[jsonArrIdx / 2]).includes('aggregations')) {
+    if (responses[jsonArrIdx / 2].hits.total.value !== responses[jsonArrIdx / 2].hits.hits.length) {
+      console.log(
+        'WARNING! getMetricDataFromIdsSets() responses[' +
+          (jsonArrIdx / 2 + k) +
+          '].hits.total.value (' +
+          responses[jsonArrIdx / 2].hits.total.value +
+          ') and responses[' +
+          jsonArrIdx / 2 +
+          '].hits.hits.length (' +
+          responses[jsonArrIdx / 2].hits.hits.length +
+          ') are not equal, which means the retured data is probably incomplete'
+      );
+    }
+    responses[jsonArrIdx / 2].hits.hits.forEach((element) => {
+      partialDocs[element._id] = {};
+      Object.keys(element._source.metric_data).forEach((key) => {
+        partialDocs[element._id][key] = element._source.metric_data[key];
+      });
+    });
+    delete responses[jsonArrIdx / 2];
+    delete jsonArrTracker[jsonArrIdx / 2];
+    jsonArrIdx += 2;
+  }
+  // Now we can process the partialDocs
+  Object.keys(partialDocs).forEach((id) => {
+    //var docDuration = partialDocs[id].duration;
+    var docDuration = partialDocs[id].end - partialDocs[id].begin;
+    if (partialDocs[id].begin < thisBegin) {
+      docDuration -= thisBegin - partialDocs[id].begin;
+    }
+    if (partialDocs[id].end > thisEnd) {
+      docDuration -= partialDocs[id].end - thisEnd;
+    }
+    var valueTimesWeight = partialDocs[id].value * docDuration;
+    sumValueTimesWeight += valueTimesWeight;
+    sumWeight += docDuration;
+  });
+  var result = (aggAvgTimesWeight + sumValueTimesWeight) / totalWeightTimesMetrics;
+  result *= numMetricIds;
+  var dataSample = {};
+  dataSample.begin = thisBegin;
+  dataSample.end = thisEnd;
+  dataSample.value = result;
+  values.push(dataSample);
+
+  return jsonArrIdx;
+};
+
 // From a set of metric_desc ID's, return 1 or more values depending on resolution.
 // For each metric ID, there should be exactly 1 metric_desc doc and at least 1 metric_data docs.
 // A metric_data doc has a 'value', a 'begin' timestamp, and and 'end' timestamp (also a
@@ -2430,287 +2944,74 @@ exports.getMetricGroupsFromBreakout = getMetricGroupsFromBreakout;
 // function is called with begin=5 and end=1005, and there are 2 metric_data documents [having the same
 // metric_id in metricIds], and their respective (begin,end) are (0,500) and (501,2000),
 // then there are enough metric_data documents to compute the results.
-getMetricDataFromIdsSets = async function (instance, sets, metricGroupIdsByLabelSets) {
-  var jsonArr = [];
-  for (var idx = 0; idx < metricGroupIdsByLabelSets.length; idx++) {
-    Object.keys(metricGroupIdsByLabelSets[idx])
-      .sort()
-      .forEach(function (label) {
-        var metricIds = metricGroupIdsByLabelSets[idx][label];
-        if (typeof sets[idx].begin == 'undefined') {
-          console.log('ERROR: sets.[' + idx + '].begin is not defined:\n' + JSON.stringify(sets[idx]), null, 2);
-          process.exit(1);
-        }
-        var begin = Number(sets[idx].begin);
-        if (isNaN(begin)) {
-          console.log('ERROR: begin is not defined');
-          process.exit(1);
-        }
-        if (typeof sets[idx].end == 'undefined') {
-          console.log('ERROR: sets.[' + idx + '].end is not defined');
-          process.exit(1);
-        }
-        var end = Number(sets[idx].end);
-        var resolution = Number(sets[idx].resolution);
-        var duration = Math.floor((end - begin) / resolution);
-        var thisBegin = begin;
-        var thisEnd = begin + duration;
-        // The resolution determines how many times we compute a value, each value for a
-        // different "slice" in the original begin-to-end time domain.
-        while (true) {
-          // Calculating a single value representing an average for thisBegin - thisEnd
-          // relies on an [weighted average] aggregation, plus a few other queries.  An
-          // alternative method would involve querying all documents for the orignal
-          // begin - end time range, then [locally] computing a weighted average per
-          // thisBegin - thisEnd slice. Each method has pros/cons depending on the
-          // resolution and the total number of metric_data documents.
-          //
-          // This first request is for the weighted average, but does not include the
-          // documents which are partially outside the time range we need.
-          indexjson = '{"index": "' + getIndexName('metric_data', instance) + '" }\n';
-          reqjson = '{';
-          reqjson += '  "size": 0,';
-          reqjson += '  "query": {';
-          reqjson += '    "bool": {';
-          reqjson += '      "filter": [';
-          reqjson += '        {"range": {"metric_data.end": { "lte": "' + thisEnd + '"}}},';
-          reqjson += '        {"range": {"metric_data.begin": { "gte": "' + thisBegin + '"}}},';
-          reqjson += '        {"terms": {"metric_desc.metric_desc-uuid": ' + JSON.stringify(metricIds) + '}}';
-          reqjson += '      ]';
-          reqjson += '    }';
-          reqjson += '  },';
-          reqjson += '  "aggs": {';
-          reqjson += '    "metric_avg": {';
-          reqjson += '      "weighted_avg": {';
-          reqjson += '        "value": {';
-          reqjson += '          "field": "metric_data.value"';
-          reqjson += '        },';
-          reqjson += '        "weight": {';
-          reqjson += '          "field": "metric_data.duration"';
-          reqjson += '        }';
-          reqjson += '      }';
-          reqjson += '    }';
-          reqjson += '  }';
-          reqjson += '}';
-          var index = JSON.parse(indexjson);
-          var req = JSON.parse(reqjson);
-          jsonArr.push(JSON.stringify(index));
-          jsonArr.push(JSON.stringify(req));
-          // This second request is for the total weight of the previous weighted average request.
-          // We need this because we are going to recompute the weighted average by adding
-          // a few more documents that are partially outside the time domain.
-          indexjson = '{"index": "' + getIndexName('metric_data', instance) + '" }\n';
-          reqjson = '{';
-          reqjson += '  "size": 0,';
-          reqjson += '  "query": {';
-          reqjson += '    "bool": {';
-          reqjson += '      "filter": [';
-          reqjson += '        {"range": {"metric_data.end": { "lte": "' + thisEnd + '"}}},';
-          reqjson += '        {"range": {"metric_data.begin": { "gte": "' + thisBegin + '"}}},';
-          reqjson += '        {"terms": {"metric_desc.metric_desc-uuid": ' + JSON.stringify(metricIds) + '}}';
-          reqjson += '      ]';
-          reqjson += '    }';
-          reqjson += '  },';
-          reqjson += '  "aggs": {';
-          reqjson += '    "total_weight": {';
-          reqjson += '      "sum": {"field": "metric_data.duration"}';
-          reqjson += '    }';
-          reqjson += '  }';
-          reqjson += '}\n';
-          index = JSON.parse(indexjson);
-          req = JSON.parse(reqjson);
-          jsonArr.push(JSON.stringify(index));
-          jsonArr.push(JSON.stringify(req));
-          // This third request is for documents that had its begin during or before the time range, but
-          // its end was after the time range.
-          indexjson = '{"index": "' + getIndexName('metric_data', instance) + '" }\n';
-          reqjson = '{';
-          reqjson += '  "size": ' + bigQuerySize + ',';
-          reqjson += '  "query": {';
-          reqjson += '    "bool": {';
-          reqjson += '      "filter": [';
-          reqjson += '        {"range": {"metric_data.end": { "gt": "' + thisEnd + '"}}},';
-          reqjson += '        {"range": {"metric_data.begin": { "lte": "' + thisEnd + '"}}},';
-          reqjson += '        {"terms": {"metric_desc.metric_desc-uuid": ' + JSON.stringify(metricIds) + '}}\n';
-          reqjson += '      ]';
-          reqjson += '    }';
-          reqjson += '  }';
-          reqjson += '}';
-          index = JSON.parse(indexjson);
-          req = JSON.parse(reqjson);
-          jsonArr.push(JSON.stringify(index));
-          jsonArr.push(JSON.stringify(req));
-          // This fourth request is for documents that had its begin before the time range, but
-          //  its end was during or after the time range
-          var indexjson = '{"index": "' + getIndexName('metric_data', instance) + '" }\n';
-          var reqjson = '';
-          reqjson += '{';
-          reqjson += '  "size": ' + bigQuerySize + ',';
-          reqjson += '  "query": {';
-          reqjson += '    "bool": {';
-          reqjson += '      "filter": [';
-          reqjson += '        {"range": {"metric_data.end": { "gte": ' + thisBegin + '}}},';
-          reqjson += '        {"range": {"metric_data.begin": { "lt": ' + thisBegin + '}}},';
-          reqjson += '        {"terms": {"metric_desc.metric_desc-uuid": ' + JSON.stringify(metricIds) + '}}\n';
-          reqjson += '      ]';
-          reqjson += '    }';
-          reqjson += '  }';
-          reqjson += '}\n';
-          index = JSON.parse(indexjson);
-          req = JSON.parse(reqjson);
-          jsonArr.push(JSON.stringify(index));
-          jsonArr.push(JSON.stringify(req));
-
-          // Cycle through every "slice" of the time domain, adding the requests for the entire time domain
-          thisBegin = thisEnd + 1;
-          thisEnd += duration + 1;
-          if (thisEnd > end) {
-            thisEnd = end;
-          }
-          if (thisBegin > thisEnd) {
-            break;
-          }
-        }
-      });
-  }
-
-  var responses = await esJsonArrRequest(instance, 'metric_data', '/_msearch', jsonArr);
-  var elements = responses.length;
-
+getMetricDataFromIdsSets = async function (instance, sets, metricGroupIdsByLabelSets, yearDotMonth) {
+  var jsonArr = []; // What is used to submit metric query requests in bulk
+  var jsonArrTracker = []; // Detailed iInfo (set, label, begin, end) about each element in jsonArr
+  var jsonArrIdx = 0; // Index of next element in jsonArr that needs its response processed
+  var responses = []; // Ordered responses for jsonArr
   var valueSets = [];
+  var reqSize = 0;
   var count = 0;
   for (var idx = 0; idx < metricGroupIdsByLabelSets.length; idx++) {
-    thisSetElements = elements / metricGroupIdsByLabelSets.length;
-    var valuesByLabel = {};
-    Object.keys(metricGroupIdsByLabelSets[idx])
-      .sort()
-      .forEach(function (label) {
-        valuesByLabel[label] = [];
-        thisLabelElements = metricGroupIdsByLabelSets[idx][label].length;
-        var metricIds = metricGroupIdsByLabelSets[idx][label];
-        var values = [];
-        var begin = Number(sets[idx].begin);
-        var end = Number(sets[idx].end);
-        var resolution = Number(sets[idx].resolution);
-        var duration = Math.floor((end - begin) / resolution);
-        var thisBegin = begin;
-        var thisEnd = begin + duration;
-        var subCount = 0;
-        //var elements = data.responses.length / metricGroupIdsByLabelSets.length;
-        var numMetricIds = metricIds.length;
-        while (true) {
-          var timeWindowDuration = thisEnd - thisBegin + 1;
-          var totalWeightTimesMetrics = timeWindowDuration * numMetricIds;
-          subCount++;
-          var aggAvg;
-          var aggWeight;
-          var aggAvgTimesWeight;
-          var newWeight;
-          aggAvg = responses[count].aggregations.metric_avg.value; //$$resp_ref{'responses'}[$count]{'aggregations'}{'metric_avg'}{'value'};
-          if (typeof aggAvg != 'undefined') {
-            // We have the weighted average for documents that don't overlap the time range,
-            // but we need to combine that with the documents that are partially outside
-            // the time range.  We need to know the total weight from the documents we
-            // just finished in order to add the new documents and recompute the new weighted
-            // average.
-            aggWeight = responses[count + 1].aggregations.total_weight.value;
-            aggAvgTimesWeight = aggAvg * aggWeight;
-          } else {
-            // It is possible that the aggregation returned no results because all of the documents
-            // were partially outside the time domain.  This can happen when
-            //  1) A  metric does not change during the entire test, and therefore only 1 document
-            //  is created with a huge duration with begin before the time range and after after the
-            //  time range.
-            //  2) The time domain we have is really small because the resolution we are using is
-            //  very big.
-            //
-            //  In eithr case, we have to set the average and total_weight to 0, and then the
-            //  recompuation of the weighted average [with the last two requests in this set, finding
-            //  all of th docs that are partially in the time domain] will work.
-            aggAvg = 0;
-            aggWeight = 0;
-            aggAvgTimesWeight = 0;
-          }
+    const sortedKeys = Object.keys(metricGroupIdsByLabelSets[idx]).sort();
+    for (var k = 0; k < sortedKeys.length; k++) {
+      const label = sortedKeys[k];
+      debuglog('label: [' + label + ']');
+      var metricIds = metricGroupIdsByLabelSets[idx][label];
+      if (typeof sets[idx].begin == 'undefined') {
+        console.log('ERROR: sets.[' + idx + '].begin is not defined:\n' + JSON.stringify(sets[idx]), null, 2);
+        process.exit(1);
+      }
+      var begin = Number(sets[idx].begin);
+      if (isNaN(begin)) {
+        console.log('ERROR: begin is not defined');
+        process.exit(1);
+      }
+      if (typeof sets[idx].end == 'undefined') {
+        console.log('ERROR: sets.[' + idx + '].end is not defined');
+        process.exit(1);
+      }
+      var end = Number(sets[idx].end);
+      var resolution = Number(sets[idx].resolution);
+      var duration = Math.floor((end - begin) / resolution);
 
-          // Process last 2 of the 4 responses in the 'set'
-          // Since these docs have a time range partially outside the time range we want,
-          // we have to get a new, reduced duration and use that to agment our weighted average.
-          var sumValueTimesWeight = 0;
-          var sumWeight = 0;
-          // It is possible to have the same document returned from the last two queries in this set of 4.
-          // This can happen when the document's begin is before $this_begin *and* the document's end
-          // if after $this_end.
-          // You must not process the document twice.  Perform a consolidation by organizing by the
-          //  returned document's '_id'
-          var partialDocs = {};
-          var k;
-          for (k = 2; k < 4; k++) {
-            //for my $j (@{ $$resp_ref{'responses'}[$count + $k]{'hits'}{'hits'} }) {
-            if (responses[count + k].hits.total.value !== responses[count + k].hits.hits.length) {
-              console.log(
-                'WARNING! getMetricDataFromIdsSets() responses[' +
-                  (count + k) +
-                  '].hits.total.value (' +
-                  responses[count + k].hits.total.value +
-                  ') and responses[' +
-                  (count + k) +
-                  '].hits.hits.length (' +
-                  responses[count + k].hits.hits.length +
-                  ') are not equal, which means the retured data is probably incomplete'
-              );
-            }
-            responses[count + k].hits.hits.forEach((element) => {
-              //for my $key (keys %{ $$j{'_source'}{'metric_data'} }) {
-              partialDocs[element._id] = {};
-              Object.keys(element._source.metric_data).forEach((key) => {
-                //partial_docs[{$$j{'_id'}}{$key} = $$j{'_source'}{'metric_data'}{$key};
-                partialDocs[element._id][key] = element._source.metric_data[key];
-              });
-            });
-          }
-          // Now we can process the partialDocs
-          Object.keys(partialDocs).forEach((id) => {
-            var docDuration = partialDocs[id].duration;
-            if (partialDocs[id].begin < thisBegin) {
-              docDuration -= thisBegin - partialDocs[id].begin;
-            }
-            if (partialDocs[id].end > thisEnd) {
-              docDuration -= partialDocs[id].end - thisEnd;
-            }
-            var valueTimesWeight = partialDocs[id].value * docDuration;
-            sumValueTimesWeight += valueTimesWeight;
-            sumWeight += docDuration;
-          });
-          var result = (aggAvgTimesWeight + sumValueTimesWeight) / totalWeightTimesMetrics;
-          result *= numMetricIds;
-          //result = Number.parseFloat(result).toPrecision(4);
-          var dataSample = {};
-          dataSample.begin = thisBegin;
-          dataSample.end = thisEnd;
-          dataSample.value = result;
-          values.push(dataSample);
-
-          count += 4; // Bumps count to the next set of responses
-
-          // Cycle through every "slice" of the time domain, adding the requests for the entire time domain
-          thisBegin = thisEnd + 1;
-          thisEnd += duration + 1;
-          if (thisEnd > end) {
-            thisEnd = end;
-          }
-          if (thisBegin > thisEnd) {
-            break;
-          }
-        }
-        valuesByLabel[label] = values;
-      });
-    valueSets[idx] = valuesByLabel;
+      const lastPass = idx + 1 >= metricGroupIdsByLabelSets.length && k + 1 >= sortedKeys.length;
+      await sendMetricReq(
+        jsonArr,
+        jsonArrTracker,
+        jsonArrIdx,
+        responses,
+        valueSets,
+        idx,
+        label,
+        lastPass,
+        instance,
+        begin,
+        end,
+        resolution,
+        metricIds,
+        yearDotMonth
+      );
+    }
   }
   return valueSets;
 };
+
 exports.getMetricDataFromIdsSets = getMetricDataFromIdsSets;
 
-getMetricData = async function (instance, runId, periId, source, type, begin, end, resolution, breakout, filter) {
+getMetricData = async function (
+  instance,
+  runId,
+  periId,
+  source,
+  type,
+  begin,
+  end,
+  resolution,
+  breakout,
+  filter,
+  yearDotMonth
+) {
   var sets = [];
   var thisSet = {
     run: runId,
@@ -2724,7 +3025,7 @@ getMetricData = async function (instance, runId, periId, source, type, begin, en
     filter: filter
   };
   sets.push(thisSet);
-  var dataSets = await getMetricDataSets(instance, sets);
+  var dataSets = await getMetricDataSets(instance, sets, yearDotMonth);
   return dataSets[0];
 };
 exports.getMetricData = getMetricData;
@@ -2741,7 +3042,7 @@ exports.getMetricData = getMetricData;
 //   from this [benchmark-iteration-sample-]period (from doc which contains the periId)
 //   *if* the metric is from a benchmark.  If you want to query for corresponding
 //   tool data, use the same begin and end as the benchmark-iteration-sample-period.
-getMetricDataSets = async function (instance, sets) {
+getMetricDataSets = async function (instance, sets, yearDotMonth) {
   for (var i = 0; i < sets.length; i++) {
     // If a begin and end are not defined, get it from the period.begin & period.end.
     // If a begin and/or end are not defined, and the period is not defined, error out.
@@ -2749,7 +3050,8 @@ getMetricDataSets = async function (instance, sets) {
     // If a run and period are not defined, error out.
     if (typeof sets[i].run == 'undefined') {
       if (typeof sets[i].period != 'undefined') {
-        sets[i].run = await getRunFromPeriod(instance, sets[i].period);
+        console.log('getRunFromPeriod');
+        sets[i].run = await getRunFromPeriod(instance, sets[i].period, yearDotMonth);
       } else {
         console.log('ERROR: run and period was not defined');
       }
@@ -2757,7 +3059,7 @@ getMetricDataSets = async function (instance, sets) {
     var periodRange;
     if (typeof sets[i].begin == 'undefined') {
       if (typeof sets[i].period != 'undefined') {
-        periodRange = await getPeriodRange(instance, sets[i].period);
+        periodRange = await getPeriodRange(instance, sets[i].period, yearDotMonth);
         sets[i]['begin'] = periodRange['begin'];
       } else {
         console.log('ERROR: begin is not defined and a period was not defined');
@@ -2766,7 +3068,7 @@ getMetricDataSets = async function (instance, sets) {
     if (typeof sets[i].end == 'undefined') {
       if (typeof sets[i].period != 'undefined') {
         if (typeof periodRange == 'undefined') {
-          periodRange = await getPeriodRange(instance, sets[i].period);
+          periodRange = await getPeriodRange(instance, sets[i].period, yearDotMonth);
         }
         sets[i].end = periodRange.end;
       } else {
@@ -2791,8 +3093,8 @@ getMetricDataSets = async function (instance, sets) {
     delete sets[i].period;
   }
 
-  var metricGroupIdsByLabelSets = await getMetricGroupsFromBreakouts(instance, sets);
-  var dataSets = await getMetricDataFromIdsSets(instance, sets, metricGroupIdsByLabelSets);
+  var metricGroupIdsByLabelSets = await getMetricGroupsFromBreakouts(instance, sets, yearDotMonth);
+  var dataSets = await getMetricDataFromIdsSets(instance, sets, metricGroupIdsByLabelSets, yearDotMonth);
 
   if (dataSets.length != sets.length) {
     console.log(
@@ -2814,7 +3116,7 @@ getMetricDataSets = async function (instance, sets) {
     sources[i] = sets[i].source;
     types[i] = sets[i].type;
   }
-  var setBreakouts = await mgetMetricNames(instance, runIds, sources, types);
+  var setBreakouts = await mgetMetricNames(instance, runIds, sources, types, yearDotMonth);
 
   for (var i = 0; i < sets.length; i++) {
     // Rearrange the actual data into 'values' section
@@ -2868,7 +3170,7 @@ getMetricDataSets = async function (instance, sets) {
 };
 exports.getMetricDataSets = getMetricDataSets;
 
-async function waitForDeletedDocs(instance, runId, docTypes) {
+async function waitForDeletedDocs(instance, runId, docTypes, yearDotMonth) {
   var numAttempts = 1;
   var maxAttempts = 30;
   var remainingDocTypes = docTypes;
@@ -2884,7 +3186,7 @@ async function waitForDeletedDocs(instance, runId, docTypes) {
     totalDocCount = 0;
     docWaitStr = '';
     for (let i = 0; i < docTypes.length; i++) {
-      var thisNumDocs = getDocCount(instance, runId, docTypes[i]);
+      var thisNumDocs = getDocCount(instance, runId, docTypes[i], yearDotMonth);
       if (thisNumDocs > 0) {
         //console.log('  ' + docTypes[i] + ': doc count: ' + thisNumDocs);
         docWaitStr += '  ' + docTypes[i] + ': doc count: ' + thisNumDocs + '\n';

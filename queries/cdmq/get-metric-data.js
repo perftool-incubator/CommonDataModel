@@ -110,12 +110,21 @@ async function main() {
   }
 
   getInstancesInfo(instances);
-  var instance = await findInstanceFromPeriod(instances, program.period);
-  if (typeof instance == 'undefined') {
-    console.log('None of the instances provided were valid, so going to abort');
+  var yearDotMonth;
+  var instance;
+  if (program.run != null) {
+    instance = await findInstanceFromRun(instances, program.run);
+  } else if (program.period != null) {
+    instance = await findInstanceFromPeriod(instances, program.period);
+    // We don't yet know the yearDotMonth, so use wildcard to query all period indices
+    program.run = await getRunFromPeriod(instance, program.period, '@*');
+  } else {
     process.exit(1);
   }
-
+  if (typeof instance == 'undefined') {
+    process.exit(1);
+  }
+  var yearDotMonth = await findYearDotMonthFromRun(instance, program.run);
   metric_data = await cdm.getMetricData(
     instance,
     program.run,
@@ -126,7 +135,8 @@ async function main() {
     program.end,
     program.resolution,
     program.breakout,
-    program.filter
+    program.filter,
+    yearDotMonth
   );
 
   if (Object.keys(metric_data.values).length == 0) {
