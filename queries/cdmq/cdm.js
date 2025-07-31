@@ -9,7 +9,7 @@ const docTypes = {
 };
 const supportedCdmVersions = Object.keys(docTypes);
 exports.supportedCdmVersions = supportedCdmVersions;
-const debugOut = 1;
+const debugOut = 0;
 const indexSettings = {
   number_of_shards: 1,
   number_of_replicas: 1, // even on clusters?
@@ -331,11 +331,11 @@ indexDefs['v9dev']['metric_data'] = JSON.parse(JSON.stringify(indexDefs['v8dev']
 
 function memUsage() {
   const memUsage = process.memoryUsage();
-  console.log({
-    rss: `${Math.round(memUsage.rss / 1024 / 1024)} MB`,           // Resident Set Size
+  debuglog({
+    rss: `${Math.round(memUsage.rss / 1024 / 1024)} MB`, // Resident Set Size
     heapTotal: `${Math.round(memUsage.heapTotal / 1024 / 1024)} MB`, // Total heap size
-    heapUsed: `${Math.round(memUsage.heapUsed / 1024 / 1024)} MB`,   // Used heap size
-    external: `${Math.round(memUsage.external / 1024 / 1024)} MB`    // External memory
+    heapUsed: `${Math.round(memUsage.heapUsed / 1024 / 1024)} MB`, // Used heap size
+    external: `${Math.round(memUsage.external / 1024 / 1024)} MB` // External memory
   });
 }
 
@@ -344,7 +344,7 @@ function numMBytes(a, str) {
   a.forEach((element) => {
     totalBytes += JSON.stringify(element).length;
   });
-  var mb = totalBytes/1024/1024;
+  var mb = totalBytes / 1024 / 1024;
   return mb;
 }
 
@@ -608,12 +608,11 @@ esJsonArrRequest = async function (instance, docType, action, jsonArr, yearDotMo
   //debuglog('esJsonArrRequest begin: yearDotMonth: ' + yearDotMonth);
   debuglog('esJsonArrRequest jsonArr.length: ' + jsonArr.length);
   memUsage();
-  debuglog("jsonArr MB at beginning of esJsonArrRequest: " + numMBytes(jsonArr));
+  debuglog('jsonArr MB at beginning of esJsonArrRequest: ' + numMBytes(jsonArr));
 
   //if (jsonArr.length > 500) {
-    //process.exit(1);
+  //process.exit(1);
   //}
-
 
   var thisJson = '';
   var url = '';
@@ -633,8 +632,8 @@ esJsonArrRequest = async function (instance, docType, action, jsonArr, yearDotMo
   var allResponses = [];
   // Process queries in chunks no larger than 'max' chars
   while (idx < jsonArr.length) {
-
-    while (reqs.length < 64 && idx < jsonArr.length) { // Limit size in order to not exhaust heap
+    while (reqs.length < 64 && idx < jsonArr.length) {
+      // Limit size in order to not exhaust heap
       // Add the first request (2 lines) even if it exceeds our limit (we don't really have a choice)
       // The limit we have is likely much lower than what can be handled, but if this becomes a
       // problem, we'll have to look at either an alternate way to submit a huge request, or we will
@@ -671,23 +670,22 @@ esJsonArrRequest = async function (instance, docType, action, jsonArr, yearDotMo
     var responses = await fetchBatchedData(instance, reqs);
     reqs = [];
 
-    debuglog("esJsonArrRequest jsonArr MB: " + numMBytes(jsonArr));
-    debuglog("esJsonArrRequest responses MB: " + numMBytes(responses));
+    debuglog('esJsonArrRequest jsonArr MB: ' + numMBytes(jsonArr));
+    debuglog('esJsonArrRequest responses MB: ' + numMBytes(responses));
     memUsage();
-
 
     allResponses.push(...responses);
     responses = [];
 
-    debuglog("esJsonArrRequest responses MB after clearing: " + numMBytes(responses));
+    debuglog('esJsonArrRequest responses MB after clearing: ' + numMBytes(responses));
     memUsage();
-  };
+  }
 
-  debuglog("iesJsonArrRequest allResponses " + numMBytes(allResponses));
+  debuglog('iesJsonArrRequest allResponses ' + numMBytes(allResponses));
 
   debuglog('esJsonArrRequest end');
   return allResponses;
-}
+};
 exports.esJsonArrRequest = esJsonArrRequest;
 
 function esRequest(instance, docType, action, q, yearDotMonth) {
@@ -2579,9 +2577,32 @@ getMetricGroupsFromBreakout = async function (instance, runId, periId, source, t
 };
 exports.getMetricGroupsFromBreakout = getMetricGroupsFromBreakout;
 
-sendMetricReq = async function (jsonArr, jsonArrTracker, jsonArrIdx, responses, valueSets, set, label, lastPass, instance, begin, end, resolution, metricIds, yearDotMonth) {
-  debuglog("sendMetricReq begin");
-  debuglog("sendMetricReq, jsonArr MB [" + numMBytes(jsonArr) + "]  responses MB [" + numMBytes(responses) + "]  jsonArrIdx: [" + jsonArrIdx + "]");
+sendMetricReq = async function (
+  jsonArr,
+  jsonArrTracker,
+  jsonArrIdx,
+  responses,
+  valueSets,
+  set,
+  label,
+  lastPass,
+  instance,
+  begin,
+  end,
+  resolution,
+  metricIds,
+  yearDotMonth
+) {
+  debuglog('sendMetricReq begin');
+  debuglog(
+    'sendMetricReq, jsonArr MB [' +
+      numMBytes(jsonArr) +
+      ']  responses MB [' +
+      numMBytes(responses) +
+      ']  jsonArrIdx: [' +
+      jsonArrIdx +
+      ']'
+  );
 
   // When jsonArr goes over this, submit the requests we have so far, so we can
   // get responses and delete these reqs from jsonArr and process and delete the
@@ -2642,7 +2663,7 @@ sendMetricReq = async function (jsonArr, jsonArrTracker, jsonArrIdx, responses, 
     var req = JSON.parse(reqjson);
     jsonArr.push(JSON.stringify(index));
     jsonArr.push(JSON.stringify(req));
-    jsonArrTracker.push({'label': label, 'set': set, 'begin': thisBegin, 'end': thisEnd, 'numMetricIds': metricIds.length});
+    jsonArrTracker.push({ label: label, set: set, begin: thisBegin, end: thisEnd, numMetricIds: metricIds.length });
     // This second request is for the total weight of the previous weighted average request.
     // We need this because we are going to recompute the weighted average by adding
     // a few more documents that are partially outside the time domain.
@@ -2727,8 +2748,8 @@ sendMetricReq = async function (jsonArr, jsonArrTracker, jsonArrIdx, responses, 
       jsonArrTracker.push({});
     }
 
-    console.log("jsonArrTracker.length: " + jsonArrTracker.length);
-    console.log("jsonArrTracker right before begin and end are updated: " + JSON.stringify(jsonArrTracker, null, 2));
+    debuglog('jsonArrTracker.length: ' + jsonArrTracker.length);
+    debuglog('jsonArrTracker right before begin and end are updated: ' + JSON.stringify(jsonArrTracker, null, 2));
 
     // Cycle through every "slice" of the time domain, adding the requests for the entire time domain
     thisBegin = thisEnd + 1;
@@ -2745,11 +2766,11 @@ sendMetricReq = async function (jsonArr, jsonArrTracker, jsonArrIdx, responses, 
     //    This is the final call to sendMetricReq() and on the final data-point,
     //    so this is the last opportunity to submit the request.
     if (numMBytes(jsonArr) > chunkMBytes || (thisBegin > thisEnd && lastPass)) {
-      debuglog("sendMetricReq jsonArr size MB: " + numMBytes(jsonArr));
-      debuglog("sendMetricReq responses size MB: " + numMBytes(responses));
+      debuglog('sendMetricReq jsonArr size MB: ' + numMBytes(jsonArr));
+      debuglog('sendMetricReq responses size MB: ' + numMBytes(responses));
       const theseResponses = await esJsonArrRequest(instance, 'metric_data', '/_msearch', jsonArr, yearDotMonth);
       responses.push(...theseResponses);
-      jsonArr.length = 0;  // No longer needed since we have the response; Deleting to save memory.
+      jsonArr.length = 0; // No longer needed since we have the response; Deleting to save memory.
 
       // Now that there are some responses available, we process those so we can also delete the data
       // in the reeponses array.  The elements in the responses array can get very big relative
@@ -2757,13 +2778,13 @@ sendMetricReq = async function (jsonArr, jsonArrTracker, jsonArrIdx, responses, 
       // Note: the number of elements on responses should be exaclty half the number of
       // elements in jsonArr, because each request in the jsonArr uses one entry for the index
       // and another entry for the query, which generates a single entry in the responses array.
-      console.log("sendMetricReq jsonArrTracker.length:" + jsonArrTracker.length);
-      console.log("sendMetricReq jsonArrTracker:" + JSON.stringify(jsonArrTracker, null, 2));
-      console.log("jsonArrIdx:" + jsonArrIdx);
-      while (jsonArrIdx < (responses.length * 2)) {
-        const setIdx = jsonArrTracker[jsonArrIdx/2]['set'];
-        const label = jsonArrTracker[jsonArrIdx/2]['label'];
-        console.log("sendMetricReq setIdx: [" + setIdx + "]  label: [" + label + "]");
+      debuglog('sendMetricReq jsonArrTracker.length:' + jsonArrTracker.length);
+      debuglog('sendMetricReq jsonArrTracker:' + JSON.stringify(jsonArrTracker, null, 2));
+      debuglog('jsonArrIdx:' + jsonArrIdx);
+      while (jsonArrIdx < responses.length * 2) {
+        const setIdx = jsonArrTracker[jsonArrIdx / 2]['set'];
+        const label = jsonArrTracker[jsonArrIdx / 2]['label'];
+        debuglog('sendMetricReq setIdx: [' + setIdx + ']  label: [' + label + ']');
         if (typeof valueSets[setIdx] == 'undefined') {
           valueSets[setIdx] = {};
         }
@@ -2771,28 +2792,40 @@ sendMetricReq = async function (jsonArr, jsonArrTracker, jsonArrIdx, responses, 
           valueSets[setIdx][label] = [];
         }
         jsonArrIdx = calcAvg(
-          jsonArrTracker[jsonArrIdx/2]['begin'],
-          jsonArrTracker[jsonArrIdx/2]['end'],
+          jsonArrTracker[jsonArrIdx / 2]['begin'],
+          jsonArrTracker[jsonArrIdx / 2]['end'],
           responses,
           jsonArrIdx,
           jsonArrTracker,
-          jsonArrTracker[jsonArrIdx/2]['numMetricIds'],
-          valueSets[setIdx][label]);
+          jsonArrTracker[jsonArrIdx / 2]['numMetricIds'],
+          valueSets[setIdx][label]
+        );
       }
     }
 
-    if (thisBegin > thisEnd) {  // why not thisBegin > end ?
+    if (thisBegin > thisEnd) {
+      // why not thisBegin > end ?
       break;
     }
   }
 
-  debuglog("sendMetricReq end, jsonArr MB [" + numMBytes(jsonArr) + "]  responses MB [" + numMBytes(responses) + "]");
-  debuglog("sendMetricReq end, lastPass: " + lastPass);
-}
+  debuglog('sendMetricReq end, jsonArr MB [' + numMBytes(jsonArr) + ']  responses MB [' + numMBytes(responses) + ']');
+  debuglog('sendMetricReq end, lastPass: ' + lastPass);
+};
 
 calcAvg = function (thisBegin, thisEnd, responses, jsonArrIdx, jsonArrTracker, numMetricIds, values) {
-  debuglog("calcAvg start");
-  debuglog("calcAvg jsonArrIdx: [" + jsonArrIdx + "]  thisBegin: [" + thisBegin + "]  thisEnd: [" + thisEnd + "]  numMetricIds: [" + numMetricIds + "]");
+  debuglog('calcAvg start');
+  debuglog(
+    'calcAvg jsonArrIdx: [' +
+      jsonArrIdx +
+      ']  thisBegin: [' +
+      thisBegin +
+      ']  thisEnd: [' +
+      thisEnd +
+      ']  numMetricIds: [' +
+      numMetricIds +
+      ']'
+  );
 
   var timeWindowDuration = thisEnd - thisBegin + 1;
   var totalWeightTimesMetrics = timeWindowDuration * numMetricIds;
@@ -2800,15 +2833,15 @@ calcAvg = function (thisBegin, thisEnd, responses, jsonArrIdx, jsonArrTracker, n
   var aggWeight;
   var aggAvgTimesWeight;
   var newWeight;
-  debuglog("calcAvg responses[" + (jsonArrIdx/2) + "]:" + JSON.stringify(responses[jsonArrIdx/2], null, 2));
-  aggAvg = responses[jsonArrIdx/2].aggregations.metric_avg.value;
+  debuglog('calcAvg responses[' + jsonArrIdx / 2 + ']:' + JSON.stringify(responses[jsonArrIdx / 2], null, 2));
+  aggAvg = responses[jsonArrIdx / 2].aggregations.metric_avg.value;
   if (typeof aggAvg != 'undefined') {
     // We have the weighted average for documents that don't overlap the time range,
     // but we need to combine that with the documents that are partially outside
     // the time range.  We need to know the total weight from the documents we
     // just finished in order to add the new documents and recompute the new weighted
     // average.
-    aggWeight = responses[jsonArrIdx/2 + 1].aggregations.total_weight.value;
+    aggWeight = responses[jsonArrIdx / 2 + 1].aggregations.total_weight.value;
     aggAvgTimesWeight = aggAvg * aggWeight;
   } else {
     // It is possible that the aggregation returned no results because all of the documents
@@ -2839,42 +2872,42 @@ calcAvg = function (thisBegin, thisEnd, responses, jsonArrIdx, jsonArrTracker, n
   //  returned document's '_id'
   var partialDocs = {};
   var k;
-  delete responses[jsonArrIdx/2];
-  delete responses[jsonArrIdx/2 + 1];
-  delete jsonArrTracker[jsonArrIdx/2];
-  delete jsonArrTracker[jsonArrIdx/2+1];
+  delete responses[jsonArrIdx / 2];
+  delete responses[jsonArrIdx / 2 + 1];
+  delete jsonArrTracker[jsonArrIdx / 2];
+  delete jsonArrTracker[jsonArrIdx / 2 + 1];
   jsonArrIdx += 4; //advance to the non-aggreation responses
   // There can be 1 to many multiples of 2 of these types of responses here.
   // We know these type of responses have ended when the next response does
   // have an aggregation in it.
-  while (jsonArrIdx/2 < responses.length && !Object.keys(responses[jsonArrIdx/2]).includes('aggregations')) {
-    if (responses[jsonArrIdx/2].hits.total.value !== responses[jsonArrIdx/2].hits.hits.length) {
+  while (jsonArrIdx / 2 < responses.length && !Object.keys(responses[jsonArrIdx / 2]).includes('aggregations')) {
+    if (responses[jsonArrIdx / 2].hits.total.value !== responses[jsonArrIdx / 2].hits.hits.length) {
       console.log(
         'WARNING! getMetricDataFromIdsSets() responses[' +
-          (jsonArrIdx/2 + k) +
+          (jsonArrIdx / 2 + k) +
           '].hits.total.value (' +
-          responses[jsonArrIdx/2].hits.total.value +
+          responses[jsonArrIdx / 2].hits.total.value +
           ') and responses[' +
-          jsonArrIdx/2 +
+          jsonArrIdx / 2 +
           '].hits.hits.length (' +
-          responses[jsonArrIdx/2].hits.hits.length +
+          responses[jsonArrIdx / 2].hits.hits.length +
           ') are not equal, which means the retured data is probably incomplete'
       );
     }
-    responses[jsonArrIdx/2].hits.hits.forEach((element) => {
+    responses[jsonArrIdx / 2].hits.hits.forEach((element) => {
       partialDocs[element._id] = {};
       Object.keys(element._source.metric_data).forEach((key) => {
         partialDocs[element._id][key] = element._source.metric_data[key];
       });
     });
-    delete responses[jsonArrIdx/2];
-    delete jsonArrTracker[jsonArrIdx/2];
+    delete responses[jsonArrIdx / 2];
+    delete jsonArrTracker[jsonArrIdx / 2];
     jsonArrIdx += 2;
   }
   // Now we can process the partialDocs
   Object.keys(partialDocs).forEach((id) => {
     //var docDuration = partialDocs[id].duration;
-    var docDuration = partialDocs[id].end - partialDocs[id].begin;;
+    var docDuration = partialDocs[id].end - partialDocs[id].begin;
     if (partialDocs[id].begin < thisBegin) {
       docDuration -= thisBegin - partialDocs[id].begin;
     }
@@ -2894,7 +2927,7 @@ calcAvg = function (thisBegin, thisEnd, responses, jsonArrIdx, jsonArrTracker, n
   values.push(dataSample);
 
   return jsonArrIdx;
-}
+};
 
 // From a set of metric_desc ID's, return 1 or more values depending on resolution.
 // For each metric ID, there should be exactly 1 metric_desc doc and at least 1 metric_data docs.
@@ -2919,7 +2952,7 @@ getMetricDataFromIdsSets = async function (instance, sets, metricGroupIdsByLabel
     const sortedKeys = Object.keys(metricGroupIdsByLabelSets[idx]).sort();
     for (var k = 0; k < sortedKeys.length; k++) {
       const label = sortedKeys[k];
-      console.log("label: " + label);
+      debuglog('label: [' + label + ']');
       var metricIds = metricGroupIdsByLabelSets[idx][label];
       if (typeof sets[idx].begin == 'undefined') {
         console.log('ERROR: sets.[' + idx + '].begin is not defined:\n' + JSON.stringify(sets[idx]), null, 2);
@@ -2938,12 +2971,27 @@ getMetricDataFromIdsSets = async function (instance, sets, metricGroupIdsByLabel
       var resolution = Number(sets[idx].resolution);
       var duration = Math.floor((end - begin) / resolution);
 
-      const lastPass = ((idx + 1) >= metricGroupIdsByLabelSets.length && (k + 1) >= sortedKeys.length);
-      await sendMetricReq(jsonArr, jsonArrTracker, jsonArrIdx, responses, valueSets, idx, label, lastPass, instance, begin, end, resolution, metricIds, yearDotMonth);
+      const lastPass = idx + 1 >= metricGroupIdsByLabelSets.length && k + 1 >= sortedKeys.length;
+      await sendMetricReq(
+        jsonArr,
+        jsonArrTracker,
+        jsonArrIdx,
+        responses,
+        valueSets,
+        idx,
+        label,
+        lastPass,
+        instance,
+        begin,
+        end,
+        resolution,
+        metricIds,
+        yearDotMonth
+      );
     }
   }
   return valueSets;
-}
+};
 
 exports.getMetricDataFromIdsSets = getMetricDataFromIdsSets;
 
