@@ -338,6 +338,7 @@ function memUsage() {
     external: `${Math.round(memUsage.external / 1024 / 1024)} MB` // External memory
   });
 }
+exports.memUsage = memUsage;
 
 function numMBytes(a, str) {
   var totalBytes = 0;

@@ -115,13 +115,7 @@ async function processDir(instance, dir, mode) {
     } catch (error) {
       console.error('Error processing NDJSON.XZ file:', error);
     }
-    const usage = process.memoryUsage();
-    debuglog('Memory Breakdown after processing ' + filePath);
-    debuglog(`RSS (Resident Set Size): ${Math.round(usage.rss / 1024 / 1024)} MB`);
-    debuglog(`Heap Total: ${Math.round(usage.heapTotal / 1024 / 1024)} MB`);
-    debuglog(`Heap Used: ${Math.round(usage.heapUsed / 1024 / 1024)} MB`);
-    debuglog(`External: ${Math.round(usage.external / 1024 / 1024)} MB`);
-    debuglog(`Array Buffers: ${Math.round(usage.arrayBuffers / 1024 / 1024)} MB`);
+    cdm.memUsage();
 
     // After so much data is accumulated or at the last file, index what we have then clear the array.
     if (jsonArr.length > 4000000 || i == xzFiles.length) {
