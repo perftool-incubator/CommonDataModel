@@ -41,7 +41,7 @@ function save_ver(ver) {
 
 // Read an xz file and decompress to string
 async function decompressXzFile(filename) {
-  debuglog("decompressXzFile: reading " + filename);
+  debuglog('decompressXzFile: reading ' + filename);
   // Create a readable stream from file
   const fileStream = Readable.toWeb(fs.createReadStream(filename));
 
@@ -83,7 +83,7 @@ async function processDir(instance, dir, mode) {
           ': After reading ' +
           (i + 1) +
           ' of ' +
-          (xzFiles.length) +
+          xzFiles.length +
           ' files, going to process ' +
           jsonArr.length +
           ' lines'
