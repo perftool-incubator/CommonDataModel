@@ -41,6 +41,7 @@ function save_ver(ver) {
 
 // Read an xz file and decompress to string
 async function decompressXzFile(filename) {
+  debuglog('decompressXzFile: reading ' + filename);
   // Create a readable stream from file
   const fileStream = Readable.toWeb(fs.createReadStream(filename));
 
@@ -52,47 +53,6 @@ async function decompressXzFile(filename) {
   return text;
 }
 
-async function readNdjsonXzToString(filePath) {
-  return new Promise((resolve, reject) => {
-    try {
-      const fileStream = fs.createReadStream(filePath, {
-        highWaterMark: 5 * 1024 * 1024
-      });
-      const decompressStream = new xz.Decompressor();
-
-      let decompressedString = '';
-
-      fileStream.pipe(decompressStream);
-
-      decompressStream.on('data', (chunk) => {
-        decompressedString += chunk.toString('utf8');
-      });
-
-      decompressStream.on('end', () => {
-        fileStream.destroy();
-        resolve(decompressedString);
-      });
-
-      decompressStream.on('error', (error) => {
-        fileStream.destroy();
-        reject(error);
-      });
-
-      fileStream.on('error', (error) => {
-        fileStream.destroy();
-        reject(error);
-      });
-    } catch (error) {
-      reject(error);
-    } /*finally {
-      // Always cleanup, regardless of success or failure
-      if (fileStream && !fileStream.destroyed) {
-        fileStream.destroy();
-      }
-    }*/
-  });
-}
-
 async function processDir(instance, dir, mode) {
   const jsonArr = [];
   const info = { runIds: {} };
@@ -101,7 +61,6 @@ async function processDir(instance, dir, mode) {
   const xzFiles = allFiles.filter((item) => regExp.test(item));
 
   for (var i = 0; i < xzFiles.length; i++) {
-    const regExp = /\.ndjson\.xz$/;
     const filePath = path.join(program.dir, xzFiles[i]);
     try {
       const decompressedData = await decompressXzFile(filePath);
@@ -118,13 +77,13 @@ async function processDir(instance, dir, mode) {
     cdm.memUsage();
 
     // After so much data is accumulated or at the last file, index what we have then clear the array.
-    if (jsonArr.length > 4000000 || i == xzFiles.length) {
+    if (jsonArr.length > 4000000 || i + 1 == xzFiles.length) {
       console.log(
         mode +
           ': After reading ' +
-          i +
+          (i + 1) +
           ' of ' +
-          (xzFiles.length + 1) +
+          xzFiles.length +
           ' files, going to process ' +
           jsonArr.length +
           ' lines'
