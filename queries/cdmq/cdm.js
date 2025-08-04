@@ -407,8 +407,9 @@ checkCreateIndex = function (instance, index) {
   var resp = request('PUT', url, { headers: instance['header'], body: JSON.stringify(indexDefs[cdmVer][docType]) });
   var data = JSON.parse(resp.getBody());
   debuglog('response:::\n' + JSON.stringify(data, null, 2));
+  console.log("instance:\n" + JSON.stringify(instance, null, 2));
   if (!Object.keys(instance['indices']).includes(cdmVer)) {
-    instance['indices'][cdmver] = [];
+    instance['indices'][cdmVer] = [];
   }
   instance['indices'][cdmVer].push(index);
   //TODO: query opensearch to verify index is present
@@ -1275,7 +1276,7 @@ invalidInstance = function (instance) {
     return true;
   }
   if (!Object.keys(instance['indices']).includes(instance['ver'])) {
-    console.log(
+    debuglog(
       'invalidInstance(): Not using instance ' +
         instance['host'] +
         ' becasue the cdm version requested [' +
@@ -1298,6 +1299,9 @@ findYearDotMonthFromRun = async function (instance, runId) {
   var q = { query: { bool: { filter: [{ term: { 'run.run-uuid': runId } }] } } };
   var resp = esRequest(instance, 'run', '/_search', q, '@*');
   var data = JSON.parse(resp.getBody());
+  if (data['hits']['hits'].length == 0) {
+    return null;
+  }
   var index = data['hits']['hits'][0]['_index'];
   var regExp = /(@\d\d\d\d\.\d\d)$/;
   var matches = regExp.exec(index);
@@ -1318,7 +1322,7 @@ findInstanceFromRun = async function (instances, runId) {
     debuglog('findInstanceFromRun(): about to call getIterations()');
     var result = await getIterations(instance, runId, '@*');
     debuglog('findInstanceFromRun(): returned from calling getIterations()');
-    if (typeof result != 'undefined') {
+    if (typeof result != 'undefined' && result.length > 0) {
       debuglog('found valid instance: ' + JSON.stringify(instance, null, 2));
       foundInstance = instance;
       break;
