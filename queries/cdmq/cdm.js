@@ -407,7 +407,7 @@ checkCreateIndex = function (instance, index) {
   var resp = request('PUT', url, { headers: instance['header'], body: JSON.stringify(indexDefs[cdmVer][docType]) });
   var data = JSON.parse(resp.getBody());
   debuglog('response:::\n' + JSON.stringify(data, null, 2));
-  console.log("instance:\n" + JSON.stringify(instance, null, 2));
+  console.log('instance:\n' + JSON.stringify(instance, null, 2));
   if (!Object.keys(instance['indices']).includes(cdmVer)) {
     instance['indices'][cdmVer] = [];
   }

@@ -121,7 +121,7 @@ async function main() {
     var thisRun = {};
     const runId = runIds[runIdx];
     var instance = await findInstanceFromRun(instances, runId);
-    console.log("from Opensearch instance [" + instance['host'] + "/" + instance['ver'] + "]");
+    console.log('\nFrom Opensearch instance: ' + instance['host'] + ' and cdm: ' + instance['ver']);
     var yearDotMonth = await findYearDotMonthFromRun(instance, runId);
     logOutput('\nrun-id: ' + runId, program.outputFormat);
     thisRun['run-id'] = runId;
