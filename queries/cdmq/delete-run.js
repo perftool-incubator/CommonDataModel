@@ -48,7 +48,6 @@ getInstancesInfo(instances);
 
 async function main() {
   var allDocTypes = ['run', 'iteration', 'sample', 'period', 'param', 'tag', 'metric_desc', 'metric_data'];
-  var q = {};
 
   if (instances.length == 0) {
     console.log('You must provide at least one --host <host>');
@@ -56,20 +55,39 @@ async function main() {
   }
 
   if (program.run) {
-    q = { query: { bool: { filter: [{ term: { 'run.run-uuid': program.run } }] } } };
     // When deleting, you must use exactly one instance, so we use the last provided.
     // We don't want to search for an instance with this run, because we don't want
     // to delete just any copy of this run.
-    //
+    const instance = instances[instances.length - 1];
+    if (instances.length > 1) {
+      console.log('WARNING: only using the last --host option and ignoring previous --host options');
+    }
+    const foundInstance = await findInstanceFromRun([instance], program.run);
+    if (foundInstance == null) {
+      console.log(
+        'ERROR: could not find run in Opensearch instance: ' + instance['host'] + ' and cdm: ' + instance['ver']
+      );
+      process.exit(1);
+    }
     // In order to delete, we must first find out which year and date the run comes from
-    const yearDotMonth = cdm.findYearDotMonthFromRun(instances[instances.length - 1], program.run);
-    cdm.deleteDocs(instances[instances.length - 1], allDocTypes, q);
-    var numDocTypes = await cdm.waitForDeletedDocs(instances[instances.length - 1], program.run, allDocTypes);
+    const yearDotMonth = await cdm.findYearDotMonthFromRun(instance, program.run);
+    if (yearDotMonth == null) {
+      console.log(
+        'ERROR: could not find run in Opensearch instance: ' + instance['host'] + ' and cdm: ' + instance['ver']
+      );
+      process.exit(1);
+    }
+    console.log('Deleting any existing documents for run ID ' + program.run);
+    console.log('from Opensearch instance: ' + instance['host'] + ' and cdm: ' + instance['ver'] + '\n');
+    const q = { query: { bool: { filter: [{ term: { 'run.run-uuid': program.run } }] } } };
+    cdm.deleteDocs(instance, allDocTypes, q, yearDotMonth);
+    const numDocTypes = await cdm.waitForDeletedDocs(instance, program.run, allDocTypes, yearDotMonth);
     if (numDocTypes > 0) {
       console.log('Warning: could not delete all documents for ' + docTypes + ' with ' + numAttempts);
       console.log(
         'These documents may continue to be deleted in the background.  To check on the status, run this utility again'
       );
+      process.exit(1);
     }
   } else {
     console.log('You must provide a --run <run-id>');

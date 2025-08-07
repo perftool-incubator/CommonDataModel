@@ -114,8 +114,18 @@ async function main() {
   var instance;
   if (program.run != null) {
     instance = await findInstanceFromRun(instances, program.run);
+    console.log('instance: ' + JSON.stringify(instance, null, 2));
   } else if (program.period != null) {
     instance = await findInstanceFromPeriod(instances, program.period);
+    if (instance == null) {
+      console.log(
+        'Could not find period ID ' +
+          program.period +
+          ' in any of the Opensearch instances:\n' +
+          JSON.stringify(instances, null, 2)
+      );
+      process.exit(1);
+    }
     // We don't yet know the yearDotMonth, so use wildcard to query all period indices
     program.run = await getRunFromPeriod(instance, program.period, '@*');
   } else {
@@ -143,6 +153,8 @@ async function main() {
     console.log('There were no metrics found, exiting');
     process.exit(1);
   }
+
+  console.log('\nFrom Opensearch instance: ' + instance['host'] + ' and cdm: ' + instance['ver'] + '\n');
 
   if (program.outputFormat == 'json') {
     console.log(JSON.stringify(metric_data, null, 2));
