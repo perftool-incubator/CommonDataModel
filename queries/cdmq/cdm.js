@@ -7,6 +7,7 @@ const docTypes = {
   v8dev: ['run', 'tag', 'iteration', 'param', 'sample', 'period', 'metric_desc', 'metric_data'],
   v9dev: ['run', 'tag', 'iteration', 'param', 'sample', 'period', 'metric_desc', 'metric_data', 'metric_def']
 };
+exports.docTypes = docTypes;
 const supportedCdmVersions = Object.keys(docTypes);
 exports.supportedCdmVersions = supportedCdmVersions;
 const debugOut = 0;
@@ -407,7 +408,6 @@ checkCreateIndex = function (instance, index) {
   var resp = request('PUT', url, { headers: instance['header'], body: JSON.stringify(indexDefs[cdmVer][docType]) });
   var data = JSON.parse(resp.getBody());
   debuglog('response:::\n' + JSON.stringify(data, null, 2));
-  console.log('instance:\n' + JSON.stringify(instance, null, 2));
   if (!Object.keys(instance['indices']).includes(cdmVer)) {
     instance['indices'][cdmVer] = [];
   }
@@ -3173,6 +3173,42 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
   return dataSets;
 };
 exports.getMetricDataSets = getMetricDataSets;
+
+async function waitForIndexedDocs(instance, runId, docTypeCounts, yearDotMonth) {
+  var numAttempts = 1;
+  var maxAttempts = 30;
+  var remainingDocTypes = Object.keys(docTypeCounts);
+  var interval = 3;
+  while (numAttempts <= maxAttempts && remainingDocTypes.length > 0) {
+    let promise = new Promise((resolve, reject) => {
+      setTimeout(() => resolve('done!'), interval * 1000);
+    });
+    let result = await promise;
+
+    docWaitStr = '';
+    const cdmVer = instance['ver'];
+    for (let i = 0; i < remainingDocTypes.length; i++) {
+      const docType = remainingDocTypes[i];
+      var thisNumDocs = getDocCount(instance, runId, docType, yearDotMonth);
+      if (thisNumDocs < docTypeCounts[docType]) {
+        docWaitStr +=
+          '  ' +
+          docType +
+          ': indexed [so far] doc count: ' +
+          thisNumDocs +
+          '  expected doc count: ' +
+          docTypeCounts[docType] +
+          '\n';
+      }
+      if (thisNumDocs == docTypeCounts[docType]) {
+        remainingDocTypes = remainingDocTypes.filter((val) => val !== remainingDocTypes[i]);
+      }
+    }
+    numAttempts++;
+  }
+  return remainingDocTypes.lenth;
+}
+exports.waitForIndexedDocs = waitForIndexedDocs;
 
 async function waitForDeletedDocs(instance, runId, docTypes, yearDotMonth) {
   var numAttempts = 1;
