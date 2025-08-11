@@ -274,9 +274,8 @@ async function main() {
       const end = Date.now() / 1000;
       console.log('Time (seconds) to submit all documents for indexing: ' + (end - begin));
       console.log('Waiting for submitted documents to be present in Opensearch');
-      cdm.waitForIndexedDocs(instance, runId, docTypeCounts, info['runIds'][runId]['yearDotMonth'])
+      cdm.waitForIndexedDocs(instance, runId, docTypeCounts, info['runIds'][runId]['yearDotMonth']);
       console.log('Submitted documents are present in Opensearch');
-
     }
   } else {
     console.log('You must provide a --dir <directory with ndjsons>');

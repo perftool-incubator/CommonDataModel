@@ -3191,7 +3191,14 @@ async function waitForIndexedDocs(instance, runId, docTypeCounts, yearDotMonth) 
       const docType = remainingDocTypes[i];
       var thisNumDocs = getDocCount(instance, runId, docType, yearDotMonth);
       if (thisNumDocs < docTypeCounts[docType]) {
-        docWaitStr += '  ' + docType + ': indexed [so far] doc count: ' + thisNumDocs + '  expected doc count: ' + docTypeCounts[docType] + '\n';
+        docWaitStr +=
+          '  ' +
+          docType +
+          ': indexed [so far] doc count: ' +
+          thisNumDocs +
+          '  expected doc count: ' +
+          docTypeCounts[docType] +
+          '\n';
       }
       if (thisNumDocs == docTypeCounts[docType]) {
         remainingDocTypes = remainingDocTypes.filter((val) => val !== remainingDocTypes[i]);
