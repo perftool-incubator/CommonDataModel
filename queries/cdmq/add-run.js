@@ -53,13 +53,18 @@ async function decompressXzFile(filename) {
   return text;
 }
 
-async function processDir(instance, dir, mode) {
+async function processDir(instance, dir, docTypes, mode) {
   const jsonArr = [];
   const info = { runIds: {} };
   const allFiles = fs.readdirSync(dir);
   const regExp = /\.ndjson\.xz$/;
   const xzFiles = allFiles.filter((item) => regExp.test(item));
-
+  var docTypeCounts = {};
+  if (mode == 'index') {
+    for (var x = 0; x < docTypes.length; x++) {
+      docTypeCounts[docTypes[x]] = 0;
+    }
+  }
   for (var i = 0; i < xzFiles.length; i++) {
     const filePath = path.join(program.dir, xzFiles[i]);
     try {
@@ -69,6 +74,14 @@ async function processDir(instance, dir, mode) {
         // TODO: validate JSON syntax and possible validate document schema?
         if (lines[j] != '') {
           jsonArr.push(lines[j]);
+        }
+        if (mode == 'index' && j % 2 == 0) {
+          const indexRegExp = /.+_index\":\s+\"cdm(-){0,1}v\d+dev-([^@]+)/;
+          const matches = indexRegExp.exec(lines[j]);
+          if (matches) {
+            const docType = matches[2];
+            docTypeCounts[docType]++;
+          }
         }
       }
     } catch (error) {
@@ -169,6 +182,9 @@ async function processDir(instance, dir, mode) {
   if (mode == 'getinfo') {
     return info;
   }
+  if (mode == 'index') {
+    return docTypeCounts;
+  }
 }
 
 async function main() {
@@ -191,7 +207,7 @@ async function main() {
   const instance = instances[instances.length - 1];
   if (program.dir) {
     const allDocTypes = ['run', 'iteration', 'sample', 'period', 'param', 'tag', 'metric_desc', 'metric_data'];
-    const info = await processDir(instance, program.dir, 'getinfo');
+    const info = await processDir(instance, program.dir, null, 'getinfo');
     //  The cdmVer going forward must be set based on the data found in the ndjson files.
     //  We cannot rely on automatic detection of cdmVer based on what is present in the instance
     //  because the instance may contain only cdmVer that is different from the *new* data we are adding.
@@ -207,7 +223,7 @@ async function main() {
         if (!cdm.supportedCdmVersions.includes(cdmVer)) {
           console.log(
             'ERROR: the CDM version found in the documents to be indexed [' +
-              cdmver +
+              cdmVer +
               '] is not included in the list of supported CDM versions [' +
               cdm.supportedCdmVersions +
               ']'
@@ -254,9 +270,13 @@ async function main() {
       }
       const begin = Date.now() / 1000;
       console.log('Indexing documents');
-      await processDir(instance, program.dir, 'index');
+      const docTypeCounts = await processDir(instance, program.dir, cdm.docTypes[cdmVer], 'index');
       const end = Date.now() / 1000;
       console.log('Time (seconds) to submit all documents for indexing: ' + (end - begin));
+      console.log('Waiting for submitted documents to be present in Opensearch');
+      cdm.waitForIndexedDocs(instance, runId, docTypeCounts, info['runIds'][runId]['yearDotMonth'])
+      console.log('Submitted documents are present in Opensearch');
+
     }
   } else {
     console.log('You must provide a --dir <directory with ndjsons>');
