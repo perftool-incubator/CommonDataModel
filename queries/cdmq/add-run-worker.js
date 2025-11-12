@@ -19,7 +19,7 @@ async function decompressXzFile(filename) {
   return text;
 }
 
-module.exports = async ({instance, filePath, docTypes, mode}) => {
+module.exports = async ({ instance, filePath, docTypes, mode }) => {
   const maxLength = 4000000;
   const jsonArr = [];
   const info = { runIds: {} };
@@ -31,7 +31,7 @@ module.exports = async ({instance, filePath, docTypes, mode}) => {
     }
   }
   try {
-    debuglog("Attempting to open [" + filePath + "]");
+    debuglog('Attempting to open [' + filePath + ']');
     const decompressedData = await decompressXzFile(filePath);
     const lines = decompressedData.split('\n');
     for (var j = 0; j < lines.length; j++) {
@@ -51,7 +51,6 @@ module.exports = async ({instance, filePath, docTypes, mode}) => {
   } catch (error) {
     console.error('Error processing NDJSON.XZ file:', error);
   }
-
 
   if (mode == 'index') {
     // The final argument for esJsonArrRequest, 'yearDotMonth', is not
@@ -97,9 +96,7 @@ module.exports = async ({instance, filePath, docTypes, mode}) => {
             info['runIds'][runId]['indices'][cdmVer] = [];
           }
           if (!info['runIds'][runId]['indices'][cdmVer].includes(indexName)) {
-            debuglog(
-              'going to add indexname to info[runIds][' + runId + '][indices][' + cdmVer + ']: ' + indexName
-            );
+            debuglog('going to add indexname to info[runIds][' + runId + '][indices][' + cdmVer + ']: ' + indexName);
             info['runIds'][runId]['indices'][cdmVer].push(indexName);
           }
           if (yearDotMonth != '') {
@@ -131,5 +128,4 @@ module.exports = async ({instance, filePath, docTypes, mode}) => {
   if (mode == 'index') {
     return docTypeCounts;
   }
-}
-
+};

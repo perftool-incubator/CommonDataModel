@@ -70,15 +70,18 @@ async function processDir(instance, dir, docTypes, mode) {
 
   // Process all files in parallel
   const results = await Promise.all(
-    filePaths.map(filePath => pool.run({
-      instance: instance,
-      filePath: filePath,
-      docTypes: docTypes,
-      mode: mode }))
+    filePaths.map((filePath) =>
+      pool.run({
+        instance: instance,
+        filePath: filePath,
+        docTypes: docTypes,
+        mode: mode
+      })
+    )
   );
 
   await pool.destroy();
-  debuglog("thread pool completed");
+  debuglog('thread pool completed');
 
   if (mode == 'getinfo') {
     // 1. Custom function using Set for uniqueness
@@ -91,7 +94,7 @@ async function processDir(instance, dir, docTypes, mode) {
       arrayMerge: uniqueArrayMerge
     };
     const info = merge.all(results, options);
-    debuglog("info: " + JSON.stringify(info, null, 2));
+    debuglog('info: ' + JSON.stringify(info, null, 2));
     return info;
   } else {
     //Aggregate the counted indexed docs
@@ -105,7 +108,7 @@ async function processDir(instance, dir, docTypes, mode) {
         docTypeCounts[docTypes[x]] += results[i][docTypes[x]];
       }
     }
-    debuglog("docTypeCounts:\n" + JSON.stringify(docTypeCounts, null, 2));
+    debuglog('docTypeCounts:\n' + JSON.stringify(docTypeCounts, null, 2));
     return docTypeCounts;
   }
 }
@@ -137,7 +140,7 @@ async function main() {
     //
     //  Also, the cdm version is embedded in this new data that will be indexed.  It is not possible
     //  (without significant effort) to index data already in one cdm version to another [directly].
-    debuglog("returned: " + JSON.stringify(info, null, 2));
+    debuglog('returned: ' + JSON.stringify(info, null, 2));
     const runIds = Object.keys(info['runIds']);
     for (var runIdx = 0; runIdx < runIds.length; runIdx++) {
       const runId = runIds[runIdx];
