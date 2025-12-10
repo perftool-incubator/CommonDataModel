@@ -439,6 +439,8 @@ exports.checkCreateIndex = checkCreateIndex;
 
 // --------------------------------------------------------------------------------------------------------------
 function getDocType(index) {
+  var retMsg = '';
+  var retCode = 0;
   const resp = getCdmVerFromIndex(index);
   if (resp['ret-code'] != 0) {
     retMsg = 'ERROR: calling getCdmVerFromIndex returned ' + resp.ret - msg;
