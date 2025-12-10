@@ -114,7 +114,15 @@ async function main() {
   var instance;
   if (program.run != null) {
     instance = await findInstanceFromRun(instances, program.run);
-    console.log('instance: ' + JSON.stringify(instance, null, 2));
+    if (instance == null) {
+      console.log(
+        'Could not find run ID ' +
+          program.period +
+          ' in any of the Opensearch instances:\n' +
+          JSON.stringify(instances, null, 2)
+      );
+      process.exit(1);
+    }
   } else if (program.period != null) {
     instance = await findInstanceFromPeriod(instances, program.period);
     if (instance == null) {
@@ -129,25 +137,27 @@ async function main() {
     // We don't yet know the yearDotMonth, so use wildcard to query all period indices
     program.run = await getRunFromPeriod(instance, program.period, '@*');
   } else {
-    process.exit(1);
-  }
-  if (typeof instance == 'undefined') {
+    console.log("Exiting because neither a period nor a run ID were provided");
     process.exit(1);
   }
   var yearDotMonth = await findYearDotMonthFromRun(instance, program.run);
-  metric_data = await cdm.getMetricData(
-    instance,
-    program.run,
-    program.period,
-    program.source,
-    program.type,
-    program.begin,
-    program.end,
-    program.resolution,
-    program.breakout,
-    program.filter,
-    yearDotMonth
-  );
+  var set = {
+    run: program.run,
+    period: program.period,
+    source: program.source,
+    type: program.type,
+    begin: program.begin,
+    end: program.end,
+    resolution: program.resolution,
+    breakout: program.breakout,
+    filter: program.filter
+  };
+  var resp = metric_data = await cdm.getMetricDataSets(instance, [set], yearDotMonth);
+    if (resp['ret-code'] != 0) {
+      console.log("Exiting: " + resp['ret-msg']);
+      process.exit(1);
+    }
+  metric_data = resp['data-sets'][0];
 
   if (Object.keys(metric_data.values).length == 0) {
     console.log('There were no metrics found, exiting');
