@@ -137,7 +137,7 @@ async function main() {
     // We don't yet know the yearDotMonth, so use wildcard to query all period indices
     program.run = await getRunFromPeriod(instance, program.period, '@*');
   } else {
-    console.log("Exiting because neither a period nor a run ID were provided");
+    console.log('Exiting because neither a period nor a run ID were provided');
     process.exit(1);
   }
   var yearDotMonth = await findYearDotMonthFromRun(instance, program.run);
@@ -152,11 +152,11 @@ async function main() {
     breakout: program.breakout,
     filter: program.filter
   };
-  var resp = metric_data = await cdm.getMetricDataSets(instance, [set], yearDotMonth);
-    if (resp['ret-code'] != 0) {
-      console.log("Exiting: " + resp['ret-msg']);
-      process.exit(1);
-    }
+  var resp = (metric_data = await cdm.getMetricDataSets(instance, [set], yearDotMonth));
+  if (resp['ret-code'] != 0) {
+    console.log('Exiting: ' + resp['ret-msg']);
+    process.exit(1);
+  }
   metric_data = resp['data-sets'][0];
 
   if (Object.keys(metric_data.values).length == 0) {

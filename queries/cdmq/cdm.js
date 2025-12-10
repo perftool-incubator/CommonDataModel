@@ -330,7 +330,6 @@ indexDefs['v8dev']['metric_data']['mappings']['properties']['metric_data'] = {
 };
 indexDefs['v9dev']['metric_data'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['metric_data']));
 
-
 // --------------------------------------------------------------------------------------------------------------
 function memUsage() {
   const memUsage = process.memoryUsage();
@@ -343,7 +342,6 @@ function memUsage() {
 }
 exports.memUsage = memUsage;
 
-
 // --------------------------------------------------------------------------------------------------------------
 function numMBytes(a, str) {
   var totalBytes = 0;
@@ -354,12 +352,10 @@ function numMBytes(a, str) {
   return mb;
 }
 
-
 // --------------------------------------------------------------------------------------------------------------
 function getCdmVer(instance) {
   return instance['ver'];
 }
-
 
 // --------------------------------------------------------------------------------------------------------------
 debuglog = function (str) {
@@ -368,7 +364,6 @@ debuglog = function (str) {
   }
 };
 exports.debuglog = debuglog;
-
 
 // --------------------------------------------------------------------------------------------------------------
 getCdmVerFromIndex = function (index) {
@@ -382,9 +377,8 @@ getCdmVerFromIndex = function (index) {
     retMsg = 'ERROR: index [' + index + '] is not recognized';
     retCode = 1;
   }
-  return {'cdm-ver': cdmVer, 'ret-code': retCode, 'ret-msg': retMsg};
+  return { 'cdm-ver': cdmVer, 'ret-code': retCode, 'ret-msg': retMsg };
 };
-
 
 // --------------------------------------------------------------------------------------------------------------
 // cdmv9 adds indices dynamically based on year and month, so
@@ -399,31 +393,31 @@ checkCreateIndex = function (instance, index) {
 
   var resp = getCdmVerFromIndex(index);
   if (resp['ret-code'] != 0) {
-    retMsg = "ERROR: calling getCdmVerFromIndex returned " + resp.ret-msg;
+    retMsg = 'ERROR: calling getCdmVerFromIndex returned ' + resp.ret - msg;
     retCode = 1;
-    return {'ret-code': retCode, 'ret-msg': retMsg}
+    return { 'ret-code': retCode, 'ret-msg': retMsg };
   }
   var cdmVer = resp['cdm-ver'];
 
   if (Object.keys(instance['indices']).includes(cdmVer)) {
     if (instance['indices'][cdmVer].includes(index)) {
       var retMsg = 'INFO: Not going to create index because index already exists';
-      return {'ret-code': retCode, 'ret-msg': retMsg};
+      return { 'ret-code': retCode, 'ret-msg': retMsg };
     }
   }
 
   var regExp = /\*$/;
   var matches = regExp.exec(index);
   if (matches) {
-    retMsg = "INFO: Not going to create index because it includes a wildcard: [" + index + "]";
-    return {'ret-code': retCode, 'ret-msg': retMsg};
+    retMsg = 'INFO: Not going to create index because it includes a wildcard: [' + index + ']';
+    return { 'ret-code': retCode, 'ret-msg': retMsg };
   }
 
   resp = getDocType(index);
   if (resp['ret-code'] != 0) {
-    retMsg = "ERROR: calling getDocType returned " + resp.ret-msg;
+    retMsg = 'ERROR: calling getDocType returned ' + resp.ret - msg;
     retCode = 1;
-    return {'ret-code': retCode, 'ret-msg': retMsg}
+    return { 'ret-code': retCode, 'ret-msg': retMsg };
   }
   var docType = resp['doc-type'];
 
@@ -439,18 +433,17 @@ checkCreateIndex = function (instance, index) {
   instance['indices'][cdmVer].push(index);
   //TODO: query opensearch to verify index is present
   var retMsg = 'INFO: Created index [' + index + ']';
-  return {'ret-code': retCode, 'ret-msg': retMsg};
+  return { 'ret-code': retCode, 'ret-msg': retMsg };
 };
 exports.checkCreateIndex = checkCreateIndex;
-
 
 // --------------------------------------------------------------------------------------------------------------
 function getDocType(index) {
   const resp = getCdmVerFromIndex(index);
   if (resp['ret-code'] != 0) {
-    retMsg = "ERROR: calling getCdmVerFromIndex returned " + resp.ret-msg;
+    retMsg = 'ERROR: calling getCdmVerFromIndex returned ' + resp.ret - msg;
     retCode = 1;
-    return {'ret-code': retCode, 'ret-msg': retMsg}
+    return { 'ret-code': retCode, 'ret-msg': retMsg };
   }
   const cdmVer = resp['cdm-ver'];
 
@@ -464,12 +457,12 @@ function getDocType(index) {
       } else {
         retMsg = 'ERROR: index [' + index + '] does not match a docType: ' + docTypes[cdmVer];
         retCode = 1;
-        return {'ret-code': retCode, 'ret-msg': retMsg}
+        return { 'ret-code': retCode, 'ret-msg': retMsg };
       }
     } else {
       retMsg = 'ERROR: index name [' + index + '] does not match cdmv7/8 format';
       retCode = 2;
-      return {'ret-code': retCode, 'ret-msg': retMsg}
+      return { 'ret-code': retCode, 'ret-msg': retMsg };
     }
   }
 
@@ -479,24 +472,23 @@ function getDocType(index) {
     if (matches) {
       docType = matches[1];
       if (docTypes[cdmVer].includes(docType)) {
-        return {'doc-type': docType, 'ret-code': retCode, 'ret-msg': retMsg};
+        return { 'doc-type': docType, 'ret-code': retCode, 'ret-msg': retMsg };
       } else {
         retMsg = 'ERROR: index [' + index + '] does not match a docType: ' + docTypes[cdmVer];
         retCode = 3;
-        return {'ret-code': retCode, 'ret-msg': retMsg}
+        return { 'ret-code': retCode, 'ret-msg': retMsg };
       }
     } else {
       retMsg = 'ERROR: index name [' + index + '] does not match cdmv9 format';
       retCode = 4;
-      return {'ret-code': retCode, 'ret-msg': retMsg}
+      return { 'ret-code': retCode, 'ret-msg': retMsg };
     }
   }
 
   retMsg = 'ERROR: the cdmVer provided [' + cdmVer + '] is not supported';
   retCode = 4;
-  return {'ret-code': retCode, 'ret-msg': retMsg}
+  return { 'ret-code': retCode, 'ret-msg': retMsg };
 }
-
 
 // --------------------------------------------------------------------------------------------------------------
 function getIndexBaseName(instance) {
@@ -516,7 +508,6 @@ function getIndexBaseName(instance) {
   }
 }
 
-
 // --------------------------------------------------------------------------------------------------------------
 function getIndexName(docType, instance, yearDotMonth) {
   const baseName = getIndexBaseName(instance);
@@ -533,7 +524,6 @@ function getIndexName(docType, instance, yearDotMonth) {
   return fullName;
 }
 
-
 // --------------------------------------------------------------------------------------------------------------
 // Return subtraction of two 1-dimensional arrays
 subtractTwoArrays = function (a1, a2) {
@@ -547,7 +537,6 @@ subtractTwoArrays = function (a1, a2) {
 };
 exports.subtractTwoArrays = subtractTwoArrays;
 
-
 // --------------------------------------------------------------------------------------------------------------
 // Return consolidation (non-repeated values) from value for key 'k' found in array of objects
 function getObjVals(a, k) {
@@ -557,7 +546,6 @@ function getObjVals(a, k) {
   });
   return c;
 }
-
 
 // --------------------------------------------------------------------------------------------------------------
 // Return consolidation (non-repeated values) of a 2-dimensional array
@@ -571,7 +559,6 @@ consolidateAllArrays = function (a) {
   return c;
 };
 exports.consolidateAllArrays = consolidateAllArrays;
-
 
 // --------------------------------------------------------------------------------------------------------------
 // Return intersection of two 1-dimensional arrays
@@ -587,7 +574,6 @@ intersectTwoArrays = function (a1, a2) {
 };
 exports.intersectTwoArrays = intersectTwoArrays;
 
-
 // --------------------------------------------------------------------------------------------------------------
 // Return intersection of many 1-dimensional arrays found in 2-dimensional array
 intersectAllArrays = function (a2D) {
@@ -598,7 +584,6 @@ intersectAllArrays = function (a2D) {
   return intersectArray;
 };
 exports.intersectAllArrays = intersectAllArrays;
-
 
 // --------------------------------------------------------------------------------------------------------------
 async function fetchBatchedData(instance, reqs, batchSize = 16) {
@@ -659,7 +644,6 @@ async function fetchBatchedData(instance, reqs, batchSize = 16) {
   //debuglog('fetchBatchedData() responses.length:' + responses.length);
   return responses;
 }
-
 
 // --------------------------------------------------------------------------------------------------------------
 esJsonArrRequest = async function (instance, docType, action, jsonArr, yearDotMonth) {
@@ -746,7 +730,6 @@ esJsonArrRequest = async function (instance, docType, action, jsonArr, yearDotMo
 };
 exports.esJsonArrRequest = esJsonArrRequest;
 
-
 // --------------------------------------------------------------------------------------------------------------
 function esRequest(instance, docType, action, q, yearDotMonth) {
   // This is the only http request remainig that still uses a sync-request
@@ -763,7 +746,6 @@ function esRequest(instance, docType, action, q, yearDotMonth) {
   });
   return resp;
 }
-
 
 // --------------------------------------------------------------------------------------------------------------
 // mSearch: take a several serach requests and create a ES _msearch
@@ -886,7 +868,6 @@ exports.mSearch = mSearch;
 // but these functions just wrap the value in 2D array for msearch (and a key in a 1D array).  Effectively
 // all query functions use msearch, even if there is a single query.
 
-
 // --------------------------------------------------------------------------------------------------------------
 mgetPrimaryMetric = async function (instance, iterations, yearDotMonth) {
   var metrics = await mSearch(
@@ -907,14 +888,12 @@ mgetPrimaryMetric = async function (instance, iterations, yearDotMonth) {
 };
 exports.mgetPrimaryMetric = mgetPrimaryMetric;
 
-
 // --------------------------------------------------------------------------------------------------------------
 getPrimaryMetric = async function (instance, iteration, yearDotMonth) {
   var primaryMetrics = await mgetPrimaryMetric(instance, [iteration], yearDotMonth);
   return primaryMetrics[0][0];
 };
 exports.getPrimaryMetric = getPrimaryMetric;
-
 
 // --------------------------------------------------------------------------------------------------------------
 mgetPrimaryPeriodName = async function (instance, iterations, yearDotMonth) {
@@ -936,14 +915,12 @@ mgetPrimaryPeriodName = async function (instance, iterations, yearDotMonth) {
 };
 exports.mgetPrimaryPeriodName = mgetPrimaryPeriodName;
 
-
 // --------------------------------------------------------------------------------------------------------------
 getPrimaryPeriodName = async function (instance, iteration, yearDotMonth) {
   var primaryPeriodNames = await mgetPrimaryPeriodName(instance, [iteration], yearDotMonth);
   return primaryPeriodNames[0][0];
 };
 exports.getPrimaryPeriodName = getPrimaryPeriodName;
-
 
 // --------------------------------------------------------------------------------------------------------------
 mgetSamples = async function (instance, iters, yearDotMonth) {
@@ -961,14 +938,12 @@ mgetSamples = async function (instance, iters, yearDotMonth) {
 };
 exports.mgetSamples = mgetSamples;
 
-
 // --------------------------------------------------------------------------------------------------------------
 getSamples = async function (instance, iter, yearDotMonth) {
   var samples = await mgetSamples(instance, [iter], yearDotMonth);
   return samples[0];
 };
 exports.getSamples = getSamples;
-
 
 // --------------------------------------------------------------------------------------------------------------
 // For a specific metric-source and metric-type,
@@ -988,13 +963,11 @@ mgetMetricNames = async function (instance, runIds, sources, types, yearDotMonth
 };
 exports.mgetMetricNames = mgetMetricNames;
 
-
 // --------------------------------------------------------------------------------------------------------------
 getMetricNames = async function (instance, runId, source, type, yearDotMonth) {
   var metricNames = await mgetMetricNames(instance, [runId], [source], [type], yearDotMonth);
   return metricNames[0];
 };
-
 
 // --------------------------------------------------------------------------------------------------------------
 mgetSampleNums = async function (instance, Ids, yearDotMonth) {
@@ -1032,14 +1005,12 @@ mgetSampleNums = async function (instance, Ids, yearDotMonth) {
 };
 exports.mgetSampleNums = mgetSampleNums;
 
-
 // --------------------------------------------------------------------------------------------------------------
 getSampleNum = async function (instance, sampId, yearDotMonth) {
   var sampleNum = await mgetSampleNums(instance, [sampId], yearDotMonth);
   return sampleNums[0][0];
 };
 exports.getSampleNum = getSampleNum;
-
 
 // --------------------------------------------------------------------------------------------------------------
 mgetSampleStatuses = async function (instance, Ids, yearDotMonth) {
@@ -1077,14 +1048,12 @@ mgetSampleStatuses = async function (instance, Ids, yearDotMonth) {
 };
 exports.mgetSampleStatuses = mgetSampleStatuses;
 
-
 // --------------------------------------------------------------------------------------------------------------
 getSampleStatus = async function (instance, sampId) {
   var sampleStatuses = await mgetSampleStatuses(instance, [sampId]);
   return sampleStatuses[0][0];
 };
 exports.getSampleStatus = getSampleStatus;
-
 
 // --------------------------------------------------------------------------------------------------------------
 mgetPrimaryPeriodId = async function (instance, sampIds, periNames, yearDotMonth) {
@@ -1133,14 +1102,12 @@ mgetPrimaryPeriodId = async function (instance, sampIds, periNames, yearDotMonth
 };
 exports.mgetPrimaryPeriodId = mgetPrimaryPeriodId;
 
-
 // --------------------------------------------------------------------------------------------------------------
 getPrimaryPeriodId = async function (instance, sampId, periName) {
   var primaryPeriodIds = await mgetPrimaryPeriodId(instance, [sampId], [periName]);
   return primaryPeriodIds[0][0];
 };
 exports.getPrimaryPeriodId = getPrimaryPeriodId;
-
 
 // --------------------------------------------------------------------------------------------------------------
 mgetPeriodRange = async function (instance, periodIds, yearDotMonth) {
@@ -1179,14 +1146,12 @@ mgetPeriodRange = async function (instance, periodIds, yearDotMonth) {
 };
 exports.mgetPeriodRange = mgetPeriodRange;
 
-
 // --------------------------------------------------------------------------------------------------------------
 getPeriodRange = async function (instance, periId, yearDotMonth) {
   var periodRanges = await mgetPeriodRange(instance, [[periId]], yearDotMonth);
   return periodRanges[0][0];
 };
 exports.getPeriodRange = getPeriodRange;
-
 
 // --------------------------------------------------------------------------------------------------------------
 mgetMetricDescs = async function (instance, runIds, yearDotMonth) {
@@ -1202,14 +1167,12 @@ mgetMetricDescs = async function (instance, runIds, yearDotMonth) {
   );
 };
 
-
 // --------------------------------------------------------------------------------------------------------------
 getMetricDescs = async function (instance, runId) {
   var metricDescs = await mgetMetricDescs(instance, [runId]);
   return metricDescs[0];
 };
 exports.getMetricDescs = getMetricDescs;
-
 
 // --------------------------------------------------------------------------------------------------------------
 mgetMetricDataDocs = async function (instance, metricIds, yearDotMonth) {
@@ -1225,14 +1188,12 @@ mgetMetricDataDocs = async function (instance, metricIds, yearDotMonth) {
   );
 };
 
-
 // --------------------------------------------------------------------------------------------------------------
 getMetricDataDocs = async function (instance, metricId) {
   var metricDataDocs = await mgetMetricDataDocs(instance, [metricId]);
   return await mgetMetricDataDocs(instance, [metricId])[0];
 };
 exports.getMetricDataDocs = getMetricDataDocs;
-
 
 // --------------------------------------------------------------------------------------------------------------
 mgetMetricSources = async function (instance, runIds, yearDotMonth) {
@@ -1249,7 +1210,6 @@ mgetMetricSources = async function (instance, runIds, yearDotMonth) {
 };
 exports.mgetMetricSources = mgetMetricSources;
 
-
 // --------------------------------------------------------------------------------------------------------------
 mgetMetricTypes = async function (instance, runIds, metricSources, yearDotMonth) {
   return await mSearch(
@@ -1264,7 +1224,6 @@ mgetMetricTypes = async function (instance, runIds, metricSources, yearDotMonth)
   );
 };
 exports.mgetMetricTypes = mgetMetricTypes;
-
 
 // --------------------------------------------------------------------------------------------------------------
 mgetIterations = async function (instance, runIds, yearDotMonth) {
@@ -1281,7 +1240,6 @@ mgetIterations = async function (instance, runIds, yearDotMonth) {
   );
 };
 
-
 // --------------------------------------------------------------------------------------------------------------
 getIterations = async function (instance, runId, yearDotMonth) {
   var iterations = await mgetIterations(instance, [runId], yearDotMonth);
@@ -1289,12 +1247,10 @@ getIterations = async function (instance, runId, yearDotMonth) {
 };
 exports.getIterations = getIterations;
 
-
 // --------------------------------------------------------------------------------------------------------------
 mgetTags = async function (instance, runIds, yearDotMonth) {
   return await mSearch(instance, 'tag', yearDotMonth, ['run.run-uuid'], [runIds], 'tag', null, 1000);
 };
-
 
 // --------------------------------------------------------------------------------------------------------------
 getTags = async function (instance, runId, yearDotMonth) {
@@ -1302,7 +1258,6 @@ getTags = async function (instance, runId, yearDotMonth) {
   return tags[0];
 };
 exports.getTags = getTags;
-
 
 // --------------------------------------------------------------------------------------------------------------
 mgetRunFromIter = async function (instance, iterIds, yearDotMonth) {
@@ -1318,7 +1273,6 @@ mgetRunFromIter = async function (instance, iterIds, yearDotMonth) {
   );
 };
 
-
 // --------------------------------------------------------------------------------------------------------------
 getRunFromIter = async function (instance, iterId, yearDotMonth) {
   var runsFromIter = await mgetRunFromIter(instance, [iterId], yearDotMonth);
@@ -1326,12 +1280,10 @@ getRunFromIter = async function (instance, iterId, yearDotMonth) {
 };
 exports.getRunFromIter = getRunFromIter;
 
-
 // --------------------------------------------------------------------------------------------------------------
 mgetRunFromPeriod = async function (instance, periIds, yearDotMonth) {
   return await mSearch(instance, 'period', yearDotMonth, ['period.period-uuid'], [periIds], 'run.run-uuid', null, 1);
 };
-
 
 // --------------------------------------------------------------------------------------------------------------
 getRunFromPeriod = async function (instance, periId, yearDotMonth) {
@@ -1339,7 +1291,6 @@ getRunFromPeriod = async function (instance, periId, yearDotMonth) {
   return runFromPeriods[0][0];
 };
 exports.getRunFromPeriod = getRunFromPeriod;
-
 
 // --------------------------------------------------------------------------------------------------------------
 // For each opensearch instance, get the cdm versions they contain and their indices
@@ -1392,7 +1343,6 @@ getInstancesInfo = function (instances) {
   }
 };
 
-
 // --------------------------------------------------------------------------------------------------------------
 invalidInstance = function (instance) {
   if (!instance['online']) {
@@ -1422,7 +1372,6 @@ invalidInstance = function (instance) {
   return false;
 };
 
-
 // --------------------------------------------------------------------------------------------------------------
 findYearDotMonthFromRun = async function (instance, runId) {
   // Versions older than v9dev don't have a year and month
@@ -1444,7 +1393,6 @@ findYearDotMonthFromRun = async function (instance, runId) {
   }
 };
 exports.findYearDotMonthFromRun = findYearDotMonthFromRun;
-
 
 // --------------------------------------------------------------------------------------------------------------
 findInstanceFromRun = async function (instances, runId) {
@@ -1469,7 +1417,6 @@ findInstanceFromRun = async function (instances, runId) {
 };
 exports.findInstanceFromRun = findInstanceFromRun;
 
-
 // --------------------------------------------------------------------------------------------------------------
 findInstanceFromPeriod = async function (instances, periId) {
   var foundInstance;
@@ -1488,13 +1435,11 @@ findInstanceFromPeriod = async function (instances, periId) {
 };
 exports.findInstanceFromPeriod = findInstanceFromPeriod;
 
-
 // --------------------------------------------------------------------------------------------------------------
 mgetParams = async function (instance, iterIds, yearDotMonth) {
   return await mSearch(instance, 'param', yearDotMonth, ['iteration.iteration-uuid'], [iterIds], 'param', null, 1000);
 };
 exports.mgetParams = mgetParams;
-
 
 // --------------------------------------------------------------------------------------------------------------
 getParams = async function (instance, iterId, yearDotMonth) {
@@ -1502,12 +1447,10 @@ getParams = async function (instance, iterId, yearDotMonth) {
 };
 exports.getParams = getParams;
 
-
 // --------------------------------------------------------------------------------------------------------------
 mgetIterationDoc = async function (instance, iterIds, yearDotMonth) {
   return await mSearch(instance, 'iteration', yearDotMonth, ['iteration.iteration-uuid'], [iterIds], '', null, 1000);
 };
-
 
 // --------------------------------------------------------------------------------------------------------------
 getIterationDoc = async function (instance, iterId, yearDotMonth) {
@@ -1515,7 +1458,6 @@ getIterationDoc = async function (instance, iterId, yearDotMonth) {
   return iterationDocs[0][0];
 };
 exports.getIterationDoc = getIterationDoc;
-
 
 // --------------------------------------------------------------------------------------------------------------
 mgetBenchmarkNameFromIter = async function (instance, Ids, yearDotMonth) {
@@ -1531,7 +1473,6 @@ mgetBenchmarkNameFromIter = async function (instance, Ids, yearDotMonth) {
   );
 };
 
-
 // --------------------------------------------------------------------------------------------------------------
 getBenchmarkNameFromIter = async function (instance, Id, yearDotMonth) {
   var benchmarkNameforIters = await mgetBenchmarkNameFromIter(instance, [Id], yearDotMonth);
@@ -1539,12 +1480,10 @@ getBenchmarkNameFromIter = async function (instance, Id, yearDotMonth) {
 };
 exports.getBenchmarkNameFromIter = getBenchmarkNameFromIter;
 
-
 // --------------------------------------------------------------------------------------------------------------
 mgetBenchmarkName = async function (instance, runIds, yearDotMonth) {
   return await mSearch(instance, 'run', yearDotMonth, ['run.run-uuid'], [runIds], 'run.benchmark', null, 1);
 };
-
 
 // --------------------------------------------------------------------------------------------------------------
 getBenchmarkName = async function (instance, runId, yearDotMonth) {
@@ -1553,12 +1492,10 @@ getBenchmarkName = async function (instance, runId, yearDotMonth) {
 };
 exports.getBenchmarkName = getBenchmarkName;
 
-
 // --------------------------------------------------------------------------------------------------------------
 mgetRunData = async function (instance, runIds, yearDotMonth) {
   return await mSearch(instance, 'run', yearDotMonth, ['run.run-uuid'], [runIds], '', null, 1000);
 };
-
 
 // --------------------------------------------------------------------------------------------------------------
 getRunData = async function (instance, runId, yearDotMonth) {
@@ -1566,7 +1503,6 @@ getRunData = async function (instance, runId, yearDotMonth) {
   return runData[0];
 };
 exports.getRunData = getRunData;
-
 
 // --------------------------------------------------------------------------------------------------------------
 calcIterMetrics = function (vals) {
@@ -1590,7 +1526,6 @@ calcIterMetrics = function (vals) {
   };
 };
 
-
 // --------------------------------------------------------------------------------------------------------------
 mgetIterMetrics = async function (instance, iterationIds) {
   var retMsg = '';
@@ -1600,19 +1535,19 @@ mgetIterMetrics = async function (instance, iterationIds) {
   if (benchmarkNames.length !== 1) {
     retMsg = 'ERROR: The benchmark-name for all iterations was not the same, includes: ' + benchmarkNames;
     retCode = 1;
-    return { 'results': results, 'ret-code': retCode, 'ret-msg': retMsg };
+    return { results: results, 'ret-code': retCode, 'ret-msg': retMsg };
   }
   var primaryMetrics = consolidateAllArrays(await mgetPrimaryMetric(instance, iterationIds));
   if (primaryMetrics.length !== 1) {
     retMsg = 'ERROR: The primary-metric for all iterations was not the same, includes: ' + primaryMetrics;
     retCode = 2;
-    return { 'results': results, 'ret-code': retCode, 'ret-msg': retMsg };
+    return { results: results, 'ret-code': retCode, 'ret-msg': retMsg };
   }
   var primaryPeriodNames = consolidateAllArrays(await mgetPrimaryPeriodName(instance, iterationIds));
   if (primaryPeriodNames.length !== 1) {
     retMsg = 'ERROR: The primary-period-name for all iterations was not the same, includes: ' + primaryPeriodNames;
     retCode = 3;
-    return { 'results': results, 'ret-code': retCode, 'ret-msg': retMsg };
+    return { results: results, 'ret-code': retCode, 'ret-msg': retMsg };
   }
   // Find all of the passing samples, then all of the primary-periods, then get the metric for all of them in one request
   var samples = await mgetSamples(instance, iterationIds); // Samples organized in 2D array, first dimension matching iterationIds
@@ -1667,7 +1602,7 @@ mgetIterMetrics = async function (instance, iterationIds) {
   if (resp['ret-code'] != 0) {
     return; //TODO: pass ret-code and ret-msg
   }
-  var metricDataSets = resp['metric-data-sets'];;
+  var metricDataSets = resp['metric-data-sets'];
   // Build per-iteration results
   var period = consPrimaryPeriodIds[0];
   var sample = sampleIdFromPeriod[period];
@@ -1693,10 +1628,9 @@ mgetIterMetrics = async function (instance, iterationIds) {
   }
   var thisResult = calcIterMetrics(vals);
   results[iter] = thisResult;
-  return { 'results': results, 'ret-code': retCode, 'ret-msg': retMsg };
+  return { results: results, 'ret-code': retCode, 'ret-msg': retMsg };
 };
 exports.mgetIterMetrics = mgetIterMetrics;
-
 
 // --------------------------------------------------------------------------------------------------------------
 deleteDocs = function (instance, docTypes, q, yearDotMonth) {
@@ -1708,7 +1642,6 @@ deleteDocs = function (instance, docTypes, q, yearDotMonth) {
   });
 };
 exports.deleteDocs = deleteDocs;
-
 
 // --------------------------------------------------------------------------------------------------------------
 // For comparing N iterations across 1 or more runs.
@@ -1932,7 +1865,6 @@ buildIterTree = function (
   return iterNode;
 };
 
-
 // --------------------------------------------------------------------------------------------------------------
 // Generate a txt report for iteration comparisons (uses data from buildIterTree)
 reportIters = function (iterTree, indent, count) {
@@ -2042,7 +1974,6 @@ reportIters = function (iterTree, indent, count) {
 
   return;
 };
-
 
 // --------------------------------------------------------------------------------------------------------------
 // getIters(): filter and group interations, typically for generating comparisons (clustered bar graphs)
@@ -2471,7 +2402,6 @@ getIters = async function (
 };
 exports.getIters = getIters;
 
-
 // --------------------------------------------------------------------------------------------------------------
 getDocCount = function (instance, runId, docType, yearDotMonth) {
   var q = { query: { bool: { filter: [{ term: { 'run.run-uuid': runId } }] } } };
@@ -2480,7 +2410,6 @@ getDocCount = function (instance, runId, docType, yearDotMonth) {
   return data.count;
 };
 exports.getDocCount = getDocCount;
-
 
 // --------------------------------------------------------------------------------------------------------------
 // Traverse a response from a nested aggregation to generate a set of filter terms
@@ -2516,7 +2445,6 @@ getMetricGroupTermsFromAgg = function (agg, terms) {
   }
 };
 exports.getMetricGroupTermsFromAgg = getMetricGroupTermsFromAgg;
-
 
 // --------------------------------------------------------------------------------------------------------------
 getBreakoutAggregation = function (source, type, breakout) {
@@ -2561,7 +2489,6 @@ getBreakoutAggregation = function (source, type, breakout) {
 };
 exports.getBreakoutAggregation = getBreakoutAggregation;
 
-
 // --------------------------------------------------------------------------------------------------------------
 getMetricGroupTermsByLabel = function (metricGroupTerms) {
   var metricGroupTermsByLabel = {};
@@ -2584,7 +2511,6 @@ getMetricGroupTermsByLabel = function (metricGroupTerms) {
   });
   return metricGroupTermsByLabel;
 };
-
 
 // --------------------------------------------------------------------------------------------------------------
 mgetMetricIdsFromTerms = async function (instance, termsSets, yearDotMonth) {
@@ -2631,10 +2557,10 @@ mgetMetricIdsFromTerms = async function (instance, termsSets, yearDotMonth) {
   if (totalReqs != responses.length) {
     retMsg =
       'mgetMetricIdsFromTerms(): ERROR, number of _msearch responses (' +
-        responses.length +
-        ') did not match number of requests (' +
-        totalReqs +
-        ')';
+      responses.length +
+      ') did not match number of requests (' +
+      totalReqs +
+      ')';
     retMsg = 'ERROR: mgetMetricIdsFromTerms(), terms[' + i + ']  must have either a period-id or run-id';
     retCode = 2;
     return { 'metric-id-sets': metricIdsSets, 'ret-code': retCode, 'ret-msg': retMsg };
@@ -2684,7 +2610,6 @@ mgetMetricIdsFromTerms = async function (instance, termsSets, yearDotMonth) {
   return { 'metric-id-sets': metricIdsSets, 'ret-code': retCode, 'ret-msg': retMsg };
 };
 exports.mgetMetricIdsFromTerms = mgetMetricIdsFromTerms;
-
 
 // --------------------------------------------------------------------------------------------------------------
 // Before querying for metric data, we must first find out which metric IDs we need
@@ -2757,12 +2682,11 @@ getMetricGroupsFromBreakouts = async function (instance, sets, yearDotMonth) {
   if (resp['ret-code'] == 0) {
     return { 'ret-code': retCode, 'ret-msg': retMsg, 'metric-id-sets': resp['metric-id-sets'] };
   }
-  retMsg = "ERROR: " + resp['ret-msg'];
+  retMsg = 'ERROR: ' + resp['ret-msg'];
   retCode = resp['ret-code'];
   return { 'ret-code': retCode, 'ret-msg': retMsg, 'metric-id-sets': resp['metric-id-sets'] };
 };
 exports.getMetricGroupsFromBreakouts = getMetricGroupsFromBreakouts;
-
 
 // --------------------------------------------------------------------------------------------------------------
 sendMetricReq = async function (
@@ -3001,7 +2925,6 @@ sendMetricReq = async function (
   debuglog('sendMetricReq end, lastPass: ' + lastPass);
 };
 
-
 // --------------------------------------------------------------------------------------------------------------
 calcAvg = function (thisBegin, thisEnd, responses, jsonArrIdx, jsonArrTracker, numMetricIds, values) {
   debuglog('calcAvg start');
@@ -3119,7 +3042,6 @@ calcAvg = function (thisBegin, thisEnd, responses, jsonArrIdx, jsonArrTracker, n
   return jsonArrIdx;
 };
 
-
 // --------------------------------------------------------------------------------------------------------------
 // From a set of metric_desc ID's, return 1 or more values depending on resolution.
 // For each metric ID, there should be exactly 1 metric_desc doc and at least 1 metric_data docs.
@@ -3186,7 +3108,6 @@ getMetricDataFromIdsSets = async function (instance, sets, metricGroupIdsByLabel
 };
 
 exports.getMetricDataFromIdsSets = getMetricDataFromIdsSets;
-
 
 // --------------------------------------------------------------------------------------------------------------
 // Generates 1 or more values for 1 or more groups for a metric of a particular source
@@ -3273,9 +3194,9 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
   // Ensure the metric sources exist in each set
   var metricSources = await mgetMetricSources(instance, runIds, yearDotMonth);
   for (var i = 0; i < sets.length; i++) {
-    if (! metricSources[i].includes(sets[i].source)) {
-      retMsg = "ERROR: the metric-source [" + sets[i].source + "] was not found in run [" + sets[i].run + "]\n";
-      retMsg += "The available soucres for this run are: " + metricSources[i];
+    if (!metricSources[i].includes(sets[i].source)) {
+      retMsg = 'ERROR: the metric-source [' + sets[i].source + '] was not found in run [' + sets[i].run + ']\n';
+      retMsg += 'The available soucres for this run are: ' + metricSources[i];
       retCode = 1;
       return { 'ret-code': retCode, 'ret-msg': retMsg };
     }
@@ -3284,9 +3205,16 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
   // Ensure the metric types exist for the sources in each set
   var metricTypes = await mgetMetricTypes(instance, runIds, sources, yearDotMonth);
   for (var i = 0; i < sets.length; i++) {
-    if (! metricTypes[i].includes(sets[i].type)) {
-      retMsg = "ERROR: the metric-type [" + sets[i].type + "] was not found for metric source [" + sets[i].source + "] in run [" + sets[i].run + "]\n";
-      retMsg += "The available types for this run and source are: " + metricTypes[i];
+    if (!metricTypes[i].includes(sets[i].type)) {
+      retMsg =
+        'ERROR: the metric-type [' +
+        sets[i].type +
+        '] was not found for metric source [' +
+        sets[i].source +
+        '] in run [' +
+        sets[i].run +
+        ']\n';
+      retMsg += 'The available types for this run and source are: ' + metricTypes[i];
       retCode = 1;
       return { 'ret-code': retCode, 'ret-msg': retMsg };
     }
@@ -3298,13 +3226,22 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
   for (var i = 0; i < sets.length; i++) {
     if (sets[i].breakout != 'undefined') {
       for (var j = 0; j < sets[i].breakout.length; j++) {
-        if (! setBreakouts[i].includes(sets[i].breakout[j])) {
-          retMsg += "ERROR: the breakout [" + sets[i].breakout[j] + "] was not found for [" + sets[i].source + "::" + sets[i].type + "] in run [" + sets[i].run + "]\n";
+        if (!setBreakouts[i].includes(sets[i].breakout[j])) {
+          retMsg +=
+            'ERROR: the breakout [' +
+            sets[i].breakout[j] +
+            '] was not found for [' +
+            sets[i].source +
+            '::' +
+            sets[i].type +
+            '] in run [' +
+            sets[i].run +
+            ']\n';
           retCode = 1;
         }
       }
       if (retCode == 1) {
-        retMsg += "The available breakouts for this run and source are: " + setBreakouts[i];
+        retMsg += 'The available breakouts for this run and source are: ' + setBreakouts[i];
       }
     }
   }
@@ -3314,7 +3251,7 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
 
   var resp = await getMetricGroupsFromBreakouts(instance, sets, yearDotMonth);
   if (resp['ret-code'] != 0) {
-    retMsg = "ERROR: getMetricDataSets(): " + resp['ret-msg'];
+    retMsg = 'ERROR: getMetricDataSets(): ' + resp['ret-msg'];
     retCode = resp['ret-code'];
     return { 'ret-code': retCode, 'ret-msg': retMsg };
   }
@@ -3324,10 +3261,10 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
   if (dataSets.length != sets.length) {
     retMsg =
       'ERROR: number of generated data sets (' +
-        dataSets.length +
-        ') does not match the number of metric query sets (' +
-        sets.length +
-        ')';
+      dataSets.length +
+      ') does not match the number of metric query sets (' +
+      sets.length +
+      ')';
     retCode = 1;
     return { 'ret-code': retCode, 'ret-msg': retMsg };
   }
@@ -3385,7 +3322,6 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
 };
 exports.getMetricDataSets = getMetricDataSets;
 
-
 // --------------------------------------------------------------------------------------------------------------
 async function waitForIndexedDocs(instance, runId, docTypeCounts, yearDotMonth) {
   var numAttempts = 1;
@@ -3422,7 +3358,6 @@ async function waitForIndexedDocs(instance, runId, docTypeCounts, yearDotMonth) 
   return remainingDocTypes.lenth;
 }
 exports.waitForIndexedDocs = waitForIndexedDocs;
-
 
 // --------------------------------------------------------------------------------------------------------------
 async function waitForDeletedDocs(instance, runId, docTypes, yearDotMonth) {
