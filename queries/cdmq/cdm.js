@@ -3328,9 +3328,9 @@ exports.getMetricDataSets = getMetricDataSets;
 async function waitForIndexedDocs(instance, runId, docTypeCounts, yearDotMonth) {
   var numAttempts = 1;
   var maxAttempts = 30;
-  var remainingDocTypes = Object.keys(docTypeCounts);
+  var remainingDocTypeCounts = Object.keys(docTypeCounts);
   var interval = 3;
-  while (numAttempts <= maxAttempts && remainingDocTypes.length > 0) {
+  while (numAttempts <= maxAttempts && remainingDocTypeCounts.length > 0) {
     let promise = new Promise((resolve, reject) => {
       setTimeout(() => resolve('done!'), interval * 1000);
     });
@@ -3338,8 +3338,8 @@ async function waitForIndexedDocs(instance, runId, docTypeCounts, yearDotMonth) 
 
     docWaitStr = '';
     const cdmVer = instance['ver'];
-    for (let i = 0; i < remainingDocTypes.length; i++) {
-      const docType = remainingDocTypes[i];
+    for (let i = 0; i < remainingDocTypeCounts.length; i++) {
+      const docType = remainingDocTypeCounts[i];
       var thisNumDocs = getDocCount(instance, runId, docType, yearDotMonth);
       if (thisNumDocs < docTypeCounts[docType]) {
         docWaitStr +=
@@ -3352,23 +3352,23 @@ async function waitForIndexedDocs(instance, runId, docTypeCounts, yearDotMonth) 
           '\n';
       }
       if (thisNumDocs == docTypeCounts[docType]) {
-        remainingDocTypes = remainingDocTypes.filter((val) => val !== remainingDocTypes[i]);
+        remainingDocTypeCounts = remainingDocTypeCounts.filter((val) => val !== remainingDocTypeCounts[i]);
       }
     }
     numAttempts++;
   }
-  return remainingDocTypes.lenth;
+  return remainingDocTypeCounts;
 }
 exports.waitForIndexedDocs = waitForIndexedDocs;
 
 // --------------------------------------------------------------------------------------------------------------
 async function waitForDeletedDocs(instance, runId, docTypes, yearDotMonth) {
   var numAttempts = 1;
-  var maxAttempts = 30;
+  var maxAttempts = 100;
   var remainingDocTypes = docTypes;
   var totalDocCount = 0;
   var previousTotalDocCount = 0;
-  var interval = 3;
+  var interval = 6;
   while (numAttempts <= maxAttempts && docTypes.length > 0) {
     let promise = new Promise((resolve, reject) => {
       setTimeout(() => resolve('done!'), interval * 1000);
@@ -3380,7 +3380,6 @@ async function waitForDeletedDocs(instance, runId, docTypes, yearDotMonth) {
     for (let i = 0; i < docTypes.length; i++) {
       var thisNumDocs = getDocCount(instance, runId, docTypes[i], yearDotMonth);
       if (thisNumDocs > 0) {
-        //console.log('  ' + docTypes[i] + ': doc count: ' + thisNumDocs);
         docWaitStr += '  ' + docTypes[i] + ': doc count: ' + thisNumDocs + '\n';
         totalDocCount += thisNumDocs;
       }
@@ -3389,18 +3388,22 @@ async function waitForDeletedDocs(instance, runId, docTypes, yearDotMonth) {
       }
     }
     if (previousTotalDocCount != 0) {
-      console.log('Document deletion rate: ' + (previousTotalDocCount - totalDocCount) / interval + ' documents/sec');
+      const deletionRate = (previousTotalDocCount - totalDocCount) / interval;
+      console.log('Document deletion rate: ' + deletionRate + ' documents/sec');
+      // If we are observing progress in deleting documents, then extend the maxAttempts
+      if (deletionRate > 0) {
+        maxAttempts++;
+      }
     }
     if (totalDocCount > 0) {
       console.log('\nWaiting for the following documents to be deleted in OpenSearch (attempt #' + numAttempts + ')');
       console.log(docWaitStr);
     }
     docTypes = remainingDocTypes;
-    numAttempts++;
-
     previousTotalDocCount = totalDocCount;
+    numAttempts++;
   }
   console.log('');
-  return docTypes.lenth;
+  return docTypes.length;
 }
 exports.waitForDeletedDocs = waitForDeletedDocs;

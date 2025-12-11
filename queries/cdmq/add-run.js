@@ -1,11 +1,9 @@
 //# vim: autoindent tabstop=2 shiftwidth=2 expandtab softtabstop=2 filetype=javascript
 
-const { XzReadableStream } = require('xz-decompress');
-const { Readable } = require('stream');
+const Piscina = require('piscina');
+const merge = require('deepmerge');
 const cdm = require('./cdm');
 const fs = require('fs');
-const xz = require('xz');
-const readline = require('readline');
 const path = require('path');
 const program = require('commander');
 const instances = []; // opensearch instances
@@ -55,134 +53,62 @@ async function decompressXzFile(filename) {
 
 async function processDir(instance, dir, docTypes, mode) {
   const jsonArr = [];
-  const info = { runIds: {} };
   const allFiles = fs.readdirSync(dir);
   const regExp = /\.ndjson\.xz$/;
   const xzFiles = allFiles.filter((item) => regExp.test(item));
-  var docTypeCounts = {};
-  if (mode == 'index') {
+
+  const pool = new Piscina({
+    filename: path.resolve(__dirname, 'add-run-worker.js'),
+    maxThreads: 24
+  });
+
+  const filePaths = [];
+  for (var i = 0; i < xzFiles.length; i++) {
+    const filePath = path.join(program.dir, xzFiles[i]);
+    filePaths.push(filePath);
+  }
+
+  // Process all files in parallel
+  const results = await Promise.all(
+    filePaths.map((filePath) =>
+      pool.run({
+        instance: instance,
+        filePath: filePath,
+        docTypes: docTypes,
+        mode: mode
+      })
+    )
+  );
+
+  await pool.destroy();
+  debuglog('thread pool completed');
+
+  if (mode == 'getinfo') {
+    // 1. Custom function using Set for uniqueness
+    const uniqueArrayMerge = (target, source) => {
+      // Combine both arrays and use a Set to automatically filter out duplicates
+      const merged = [...target, ...source];
+      return [...new Set(merged)];
+    };
+    const options = {
+      arrayMerge: uniqueArrayMerge
+    };
+    const info = merge.all(results, options);
+    debuglog('info: ' + JSON.stringify(info, null, 2));
+    return info;
+  } else {
+    //Aggregate the counted indexed docs
+    //First start with 0
+    var docTypeCounts = {};
     for (var x = 0; x < docTypes.length; x++) {
       docTypeCounts[docTypes[x]] = 0;
     }
-  }
-  for (var i = 0; i < xzFiles.length; i++) {
-    const filePath = path.join(program.dir, xzFiles[i]);
-    try {
-      const decompressedData = await decompressXzFile(filePath);
-      const lines = decompressedData.split('\n');
-      for (var j = 0; j < lines.length; j++) {
-        // TODO: validate JSON syntax and possible validate document schema?
-        if (lines[j] != '') {
-          jsonArr.push(lines[j]);
-        }
-        if (mode == 'index' && j % 2 == 0) {
-          const indexRegExp = /.+_index\":\s+\"cdm(-){0,1}v\d+dev-([^@]+)/;
-          const matches = indexRegExp.exec(lines[j]);
-          if (matches) {
-            const docType = matches[2];
-            docTypeCounts[docType]++;
-          }
-        }
+    for (var i = 0; i < results.length; i++) {
+      for (var x = 0; x < docTypes.length; x++) {
+        docTypeCounts[docTypes[x]] += results[i][docTypes[x]];
       }
-    } catch (error) {
-      console.error('Error processing NDJSON.XZ file:', error);
     }
-    cdm.memUsage();
-
-    // After so much data is accumulated or at the last file, index what we have then clear the array.
-    if (jsonArr.length > 4000000 || i + 1 == xzFiles.length) {
-      console.log(
-        mode +
-          ': After reading ' +
-          (i + 1) +
-          ' of ' +
-          xzFiles.length +
-          ' files, going to process ' +
-          jsonArr.length +
-          ' lines'
-      );
-
-      if (mode == 'index') {
-        // The final argument for esJsonArrRequest, 'yearDotMonth', is not
-        // required here because the jsonArr includes the exact index name
-        // in the 'action' part of the array
-        const responses = await esJsonArrRequest(instance, '', '/_bulk', jsonArr);
-      } else if (mode == 'getinfo') {
-        //const info = { runIds: [], indices: {} };
-        for (var k = 1; k < jsonArr.length; k += 2) {
-          try {
-            var action = JSON.parse(jsonArr[k - 1]);
-            var doc = JSON.parse(jsonArr[k]);
-          } catch (jsonError) {
-            console.log('Could not porse: [' + jsonArr[k] + ']');
-            continue;
-          }
-          let runId = doc['run']['run-uuid'];
-          if (!Object.keys(info['runIds']).includes(runId)) {
-            info['runIds'][runId] = { indices: {}, yearDotMonth: '' };
-          }
-          // example action: { "index": { "_index": "cdmv8dev-metric_data" } }
-          // exmaple doc:
-          // {"cdm":{"ver":"v9dev"},
-          //  "run":{"run-uuid":"c0e04edb-ddbc-4081-8bbc-9b9e84e6538d"}}
-          if (Object.keys(action).includes('index') && Object.keys(action['index']).includes('_index')) {
-            const indexName = action['index']['_index'];
-            const regExp = /^cdm-*(v7dev|v8dev|v9dev)-([^@]+)(@\d\d\d\d\.\d\d)*$/;
-            const matches = regExp.exec(indexName);
-            //console.log("doc:\n" + JSON.stringify(doc, null, 2));
-            if (matches) {
-              const cdmVer = matches[1];
-              let yearDotMonth = '';
-              let runId = '';
-              if (cdmVer == 'v7dev') {
-                runId = doc['run']['id'];
-              } else {
-                // v8dev and newer use run-uuid
-                runId = doc['run']['run-uuid'];
-                yearDotMonth = matches[3];
-              }
-              if (!Object.keys(info['runIds'][runId]).includes('indices')) {
-                info['runIds'][runId]['indices'] = {};
-              }
-              if (!Object.keys(info['runIds'][runId]['indices']).includes(cdmVer)) {
-                info['runIds'][runId]['indices'][cdmVer] = [];
-              }
-              if (!info['runIds'][runId]['indices'][cdmVer].includes(indexName)) {
-                debuglog(
-                  'going to add indexname to info[runIds][' + runId + '][indices][' + cdmVer + ']: ' + indexName
-                );
-                info['runIds'][runId]['indices'][cdmVer].push(indexName);
-              }
-              if (yearDotMonth != '') {
-                if (info['runIds'][runId]['yearDotMonth'] == '') {
-                  info['runIds'][runId]['yearDotMonth'] = yearDotMonth;
-                } else {
-                  if (info['runIds'][runId]['yearDotMonth'] != yearDotMonth) {
-                    console.log('ERROR: found more than one year and month for same runId [' + runId + ']');
-                    process.exit(1);
-                  }
-                }
-              }
-            } else {
-              console.log('ERROR: the index name [' + indexName + '] was not recognized');
-              process.exit(1);
-            }
-          } else {
-            console.log('the ndjson action [' + action + '] was not valid');
-            process.exit(1);
-          }
-        }
-      } else {
-        console.log('mode [' + mode + '] is not supported');
-      }
-      // Must make array empty here for next pass
-      jsonArr.length = 0;
-    } // if (jsonArr.length > 100000 || i == xzFiles.length)
-  }
-  if (mode == 'getinfo') {
-    return info;
-  }
-  if (mode == 'index') {
+    debuglog('docTypeCounts:\n' + JSON.stringify(docTypeCounts, null, 2));
     return docTypeCounts;
   }
 }
@@ -214,7 +140,8 @@ async function main() {
     //
     //  Also, the cdm version is embedded in this new data that will be indexed.  It is not possible
     //  (without significant effort) to index data already in one cdm version to another [directly].
-    runIds = Object.keys(info['runIds']);
+    debuglog('returned: ' + JSON.stringify(info, null, 2));
+    const runIds = Object.keys(info['runIds']);
     for (var runIdx = 0; runIdx < runIds.length; runIdx++) {
       const runId = runIds[runIdx];
       var cdmVer;
@@ -262,19 +189,21 @@ async function main() {
         info['runIds'][runId]['yearDotMonth']
       );
       if (numDocTypes > 0) {
-        console.log('Warning: could not delete all documents for ' + docTypes + ' with ' + numAttempts);
+        console.log('Warning: could not delete all documents');
         console.log(
           'These documents may continue to be deleted in the background.  To check on the status, run this utility again'
         );
         process.exit(1);
       }
-      const begin = Date.now() / 1000;
+      const t1 = Date.now() / 1000;
       console.log('Indexing documents');
       const docTypeCounts = await processDir(instance, program.dir, cdm.docTypes[cdmVer], 'index');
-      const end = Date.now() / 1000;
-      console.log('Time (seconds) to submit all documents for indexing: ' + (end - begin));
+      const t2 = Date.now() / 1000;
+      console.log('Time (seconds) to submit all documents for indexing: ' + (t2 - t1));
       console.log('Waiting for submitted documents to be present in Opensearch');
-      cdm.waitForIndexedDocs(instance, runId, docTypeCounts, info['runIds'][runId]['yearDotMonth']);
+      await cdm.waitForIndexedDocs(instance, runId, docTypeCounts, info['runIds'][runId]['yearDotMonth']);
+      const t3 = Date.now() / 1000;
+      console.log('Time (seconds) for all documents to be present in Opensearch: ' + (t3 - t2));
       console.log('Submitted documents are present in Opensearch');
     }
   } else {
