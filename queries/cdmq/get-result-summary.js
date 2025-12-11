@@ -198,7 +198,8 @@ async function main() {
     }
 
     logOutput('  metrics:', program.outputFormat);
-    var metricSources = await cdm.getMetricSources(instance, runId, yearDotMonth);
+    var metricSourcesSets = await cdm.mgetMetricSources(instance, [runId], yearDotMonth);
+    var metricSources = metricSourcesSets[0];
     var theseRunIds = [];
     thisRun['metrics'] = [];
     for (var i = 0; i < metricSources.length; i++) {
@@ -256,7 +257,12 @@ async function main() {
           sets.push(set);
           if (sets.length == batchedQuerySize) {
             // Submit a chunk of the query and save the result
-            metricDataSetsChunks[chunkNum] = await cdm.getMetricDataSets(instance, sets, yearDotMonth);
+            var resp = (metricDataSetsChunks[chunkNum] = await cdm.getMetricDataSets(instance, sets, yearDotMonth));
+            if (resp['ret-code'] != 0) {
+              console.log(resp['ret-msg']);
+              process.exit(1);
+            }
+            metricDataSetsChunks[chunkNum] = resp['data-sets'];
             chunkNum++;
             sets = [];
           }
@@ -265,7 +271,12 @@ async function main() {
     }
     if (sets.length > 0) {
       // Submit a chunk of the query and save the result
-      metricDataSetsChunks[chunkNum] = await cdm.getMetricDataSets(instance, sets, yearDotMonth);
+      var resp = await cdm.getMetricDataSets(instance, sets, yearDotMonth);
+      if (resp['ret-code'] != 0) {
+        console.log(resp['ret-msg']);
+        process.exit(1);
+      }
+      metricDataSetsChunks[chunkNum] = resp['data-sets'];
       chunkNum++;
       sets = [];
     }
@@ -354,6 +365,14 @@ async function main() {
             var sourceType = primaryMetrics[k].split('::');
             var thisChunk = Math.floor(idx / batchedQuerySize);
             var thisIdx = idx % batchedQuerySize;
+            console.log(
+              'metricDataSetsChunks[' +
+                thisChunk +
+                '][' +
+                thisIdx +
+                '] ' +
+                JSON.stringify(metricDataSetsChunks[thisChunk][thisIdx], null, 2)
+            );
             msampleVal = parseFloat(metricDataSetsChunks[thisChunk][thisIdx].values[''][0].value);
             thisSample['values'][primaryMetrics[k]] = msampleVal;
             if (allBenchMsampleVals[k] == null) {

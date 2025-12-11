@@ -330,6 +330,7 @@ indexDefs['v8dev']['metric_data']['mappings']['properties']['metric_data'] = {
 };
 indexDefs['v9dev']['metric_data'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['metric_data']));
 
+// --------------------------------------------------------------------------------------------------------------
 function memUsage() {
   const memUsage = process.memoryUsage();
   debuglog({
@@ -341,6 +342,7 @@ function memUsage() {
 }
 exports.memUsage = memUsage;
 
+// --------------------------------------------------------------------------------------------------------------
 function numMBytes(a, str) {
   var totalBytes = 0;
   a.forEach((element) => {
@@ -350,10 +352,12 @@ function numMBytes(a, str) {
   return mb;
 }
 
+// --------------------------------------------------------------------------------------------------------------
 function getCdmVer(instance) {
   return instance['ver'];
 }
 
+// --------------------------------------------------------------------------------------------------------------
 debuglog = function (str) {
   if (debugOut != 0) {
     console.log(str);
@@ -361,18 +365,22 @@ debuglog = function (str) {
 };
 exports.debuglog = debuglog;
 
+// --------------------------------------------------------------------------------------------------------------
 getCdmVerFromIndex = function (index) {
   var regExp = /^cdm-*v([\d+])dev-(.+)/;
   var matches = regExp.exec(index);
+  var retMsg = '';
+  var retCode = 0;
   if (matches) {
     cdmVer = 'v' + matches[1] + 'dev';
   } else {
-    console.log('ERROR: index [' + index + '] is not recognized');
-    process.exit(1);
+    retMsg = 'ERROR: index [' + index + '] is not recognized';
+    retCode = 1;
   }
-  return cdmVer;
+  return { 'cdm-ver': cdmVer, 'ret-code': retCode, 'ret-msg': retMsg };
 };
 
+// --------------------------------------------------------------------------------------------------------------
 // cdmv9 adds indices dynamically based on year and month, so
 // we need a way to check for existence of the index and create
 // if not found.  Since this moves toward a auto-create index
@@ -380,47 +388,67 @@ getCdmVerFromIndex = function (index) {
 // This will eliminate the need for other projects (like Crucible)
 // to maintain the indices.
 checkCreateIndex = function (instance, index) {
-  const cdmVer = getCdmVerFromIndex(index);
-  //if (!Object.keys(instance).includes('indices')) {
-  //instance['indices'] = {};
-  //}
+  var retMsg = '';
+  var retCode = 0;
 
-  //debuglog('instance:\n' + JSON.stringify(instance, null, 2));
-  //debuglog('index: ' + index);
+  var resp = getCdmVerFromIndex(index);
+  if (resp['ret-code'] != 0) {
+    retMsg = 'ERROR: calling getCdmVerFromIndex returned ' + resp.ret - msg;
+    retCode = 1;
+    return { 'ret-code': retCode, 'ret-msg': retMsg };
+  }
+  var cdmVer = resp['cdm-ver'];
+
   if (Object.keys(instance['indices']).includes(cdmVer)) {
-    //debuglog('found cdmver: ' + cdmVer);
     if (instance['indices'][cdmVer].includes(index)) {
-      //debuglog('found index: ' + index);
-      return;
+      var retMsg = 'INFO: Not going to create index because index already exists';
+      return { 'ret-code': retCode, 'ret-msg': retMsg };
     }
   }
 
   var regExp = /\*$/;
   var matches = regExp.exec(index);
   if (matches) {
-    //debuglog('Not going to create index because it includes a wildcard: [' + index + ']');
-    return;
+    retMsg = 'INFO: Not going to create index because it includes a wildcard: [' + index + ']';
+    return { 'ret-code': retCode, 'ret-msg': retMsg };
   }
 
-  const docType = getDocType(index);
+  resp = getDocType(index);
+  if (resp['ret-code'] != 0) {
+    retMsg = 'ERROR: calling getDocType returned ' + resp.ret - msg;
+    retCode = 1;
+    return { 'ret-code': retCode, 'ret-msg': retMsg };
+  }
+  var docType = resp['doc-type'];
+
   debuglog('checkCreateIndex(): got docType: [' + docType + ']');
   var url = 'http://' + instance['host'] + '/' + index;
-  var resp = request('PUT', url, { headers: instance['header'], body: JSON.stringify(indexDefs[cdmVer][docType]) });
+  resp = request('PUT', url, { headers: instance['header'], body: JSON.stringify(indexDefs[cdmVer][docType]) });
   var data = JSON.parse(resp.getBody());
+  //TODO: catch error and return with error
   debuglog('response:::\n' + JSON.stringify(data, null, 2));
   if (!Object.keys(instance['indices']).includes(cdmVer)) {
     instance['indices'][cdmVer] = [];
   }
   instance['indices'][cdmVer].push(index);
   //TODO: query opensearch to verify index is present
-  return;
+  var retMsg = 'INFO: Created index [' + index + ']';
+  return { 'ret-code': retCode, 'ret-msg': retMsg };
 };
 exports.checkCreateIndex = checkCreateIndex;
 
+// --------------------------------------------------------------------------------------------------------------
 function getDocType(index) {
-  const cdmVer = getCdmVerFromIndex(index);
+  var retMsg = '';
+  var retCode = 0;
+  const resp = getCdmVerFromIndex(index);
+  if (resp['ret-code'] != 0) {
+    retMsg = 'ERROR: calling getCdmVerFromIndex returned ' + resp.ret - msg;
+    retCode = 1;
+    return { 'ret-code': retCode, 'ret-msg': retMsg };
+  }
+  const cdmVer = resp['cdm-ver'];
 
-  //debuglog('cdmver: [' + cdmVer + ']');
   if (cdmVer == 'v7dev' || cdmVer == 'v8dev') {
     var regExp = /^cdmv[7|8]dev-(.+)/;
     var matches = regExp.exec(index);
@@ -429,12 +457,14 @@ function getDocType(index) {
       if (docTypes[cdmVer].includes(docType)) {
         return docType;
       } else {
-        console.log('ERROR: index [' + index + '] does not match a docType: ' + docTypes[cdmVer]);
-        process.exit(1);
+        retMsg = 'ERROR: index [' + index + '] does not match a docType: ' + docTypes[cdmVer];
+        retCode = 1;
+        return { 'ret-code': retCode, 'ret-msg': retMsg };
       }
     } else {
-      console.log('ERROR: index name [' + index + '] does not match cdmv7/8 format');
-      process.exit(1);
+      retMsg = 'ERROR: index name [' + index + '] does not match cdmv7/8 format';
+      retCode = 2;
+      return { 'ret-code': retCode, 'ret-msg': retMsg };
     }
   }
 
@@ -444,21 +474,25 @@ function getDocType(index) {
     if (matches) {
       docType = matches[1];
       if (docTypes[cdmVer].includes(docType)) {
-        return docType;
+        return { 'doc-type': docType, 'ret-code': retCode, 'ret-msg': retMsg };
       } else {
-        console.log('ERROR: index [' + index + '] does not match a docType: ' + docTypes[cdmVer]);
-        process.exit(1);
+        retMsg = 'ERROR: index [' + index + '] does not match a docType: ' + docTypes[cdmVer];
+        retCode = 3;
+        return { 'ret-code': retCode, 'ret-msg': retMsg };
       }
     } else {
-      console.log('ERROR: index name [' + index + '] does not match cdmv9 format');
-      process.exit(1);
+      retMsg = 'ERROR: index name [' + index + '] does not match cdmv9 format';
+      retCode = 4;
+      return { 'ret-code': retCode, 'ret-msg': retMsg };
     }
   }
 
-  console.log('ERROR: the cdmVer provided [' + cdmVer + '] is not supported');
-  process.exit(1);
+  retMsg = 'ERROR: the cdmVer provided [' + cdmVer + '] is not supported';
+  retCode = 4;
+  return { 'ret-code': retCode, 'ret-msg': retMsg };
 }
 
+// --------------------------------------------------------------------------------------------------------------
 function getIndexBaseName(instance) {
   // CDM version support is effectively determined here
   cdmVer = getCdmVer(instance);
@@ -476,6 +510,7 @@ function getIndexBaseName(instance) {
   }
 }
 
+// --------------------------------------------------------------------------------------------------------------
 function getIndexName(docType, instance, yearDotMonth) {
   const baseName = getIndexBaseName(instance);
   cdmVer = getCdmVer(instance);
@@ -491,6 +526,7 @@ function getIndexName(docType, instance, yearDotMonth) {
   return fullName;
 }
 
+// --------------------------------------------------------------------------------------------------------------
 // Return subtraction of two 1-dimensional arrays
 subtractTwoArrays = function (a1, a2) {
   const a3 = [];
@@ -503,6 +539,7 @@ subtractTwoArrays = function (a1, a2) {
 };
 exports.subtractTwoArrays = subtractTwoArrays;
 
+// --------------------------------------------------------------------------------------------------------------
 // Return consolidation (non-repeated values) from value for key 'k' found in array of objects
 function getObjVals(a, k) {
   const c = [];
@@ -512,6 +549,7 @@ function getObjVals(a, k) {
   return c;
 }
 
+// --------------------------------------------------------------------------------------------------------------
 // Return consolidation (non-repeated values) of a 2-dimensional array
 consolidateAllArrays = function (a) {
   const c = [];
@@ -524,6 +562,7 @@ consolidateAllArrays = function (a) {
 };
 exports.consolidateAllArrays = consolidateAllArrays;
 
+// --------------------------------------------------------------------------------------------------------------
 // Return intersection of two 1-dimensional arrays
 intersectTwoArrays = function (a1, a2) {
   const a3 = [];
@@ -537,6 +576,7 @@ intersectTwoArrays = function (a1, a2) {
 };
 exports.intersectTwoArrays = intersectTwoArrays;
 
+// --------------------------------------------------------------------------------------------------------------
 // Return intersection of many 1-dimensional arrays found in 2-dimensional array
 intersectAllArrays = function (a2D) {
   var intersectArray = a2D[0];
@@ -547,6 +587,7 @@ intersectAllArrays = function (a2D) {
 };
 exports.intersectAllArrays = intersectAllArrays;
 
+// --------------------------------------------------------------------------------------------------------------
 async function fetchBatchedData(instance, reqs, batchSize = 16) {
   //debuglog('fetchBatchedData() begin');
   //debuglog('fetchBatchedData() reqs.length: ' + reqs.length);
@@ -606,6 +647,7 @@ async function fetchBatchedData(instance, reqs, batchSize = 16) {
   return responses;
 }
 
+// --------------------------------------------------------------------------------------------------------------
 esJsonArrRequest = async function (instance, docType, action, jsonArr, yearDotMonth) {
   //debuglog('esJsonArrRequest begin: yearDotMonth: ' + yearDotMonth);
   debuglog('esJsonArrRequest jsonArr.length: ' + jsonArr.length);
@@ -690,6 +732,7 @@ esJsonArrRequest = async function (instance, docType, action, jsonArr, yearDotMo
 };
 exports.esJsonArrRequest = esJsonArrRequest;
 
+// --------------------------------------------------------------------------------------------------------------
 function esRequest(instance, docType, action, q, yearDotMonth) {
   // This is the only http request remainig that still uses a sync-request
   var url = 'http://' + instance['host'] + '/' + getIndexName(docType, instance, yearDotMonth) + action;
@@ -706,6 +749,7 @@ function esRequest(instance, docType, action, q, yearDotMonth) {
   return resp;
 }
 
+// --------------------------------------------------------------------------------------------------------------
 // mSearch: take a several serach requests and create a ES _msearch
 // mSearch should be used whenever possible, instead of requesting
 // many single search requests separately.  Significant performance
@@ -826,6 +870,7 @@ exports.mSearch = mSearch;
 // but these functions just wrap the value in 2D array for msearch (and a key in a 1D array).  Effectively
 // all query functions use msearch, even if there is a single query.
 
+// --------------------------------------------------------------------------------------------------------------
 mgetPrimaryMetric = async function (instance, iterations, yearDotMonth) {
   var metrics = await mSearch(
     instance,
@@ -845,12 +890,14 @@ mgetPrimaryMetric = async function (instance, iterations, yearDotMonth) {
 };
 exports.mgetPrimaryMetric = mgetPrimaryMetric;
 
+// --------------------------------------------------------------------------------------------------------------
 getPrimaryMetric = async function (instance, iteration, yearDotMonth) {
   var primaryMetrics = await mgetPrimaryMetric(instance, [iteration], yearDotMonth);
   return primaryMetrics[0][0];
 };
 exports.getPrimaryMetric = getPrimaryMetric;
 
+// --------------------------------------------------------------------------------------------------------------
 mgetPrimaryPeriodName = async function (instance, iterations, yearDotMonth) {
   var data = await mSearch(
     instance,
@@ -870,12 +917,14 @@ mgetPrimaryPeriodName = async function (instance, iterations, yearDotMonth) {
 };
 exports.mgetPrimaryPeriodName = mgetPrimaryPeriodName;
 
+// --------------------------------------------------------------------------------------------------------------
 getPrimaryPeriodName = async function (instance, iteration, yearDotMonth) {
   var primaryPeriodNames = await mgetPrimaryPeriodName(instance, [iteration], yearDotMonth);
   return primaryPeriodNames[0][0];
 };
 exports.getPrimaryPeriodName = getPrimaryPeriodName;
 
+// --------------------------------------------------------------------------------------------------------------
 mgetSamples = async function (instance, iters, yearDotMonth) {
   return await mSearch(
     instance,
@@ -891,12 +940,14 @@ mgetSamples = async function (instance, iters, yearDotMonth) {
 };
 exports.mgetSamples = mgetSamples;
 
+// --------------------------------------------------------------------------------------------------------------
 getSamples = async function (instance, iter, yearDotMonth) {
   var samples = await mgetSamples(instance, [iter], yearDotMonth);
   return samples[0];
 };
 exports.getSamples = getSamples;
 
+// --------------------------------------------------------------------------------------------------------------
 // For a specific metric-source and metric-type,
 // find all the metadata names shared among all
 // found metric docs.  These names are what can be
@@ -914,11 +965,13 @@ mgetMetricNames = async function (instance, runIds, sources, types, yearDotMonth
 };
 exports.mgetMetricNames = mgetMetricNames;
 
+// --------------------------------------------------------------------------------------------------------------
 getMetricNames = async function (instance, runId, source, type, yearDotMonth) {
   var metricNames = await mgetMetricNames(instance, [runId], [source], [type], yearDotMonth);
   return metricNames[0];
 };
 
+// --------------------------------------------------------------------------------------------------------------
 mgetSampleNums = async function (instance, Ids, yearDotMonth) {
   var sampleIds = [];
   var idx = 0;
@@ -954,12 +1007,14 @@ mgetSampleNums = async function (instance, Ids, yearDotMonth) {
 };
 exports.mgetSampleNums = mgetSampleNums;
 
+// --------------------------------------------------------------------------------------------------------------
 getSampleNum = async function (instance, sampId, yearDotMonth) {
   var sampleNum = await mgetSampleNums(instance, [sampId], yearDotMonth);
   return sampleNums[0][0];
 };
 exports.getSampleNum = getSampleNum;
 
+// --------------------------------------------------------------------------------------------------------------
 mgetSampleStatuses = async function (instance, Ids, yearDotMonth) {
   var sampleIds = [];
   var idx = 0;
@@ -995,12 +1050,14 @@ mgetSampleStatuses = async function (instance, Ids, yearDotMonth) {
 };
 exports.mgetSampleStatuses = mgetSampleStatuses;
 
+// --------------------------------------------------------------------------------------------------------------
 getSampleStatus = async function (instance, sampId) {
   var sampleStatuses = await mgetSampleStatuses(instance, [sampId]);
   return sampleStatuses[0][0];
 };
 exports.getSampleStatus = getSampleStatus;
 
+// --------------------------------------------------------------------------------------------------------------
 mgetPrimaryPeriodId = async function (instance, sampIds, periNames, yearDotMonth) {
   // needs 2D array iterSampleIds: [iter][samp] and 1D array iterPrimaryPeriodNames [iter]
   // returns 2D array [iter][samp]
@@ -1047,12 +1104,14 @@ mgetPrimaryPeriodId = async function (instance, sampIds, periNames, yearDotMonth
 };
 exports.mgetPrimaryPeriodId = mgetPrimaryPeriodId;
 
+// --------------------------------------------------------------------------------------------------------------
 getPrimaryPeriodId = async function (instance, sampId, periName) {
   var primaryPeriodIds = await mgetPrimaryPeriodId(instance, [sampId], [periName]);
   return primaryPeriodIds[0][0];
 };
 exports.getPrimaryPeriodId = getPrimaryPeriodId;
 
+// --------------------------------------------------------------------------------------------------------------
 mgetPeriodRange = async function (instance, periodIds, yearDotMonth) {
   // needs 2D array periodIds: [iter][peri]
   // returns 2D array [iter][samp] of { "begin": x, "end": y }
@@ -1089,12 +1148,14 @@ mgetPeriodRange = async function (instance, periodIds, yearDotMonth) {
 };
 exports.mgetPeriodRange = mgetPeriodRange;
 
+// --------------------------------------------------------------------------------------------------------------
 getPeriodRange = async function (instance, periId, yearDotMonth) {
   var periodRanges = await mgetPeriodRange(instance, [[periId]], yearDotMonth);
   return periodRanges[0][0];
 };
 exports.getPeriodRange = getPeriodRange;
 
+// --------------------------------------------------------------------------------------------------------------
 mgetMetricDescs = async function (instance, runIds, yearDotMonth) {
   return await mSearch(
     instance,
@@ -1108,12 +1169,14 @@ mgetMetricDescs = async function (instance, runIds, yearDotMonth) {
   );
 };
 
+// --------------------------------------------------------------------------------------------------------------
 getMetricDescs = async function (instance, runId) {
   var metricDescs = await mgetMetricDescs(instance, [runId]);
   return metricDescs[0];
 };
 exports.getMetricDescs = getMetricDescs;
 
+// --------------------------------------------------------------------------------------------------------------
 mgetMetricDataDocs = async function (instance, metricIds, yearDotMonth) {
   return await mSearch(
     instance,
@@ -1127,12 +1190,29 @@ mgetMetricDataDocs = async function (instance, metricIds, yearDotMonth) {
   );
 };
 
+// --------------------------------------------------------------------------------------------------------------
 getMetricDataDocs = async function (instance, metricId) {
   var metricDataDocs = await mgetMetricDataDocs(instance, [metricId]);
   return await mgetMetricDataDocs(instance, [metricId])[0];
 };
 exports.getMetricDataDocs = getMetricDataDocs;
 
+// --------------------------------------------------------------------------------------------------------------
+mgetMetricSources = async function (instance, runIds, yearDotMonth) {
+  return await mSearch(
+    instance,
+    'metric_desc',
+    yearDotMonth,
+    ['run.run-uuid'],
+    [runIds],
+    null,
+    { source: { terms: { field: 'metric_desc.source', size: 10000 } } },
+    0
+  );
+};
+exports.mgetMetricSources = mgetMetricSources;
+
+// --------------------------------------------------------------------------------------------------------------
 mgetMetricTypes = async function (instance, runIds, metricSources, yearDotMonth) {
   return await mSearch(
     instance,
@@ -1147,12 +1227,7 @@ mgetMetricTypes = async function (instance, runIds, metricSources, yearDotMonth)
 };
 exports.mgetMetricTypes = mgetMetricTypes;
 
-getMetricTypes = async function (instance, runId, metricSource) {
-  var metricTypes = await mgetMetricTypes(instance, [runId], [metricSources]);
-  return await metricTypes[0];
-};
-exports.getMetricTypes = getMetricTypes;
-
+// --------------------------------------------------------------------------------------------------------------
 mgetIterations = async function (instance, runIds, yearDotMonth) {
   return await mSearch(
     instance,
@@ -1167,22 +1242,26 @@ mgetIterations = async function (instance, runIds, yearDotMonth) {
   );
 };
 
+// --------------------------------------------------------------------------------------------------------------
 getIterations = async function (instance, runId, yearDotMonth) {
   var iterations = await mgetIterations(instance, [runId], yearDotMonth);
   return iterations[0];
 };
 exports.getIterations = getIterations;
 
+// --------------------------------------------------------------------------------------------------------------
 mgetTags = async function (instance, runIds, yearDotMonth) {
   return await mSearch(instance, 'tag', yearDotMonth, ['run.run-uuid'], [runIds], 'tag', null, 1000);
 };
 
+// --------------------------------------------------------------------------------------------------------------
 getTags = async function (instance, runId, yearDotMonth) {
   var tags = await mgetTags(instance, [runId], yearDotMonth);
   return tags[0];
 };
 exports.getTags = getTags;
 
+// --------------------------------------------------------------------------------------------------------------
 mgetRunFromIter = async function (instance, iterIds, yearDotMonth) {
   return await mSearch(
     instance,
@@ -1196,22 +1275,26 @@ mgetRunFromIter = async function (instance, iterIds, yearDotMonth) {
   );
 };
 
+// --------------------------------------------------------------------------------------------------------------
 getRunFromIter = async function (instance, iterId, yearDotMonth) {
   var runsFromIter = await mgetRunFromIter(instance, [iterId], yearDotMonth);
   return runsFromIter[0][0];
 };
 exports.getRunFromIter = getRunFromIter;
 
+// --------------------------------------------------------------------------------------------------------------
 mgetRunFromPeriod = async function (instance, periIds, yearDotMonth) {
   return await mSearch(instance, 'period', yearDotMonth, ['period.period-uuid'], [periIds], 'run.run-uuid', null, 1);
 };
 
+// --------------------------------------------------------------------------------------------------------------
 getRunFromPeriod = async function (instance, periId, yearDotMonth) {
   var runFromPeriods = await mgetRunFromPeriod(instance, [periId], yearDotMonth);
   return runFromPeriods[0][0];
 };
 exports.getRunFromPeriod = getRunFromPeriod;
 
+// --------------------------------------------------------------------------------------------------------------
 // For each opensearch instance, get the cdm versions they contain and their indices
 getInstancesInfo = function (instances) {
   for (inst_idx = 0; inst_idx < instances.length; inst_idx++) {
@@ -1262,6 +1345,7 @@ getInstancesInfo = function (instances) {
   }
 };
 
+// --------------------------------------------------------------------------------------------------------------
 invalidInstance = function (instance) {
   if (!instance['online']) {
     debuglog('invalidInstance(): Not using instance ' + instance['host'] + ' becasue it cannot be reached');
@@ -1290,6 +1374,7 @@ invalidInstance = function (instance) {
   return false;
 };
 
+// --------------------------------------------------------------------------------------------------------------
 findYearDotMonthFromRun = async function (instance, runId) {
   // Versions older than v9dev don't have a year and month
   if (instance['ver'] == 'v7dev' || instance['ver'] == 'v8dev') {
@@ -1311,6 +1396,7 @@ findYearDotMonthFromRun = async function (instance, runId) {
 };
 exports.findYearDotMonthFromRun = findYearDotMonthFromRun;
 
+// --------------------------------------------------------------------------------------------------------------
 findInstanceFromRun = async function (instances, runId) {
   var foundInstance;
   for (const instance of instances) {
@@ -1333,6 +1419,7 @@ findInstanceFromRun = async function (instances, runId) {
 };
 exports.findInstanceFromRun = findInstanceFromRun;
 
+// --------------------------------------------------------------------------------------------------------------
 findInstanceFromPeriod = async function (instances, periId) {
   var foundInstance;
   for (const instance of instances) {
@@ -1350,26 +1437,31 @@ findInstanceFromPeriod = async function (instances, periId) {
 };
 exports.findInstanceFromPeriod = findInstanceFromPeriod;
 
+// --------------------------------------------------------------------------------------------------------------
 mgetParams = async function (instance, iterIds, yearDotMonth) {
   return await mSearch(instance, 'param', yearDotMonth, ['iteration.iteration-uuid'], [iterIds], 'param', null, 1000);
 };
 exports.mgetParams = mgetParams;
 
+// --------------------------------------------------------------------------------------------------------------
 getParams = async function (instance, iterId, yearDotMonth) {
   return await mgetParams(instance, [iterId], yearDotMonth)[0];
 };
 exports.getParams = getParams;
 
+// --------------------------------------------------------------------------------------------------------------
 mgetIterationDoc = async function (instance, iterIds, yearDotMonth) {
   return await mSearch(instance, 'iteration', yearDotMonth, ['iteration.iteration-uuid'], [iterIds], '', null, 1000);
 };
 
+// --------------------------------------------------------------------------------------------------------------
 getIterationDoc = async function (instance, iterId, yearDotMonth) {
   var iterationDocs = await mgetIterationDoc(instance, [iterId], yearDotMonth);
   return iterationDocs[0][0];
 };
 exports.getIterationDoc = getIterationDoc;
 
+// --------------------------------------------------------------------------------------------------------------
 mgetBenchmarkNameFromIter = async function (instance, Ids, yearDotMonth) {
   return await mSearch(
     instance,
@@ -1383,32 +1475,38 @@ mgetBenchmarkNameFromIter = async function (instance, Ids, yearDotMonth) {
   );
 };
 
+// --------------------------------------------------------------------------------------------------------------
 getBenchmarkNameFromIter = async function (instance, Id, yearDotMonth) {
   var benchmarkNameforIters = await mgetBenchmarkNameFromIter(instance, [Id], yearDotMonth);
   return benchmarkNameFromIters[0][0];
 };
 exports.getBenchmarkNameFromIter = getBenchmarkNameFromIter;
 
+// --------------------------------------------------------------------------------------------------------------
 mgetBenchmarkName = async function (instance, runIds, yearDotMonth) {
   return await mSearch(instance, 'run', yearDotMonth, ['run.run-uuid'], [runIds], 'run.benchmark', null, 1);
 };
 
+// --------------------------------------------------------------------------------------------------------------
 getBenchmarkName = async function (instance, runId, yearDotMonth) {
   var benchmarkNames = await mgetBenchmarkName(instance, [runId], yearDotMonth);
   return benchmarkNames[0][0];
 };
 exports.getBenchmarkName = getBenchmarkName;
 
+// --------------------------------------------------------------------------------------------------------------
 mgetRunData = async function (instance, runIds, yearDotMonth) {
   return await mSearch(instance, 'run', yearDotMonth, ['run.run-uuid'], [runIds], '', null, 1000);
 };
 
+// --------------------------------------------------------------------------------------------------------------
 getRunData = async function (instance, runId, yearDotMonth) {
   var runData = await mgetRunData(instance, [runId], yearDotMonth);
   return runData[0];
 };
 exports.getRunData = getRunData;
 
+// --------------------------------------------------------------------------------------------------------------
 calcIterMetrics = function (vals) {
   var count = vals.length;
   if (count == 0) return -1;
@@ -1430,22 +1528,28 @@ calcIterMetrics = function (vals) {
   };
 };
 
+// --------------------------------------------------------------------------------------------------------------
 mgetIterMetrics = async function (instance, iterationIds) {
+  var retMsg = '';
+  var retCode = 0;
   var results = {};
   var benchmarkNames = consolidateAllArrays(await mgetBenchmarkNameFromIter(instance, iterationIds));
   if (benchmarkNames.length !== 1) {
-    console.log('ERROR: The benchmark-name for all iterations was not the same, includes: ' + benchmarkNames);
-    process.exit(1);
+    retMsg = 'ERROR: The benchmark-name for all iterations was not the same, includes: ' + benchmarkNames;
+    retCode = 1;
+    return { results: results, 'ret-code': retCode, 'ret-msg': retMsg };
   }
   var primaryMetrics = consolidateAllArrays(await mgetPrimaryMetric(instance, iterationIds));
   if (primaryMetrics.length !== 1) {
-    console.log('ERROR: The primary-metric for all iterations was not the same, includes: ' + primaryMetrics);
-    process.exit(1);
+    retMsg = 'ERROR: The primary-metric for all iterations was not the same, includes: ' + primaryMetrics;
+    retCode = 2;
+    return { results: results, 'ret-code': retCode, 'ret-msg': retMsg };
   }
   var primaryPeriodNames = consolidateAllArrays(await mgetPrimaryPeriodName(instance, iterationIds));
   if (primaryPeriodNames.length !== 1) {
-    console.log('ERROR: The primary-period-name for all iterations was not the same, includes: ' + primaryPeriodNames);
-    process.exit(1);
+    retMsg = 'ERROR: The primary-period-name for all iterations was not the same, includes: ' + primaryPeriodNames;
+    retCode = 3;
+    return { results: results, 'ret-code': retCode, 'ret-msg': retMsg };
   }
   // Find all of the passing samples, then all of the primary-periods, then get the metric for all of them in one request
   var samples = await mgetSamples(instance, iterationIds); // Samples organized in 2D array, first dimension matching iterationIds
@@ -1496,7 +1600,11 @@ mgetIterMetrics = async function (instance, iterationIds) {
     periodsByIteration[iterIdFromSample[sampleIdFromPeriod[periodId]]] = p;
   }
   // Returned data should be in same order as consPrimaryPeriodIds
-  var metricDataSets = await getMetricDataSets(instance, sets);
+  var resp = await getMetricDataSets(instance, sets);
+  if (resp['ret-code'] != 0) {
+    return; //TODO: pass ret-code and ret-msg
+  }
+  var metricDataSets = resp['metric-data-sets'];
   // Build per-iteration results
   var period = consPrimaryPeriodIds[0];
   var sample = sampleIdFromPeriod[period];
@@ -1522,14 +1630,11 @@ mgetIterMetrics = async function (instance, iterationIds) {
   }
   var thisResult = calcIterMetrics(vals);
   results[iter] = thisResult;
-  return results;
+  return { results: results, 'ret-code': retCode, 'ret-msg': retMsg };
 };
 exports.mgetIterMetrics = mgetIterMetrics;
 
-getIterMetrics = async function (instance, iterId) {
-  return await mgetIterMetrics(instance, [iterId]);
-};
-
+// --------------------------------------------------------------------------------------------------------------
 deleteDocs = function (instance, docTypes, q, yearDotMonth) {
   docTypes.forEach((docType) => {
     debuglog('deleteDocs() q: ' + JSON.stringify(q, null, 2));
@@ -1540,6 +1645,7 @@ deleteDocs = function (instance, docTypes, q, yearDotMonth) {
 };
 exports.deleteDocs = deleteDocs;
 
+// --------------------------------------------------------------------------------------------------------------
 // For comparing N iterations across 1 or more runs.
 buildIterTree = function (
   instance,
@@ -1761,7 +1867,8 @@ buildIterTree = function (
   return iterNode;
 };
 
-// Generate a txt report for iteration compareisons (uses data from buildIterTree)
+// --------------------------------------------------------------------------------------------------------------
+// Generate a txt report for iteration comparisons (uses data from buildIterTree)
 reportIters = function (iterTree, indent, count) {
   //if (typeof(indent) == "undefined" || indent == "") {
   //}
@@ -1870,6 +1977,7 @@ reportIters = function (iterTree, indent, count) {
   return;
 };
 
+// --------------------------------------------------------------------------------------------------------------
 // getIters(): filter and group interations, typically for generating comparisons (clustered bar graphs)
 getIters = async function (
   instance,
@@ -1892,6 +2000,8 @@ getIters = async function (
   // 4) Intersect iters from #2 and #3
   // 5) Build iteration lookup tables by param and by tag
 
+  var retMsg = '';
+  var retCode = 0;
   const now = Date.now();
   var intersectedRunIds = [];
   var jsonArr = [];
@@ -2267,8 +2377,14 @@ getIters = async function (
   console.log('allIterIds.length: ' + allIterIds.length);
 
   // Build a lookup table of iterId->metrics
-  console.log('mgetIterMetrics');
-  var results = await mgetIterMetrics(instance, allIterIds);
+  var resp = await mgetIterMetrics(instance, allIterIds);
+  if (resp['ret-code'] != 0) {
+    process.exit(1); /* temporary exit, should do this instead:
+    retCode = 1;
+    retMsg = 'ERROR: from mgetIterMetrics ' + resp['ret-msg'];
+    return { 'ret-code': retCode, 'ret-msg': retMsg }; */
+  }
+  var results = resp['results'];
 
   iterTree = buildIterTree(
     instance,
@@ -2288,25 +2404,7 @@ getIters = async function (
 };
 exports.getIters = getIters;
 
-exports.getMetricSources = function (instance, runId, yearDotMonth) {
-  var q = {
-    query: { bool: { filter: [{ term: { 'run.run-uuid': runId } }] } },
-    aggs: {
-      source: { terms: { field: 'metric_desc.source', size: bigQuerySize } }
-    },
-    size: 0
-  };
-  var resp = esRequest(instance, 'metric_desc', '/_search', q, yearDotMonth);
-  var data = JSON.parse(resp.getBody());
-  if (Array.isArray(data.aggregations.source.buckets)) {
-    var sources = [];
-    data.aggregations.source.buckets.forEach((element) => {
-      sources.push(element.key);
-    });
-    return sources;
-  }
-};
-
+// --------------------------------------------------------------------------------------------------------------
 getDocCount = function (instance, runId, docType, yearDotMonth) {
   var q = { query: { bool: { filter: [{ term: { 'run.run-uuid': runId } }] } } };
   var resp = esRequest(instance, docType, '/_count', q, yearDotMonth);
@@ -2315,6 +2413,7 @@ getDocCount = function (instance, runId, docType, yearDotMonth) {
 };
 exports.getDocCount = getDocCount;
 
+// --------------------------------------------------------------------------------------------------------------
 // Traverse a response from a nested aggregation to generate a set of filter terms
 // for each metric group.
 getMetricGroupTermsFromAgg = function (agg, terms) {
@@ -2349,6 +2448,7 @@ getMetricGroupTermsFromAgg = function (agg, terms) {
 };
 exports.getMetricGroupTermsFromAgg = getMetricGroupTermsFromAgg;
 
+// --------------------------------------------------------------------------------------------------------------
 getBreakoutAggregation = function (source, type, breakout) {
   var agg_str = '{';
   agg_str += '"metric_desc.source": { "terms": { "field": "metric_desc.source"}';
@@ -2391,6 +2491,7 @@ getBreakoutAggregation = function (source, type, breakout) {
 };
 exports.getBreakoutAggregation = getBreakoutAggregation;
 
+// --------------------------------------------------------------------------------------------------------------
 getMetricGroupTermsByLabel = function (metricGroupTerms) {
   var metricGroupTermsByLabel = {};
   metricGroupTerms.forEach((term) => {
@@ -2413,11 +2514,17 @@ getMetricGroupTermsByLabel = function (metricGroupTerms) {
   return metricGroupTermsByLabel;
 };
 
+// --------------------------------------------------------------------------------------------------------------
 mgetMetricIdsFromTerms = async function (instance, termsSets, yearDotMonth) {
+  var retCode = 0;
+  var retMsg = '';
+  var metricIdsSets = []; // eventual length = termsSets
+
   // termsSets is an array of:
   // { 'period': x, 'run': y, 'termsByLabel': {} }
   // termsByLabel is a dict/hash of:
   // { <label>: sring }
+
   var jsonArr = [];
   var totalReqs = 0;
   for (i = 0; i < termsSets.length; i++) {
@@ -2433,8 +2540,9 @@ mgetMetricIdsFromTerms = async function (instance, termsSets, yearDotMonth) {
           size: bigQuerySize
         };
         if (periId == null && runId == null) {
-          console.log('ERROR: mgetMetricIdsFromTerms(), terms[' + i + ']  must have either a period-id or run-id\n');
-          return;
+          retMsg = 'ERROR: mgetMetricIdsFromTerms(), terms[' + i + ']  must have either a period-id or run-id';
+          retCode = 1;
+          return { 'metric-id-sets': metricIdsSets, 'ret-code': retCode, 'ret-msg': retMsg };
         }
         if (periId != null) {
           q.query.bool.filter.push(JSON.parse('{"term": {"period.period-uuid": "' + periId + '"}}'));
@@ -2449,22 +2557,23 @@ mgetMetricIdsFromTerms = async function (instance, termsSets, yearDotMonth) {
   }
   var responses = await esJsonArrRequest(instance, 'metric_desc', '/_msearch', jsonArr, yearDotMonth);
   if (totalReqs != responses.length) {
-    console.log(
+    retMsg =
       'mgetMetricIdsFromTerms(): ERROR, number of _msearch responses (' +
-        responses.length +
-        ') did not match number of requests (' +
-        totalReqs +
-        ')'
-    );
-    return;
+      responses.length +
+      ') did not match number of requests (' +
+      totalReqs +
+      ')';
+    retMsg = 'ERROR: mgetMetricIdsFromTerms(), terms[' + i + ']  must have either a period-id or run-id';
+    retCode = 2;
+    return { 'metric-id-sets': metricIdsSets, 'ret-code': retCode, 'ret-msg': retMsg };
   }
   if (responses == null) {
-    console.log('ERROR: responses is null');
-    return;
+    retMsg = 'ERROR: responses is null';
+    retCode = 3;
+    return { 'metric-id-sets': metricIdsSets, 'ret-code': retCode, 'ret-msg': retMsg };
   }
 
   // Process the responses and assemble metric IDs into array
-  var metricIdsSets = []; // eventual length = termsSets
   var count = 0;
   for (i = 0; i < termsSets.length; i++) {
     var thisMetricIds = {};
@@ -2500,16 +2609,19 @@ mgetMetricIdsFromTerms = async function (instance, termsSets, yearDotMonth) {
       });
     metricIdsSets.push(thisMetricIds);
   }
-  return metricIdsSets;
+  return { 'metric-id-sets': metricIdsSets, 'ret-code': retCode, 'ret-msg': retMsg };
 };
 exports.mgetMetricIdsFromTerms = mgetMetricIdsFromTerms;
 
+// --------------------------------------------------------------------------------------------------------------
 // Before querying for metric data, we must first find out which metric IDs we need
 // to query.  There may be one or more groups of these IDs, depending if the user
 // wants to "break-out" the metric (by some metadatam like cpu-id, devtype, etc).
 // Find the number of groups needed based on the --breakout options, then find out
 // what metric IDs belong in each group.
 getMetricGroupsFromBreakouts = async function (instance, sets, yearDotMonth) {
+  var retMsg = '';
+  var retCode = 0;
   var metricGroupIdsByLabel = [];
   var indexjson = '{}\n';
   var index = JSON.parse(indexjson);
@@ -2567,24 +2679,18 @@ getMetricGroupsFromBreakouts = async function (instance, sets, yearDotMonth) {
     };
     termsSets.push(thisLabelSet);
   }
-  metricGroupIdsByLabelSets = await mgetMetricIdsFromTerms(instance, termsSets, yearDotMonth);
-  return metricGroupIdsByLabelSets;
+  var resp = await mgetMetricIdsFromTerms(instance, termsSets, yearDotMonth);
+  //console.log("resp from mgetMetricIdsFromTerms(): " + JSON.stringify(resp, null, 2));
+  if (resp['ret-code'] == 0) {
+    return { 'ret-code': retCode, 'ret-msg': retMsg, 'metric-id-sets': resp['metric-id-sets'] };
+  }
+  retMsg = 'ERROR: ' + resp['ret-msg'];
+  retCode = resp['ret-code'];
+  return { 'ret-code': retCode, 'ret-msg': retMsg, 'metric-id-sets': resp['metric-id-sets'] };
 };
 exports.getMetricGroupsFromBreakouts = getMetricGroupsFromBreakouts;
 
-getMetricGroupsFromBreakout = async function (instance, runId, periId, source, type, breakout) {
-  var thisSet = {
-    run: runId,
-    period: periId,
-    source: source,
-    type: type,
-    breakout: breakout
-  };
-  var metricGroupIdsByLabelSets = await getMetricGroupsFromBreakouts(instance, [thisSet]);
-  return metricGroupIdsByLabelSets[0];
-};
-exports.getMetricGroupsFromBreakout = getMetricGroupsFromBreakout;
-
+// --------------------------------------------------------------------------------------------------------------
 sendMetricReq = async function (
   jsonArr,
   jsonArrTracker,
@@ -2821,6 +2927,7 @@ sendMetricReq = async function (
   debuglog('sendMetricReq end, lastPass: ' + lastPass);
 };
 
+// --------------------------------------------------------------------------------------------------------------
 calcAvg = function (thisBegin, thisEnd, responses, jsonArrIdx, jsonArrTracker, numMetricIds, values) {
   debuglog('calcAvg start');
   debuglog(
@@ -2937,6 +3044,7 @@ calcAvg = function (thisBegin, thisEnd, responses, jsonArrIdx, jsonArrTracker, n
   return jsonArrIdx;
 };
 
+// --------------------------------------------------------------------------------------------------------------
 // From a set of metric_desc ID's, return 1 or more values depending on resolution.
 // For each metric ID, there should be exactly 1 metric_desc doc and at least 1 metric_data docs.
 // A metric_data doc has a 'value', a 'begin' timestamp, and and 'end' timestamp (also a
@@ -3003,37 +3111,7 @@ getMetricDataFromIdsSets = async function (instance, sets, metricGroupIdsByLabel
 
 exports.getMetricDataFromIdsSets = getMetricDataFromIdsSets;
 
-getMetricData = async function (
-  instance,
-  runId,
-  periId,
-  source,
-  type,
-  begin,
-  end,
-  resolution,
-  breakout,
-  filter,
-  yearDotMonth
-) {
-  var sets = [];
-  var thisSet = {
-    run: runId,
-    period: periId,
-    source: source,
-    type: type,
-    begin: begin,
-    end: end,
-    resolution: resolution,
-    breakout: breakout,
-    filter: filter
-  };
-  sets.push(thisSet);
-  var dataSets = await getMetricDataSets(instance, sets, yearDotMonth);
-  return dataSets[0];
-};
-exports.getMetricData = getMetricData;
-
+// --------------------------------------------------------------------------------------------------------------
 // Generates 1 or more values for 1 or more groups for a metric of a particular source
 // (tool or benchmark) and type (iops, l2-Gbps, ints/sec, etc).
 // - The breakout determines if the metric is broken out into groups -if it is empty,
@@ -3047,6 +3125,8 @@ exports.getMetricData = getMetricData;
 //   *if* the metric is from a benchmark.  If you want to query for corresponding
 //   tool data, use the same begin and end as the benchmark-iteration-sample-period.
 getMetricDataSets = async function (instance, sets, yearDotMonth) {
+  var retCode = 0;
+  var retMsg = '';
   for (var i = 0; i < sets.length; i++) {
     // If a begin and end are not defined, get it from the period.begin & period.end.
     // If a begin and/or end are not defined, and the period is not defined, error out.
@@ -3057,7 +3137,9 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
         console.log('getRunFromPeriod');
         sets[i].run = await getRunFromPeriod(instance, sets[i].period, yearDotMonth);
       } else {
-        console.log('ERROR: run and period was not defined');
+        retMsg = 'ERROR: run and period was not defined';
+        retCode = 1;
+        return { 'data-sets': [], 'ret-code': retCode, 'ret-msg': retMsg };
       }
     }
     var periodRange;
@@ -3066,7 +3148,9 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
         periodRange = await getPeriodRange(instance, sets[i].period, yearDotMonth);
         sets[i]['begin'] = periodRange['begin'];
       } else {
-        console.log('ERROR: begin is not defined and a period was not defined');
+        retMsg = 'ERROR: begin is not defined or a period ID was not defined';
+        retCode = 2;
+        return { 'data-sets': [], 'ret-code': retCode, 'ret-msg': retMsg };
       }
     }
     if (typeof sets[i].end == 'undefined') {
@@ -3076,7 +3160,9 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
         }
         sets[i].end = periodRange.end;
       } else {
-        console.log('ERROR: end is not defined and a period was not defined');
+        retMag = 'ERROR: end is not defined or a period was not defined';
+        retCode = 2;
+        return { 'data-sets': [], 'ret-code': retCode, 'ret-msg': retMsg };
       }
     }
     // In order for all metric queries to work, we must remove the period ID.
@@ -3097,20 +3183,6 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
     delete sets[i].period;
   }
 
-  var metricGroupIdsByLabelSets = await getMetricGroupsFromBreakouts(instance, sets, yearDotMonth);
-  var dataSets = await getMetricDataFromIdsSets(instance, sets, metricGroupIdsByLabelSets, yearDotMonth);
-
-  if (dataSets.length != sets.length) {
-    console.log(
-      'ERROR: number of generated data sets (' +
-        dataSets.length +
-        ') does not match the number of metric query sets (' +
-        sets.length +
-        ')'
-    );
-    return;
-  }
-
   // Rearrange data to call getMetricNames
   var runIds = [];
   var sources = [];
@@ -3120,7 +3192,85 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
     sources[i] = sets[i].source;
     types[i] = sets[i].type;
   }
+
+  // Ensure the metric sources exist in each set
+  var metricSources = await mgetMetricSources(instance, runIds, yearDotMonth);
+  for (var i = 0; i < sets.length; i++) {
+    if (!metricSources[i].includes(sets[i].source)) {
+      retMsg = 'ERROR: the metric-source [' + sets[i].source + '] was not found in run [' + sets[i].run + ']\n';
+      retMsg += 'The available soucres for this run are: ' + metricSources[i];
+      retCode = 1;
+      return { 'ret-code': retCode, 'ret-msg': retMsg };
+    }
+  }
+
+  // Ensure the metric types exist for the sources in each set
+  var metricTypes = await mgetMetricTypes(instance, runIds, sources, yearDotMonth);
+  for (var i = 0; i < sets.length; i++) {
+    if (!metricTypes[i].includes(sets[i].type)) {
+      retMsg =
+        'ERROR: the metric-type [' +
+        sets[i].type +
+        '] was not found for metric source [' +
+        sets[i].source +
+        '] in run [' +
+        sets[i].run +
+        ']\n';
+      retMsg += 'The available types for this run and source are: ' + metricTypes[i];
+      retCode = 1;
+      return { 'ret-code': retCode, 'ret-msg': retMsg };
+    }
+  }
+
   var setBreakouts = await mgetMetricNames(instance, runIds, sources, types, yearDotMonth);
+
+  // Ensure that any breakouts are available for each set
+  for (var i = 0; i < sets.length; i++) {
+    if (sets[i].breakout != 'undefined') {
+      for (var j = 0; j < sets[i].breakout.length; j++) {
+        if (!setBreakouts[i].includes(sets[i].breakout[j])) {
+          retMsg +=
+            'ERROR: the breakout [' +
+            sets[i].breakout[j] +
+            '] was not found for [' +
+            sets[i].source +
+            '::' +
+            sets[i].type +
+            '] in run [' +
+            sets[i].run +
+            ']\n';
+          retCode = 1;
+        }
+      }
+      if (retCode == 1) {
+        retMsg += 'The available breakouts for this run and source are: ' + setBreakouts[i];
+      }
+    }
+  }
+  if (retCode == 1) {
+    return { 'ret-code': retCode, 'ret-msg': retMsg };
+  }
+
+  var resp = await getMetricGroupsFromBreakouts(instance, sets, yearDotMonth);
+  if (resp['ret-code'] != 0) {
+    retMsg = 'ERROR: getMetricDataSets(): ' + resp['ret-msg'];
+    retCode = resp['ret-code'];
+    return { 'ret-code': retCode, 'ret-msg': retMsg };
+  }
+  var metricGroupIdsByLabelSets = resp['metric-id-sets'];
+  var dataSets = await getMetricDataFromIdsSets(instance, sets, metricGroupIdsByLabelSets, yearDotMonth);
+
+  if (dataSets.length != sets.length) {
+    retMsg =
+      'ERROR: number of generated data sets (' +
+      dataSets.length +
+      ') does not match the number of metric query sets (' +
+      sets.length +
+      ')';
+    retCode = 1;
+    return { 'ret-code': retCode, 'ret-msg': retMsg };
+  }
+  //var setBreakouts = await mgetMetricNames(instance, runIds, sources, types, yearDotMonth);
 
   for (var i = 0; i < sets.length; i++) {
     // Rearrange the actual data into 'values' section
@@ -3170,10 +3320,11 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
       });
     }
   }
-  return dataSets;
+  return { 'data-sets': dataSets, 'ret-code': retCode, 'ret-msg': retMsg };
 };
 exports.getMetricDataSets = getMetricDataSets;
 
+// --------------------------------------------------------------------------------------------------------------
 async function waitForIndexedDocs(instance, runId, docTypeCounts, yearDotMonth) {
   var numAttempts = 1;
   var maxAttempts = 30;
@@ -3210,6 +3361,7 @@ async function waitForIndexedDocs(instance, runId, docTypeCounts, yearDotMonth) 
 }
 exports.waitForIndexedDocs = waitForIndexedDocs;
 
+// --------------------------------------------------------------------------------------------------------------
 async function waitForDeletedDocs(instance, runId, docTypes, yearDotMonth) {
   var numAttempts = 1;
   var maxAttempts = 100;
