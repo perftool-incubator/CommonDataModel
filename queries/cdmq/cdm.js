@@ -2627,6 +2627,8 @@ getMetricGroupsFromBreakouts = async function (instance, sets, yearDotMonth) {
   var index = JSON.parse(indexjson);
   var jsonArr = [];
 
+  console.log("sets: " + JSON.stringify(sets, null, 2));
+
   sets.forEach((set) => {
     var result = getBreakoutAggregation(set.source, set.type, set.breakout);
     var aggs = JSON.parse(result);
@@ -3088,6 +3090,13 @@ getMetricDataFromIdsSets = async function (instance, sets, metricGroupIdsByLabel
       var duration = Math.floor((end - begin) / resolution);
 
       const lastPass = idx + 1 >= metricGroupIdsByLabelSets.length && k + 1 >= sortedKeys.length;
+      console.log(
+        instance,
+        begin,
+        end,
+        resolution,
+        metricIds,
+        yearDotMonth);
       await sendMetricReq(
         jsonArr,
         jsonArrTracker,
@@ -3228,10 +3237,18 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
   for (var i = 0; i < sets.length; i++) {
     if (sets[i].breakout != 'undefined') {
       for (var j = 0; j < sets[i].breakout.length; j++) {
-        if (!setBreakouts[i].includes(sets[i].breakout[j])) {
+        var breakout = sets[i].breakout[j]
+        // The breakout requested might have a match included, for example, csid=1.  We only
+        // want the string before the '='
+        var regExp = /([^\=]+)\=([^\=]+)/;
+        var matches = regExp.exec(breakout);
+        if (matches) {
+          breakout = matches[1];
+        }
+        if (!setBreakouts[i].includes(breakout)) {
           retMsg +=
             'ERROR: the breakout [' +
-            sets[i].breakout[j] +
+            breakout +
             '] was not found for [' +
             sets[i].source +
             '::' +
@@ -3270,7 +3287,6 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
     retCode = 1;
     return { 'ret-code': retCode, 'ret-msg': retMsg };
   }
-  //var setBreakouts = await mgetMetricNames(instance, runIds, sources, types, yearDotMonth);
 
   for (var i = 0; i < sets.length; i++) {
     // Rearrange the actual data into 'values' section
