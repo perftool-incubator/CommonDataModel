@@ -2627,6 +2627,8 @@ getMetricGroupsFromBreakouts = async function (instance, sets, yearDotMonth) {
   var index = JSON.parse(indexjson);
   var jsonArr = [];
 
+  console.log("sets: " + JSON.stringify(sets, null, 2));
+
   sets.forEach((set) => {
     var result = getBreakoutAggregation(set.source, set.type, set.breakout);
     var aggs = JSON.parse(result);
@@ -3050,6 +3052,13 @@ getMetricDataFromIdsSets = async function (instance, sets, metricGroupIdsByLabel
       var duration = Math.floor((end - begin) / resolution);
 
       const lastPass = idx + 1 >= metricGroupIdsByLabelSets.length && k + 1 >= sortedKeys.length;
+      console.log(
+        instance,
+        begin,
+        end,
+        resolution,
+        metricIds,
+        yearDotMonth);
       await sendMetricReq(
         jsonArr,
         jsonArrTracker,
