@@ -3228,7 +3228,7 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
   for (var i = 0; i < sets.length; i++) {
     if (sets[i].breakout != 'undefined') {
       for (var j = 0; j < sets[i].breakout.length; j++) {
-        var breakout = sets[i].breakout[j]
+        var breakout = sets[i].breakout[j];
         // The breakout requested might have a match included, for example, csid=1.  We only
         // want the string before the '='
         var regExp = /([^\=]+)\=([^\=]+)/;
