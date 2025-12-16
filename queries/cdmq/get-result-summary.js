@@ -365,14 +365,6 @@ async function main() {
             var sourceType = primaryMetrics[k].split('::');
             var thisChunk = Math.floor(idx / batchedQuerySize);
             var thisIdx = idx % batchedQuerySize;
-            console.log(
-              'metricDataSetsChunks[' +
-                thisChunk +
-                '][' +
-                thisIdx +
-                '] ' +
-                JSON.stringify(metricDataSetsChunks[thisChunk][thisIdx], null, 2)
-            );
             msampleVal = parseFloat(metricDataSetsChunks[thisChunk][thisIdx].values[''][0].value);
             thisSample['values'][primaryMetrics[k]] = msampleVal;
             if (allBenchMsampleVals[k] == null) {
