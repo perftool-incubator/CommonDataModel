@@ -2741,10 +2741,17 @@ sendMetricReq = async function (
     const indexjson = '{"index": "' + indexName + '" }';
 
     // Request 1: Weighted average for documents fully within range
-    let reqjson = '{"size":0,"query":{"bool":{"filter":[' +
-      '{"range":{"metric_data.end":{"lte":"' + thisEnd + '"}}},' +
-      '{"range":{"metric_data.begin":{"gte":"' + thisBegin + '"}}},' +
-      '{"terms":{"metric_desc.metric_desc-uuid":' + metricIdsArrayStr + '}}' +
+    let reqjson =
+      '{"size":0,"query":{"bool":{"filter":[' +
+      '{"range":{"metric_data.end":{"lte":"' +
+      thisEnd +
+      '"}}},' +
+      '{"range":{"metric_data.begin":{"gte":"' +
+      thisBegin +
+      '"}}},' +
+      '{"terms":{"metric_desc.metric_desc-uuid":' +
+      metricIdsArrayStr +
+      '}}' +
       ']}},"aggs":{"metric_avg":{"weighted_avg":{"value":{"field":"metric_data.value"},' +
       '"weight":{"field":"metric_data.duration"}}}}}';
 
@@ -2753,10 +2760,17 @@ sendMetricReq = async function (
     jsonArrEstimatedBytes += (indexjson.length + reqjson.length) * 2;
 
     // Request 2: Total weight
-    reqjson = '{"size":0,"query":{"bool":{"filter":[' +
-      '{"range":{"metric_data.end":{"lte":"' + thisEnd + '"}}},' +
-      '{"range":{"metric_data.begin":{"gte":"' + thisBegin + '"}}},' +
-      '{"terms":{"metric_desc.metric_desc-uuid":' + metricIdsArrayStr + '}}' +
+    reqjson =
+      '{"size":0,"query":{"bool":{"filter":[' +
+      '{"range":{"metric_data.end":{"lte":"' +
+      thisEnd +
+      '"}}},' +
+      '{"range":{"metric_data.begin":{"gte":"' +
+      thisBegin +
+      '"}}},' +
+      '{"terms":{"metric_desc.metric_desc-uuid":' +
+      metricIdsArrayStr +
+      '}}' +
       ']}},"aggs":{"total_weight":{"sum":{"field":"metric_data.duration"}}}}';
 
     jsonArr.push(indexjson, reqjson);
@@ -2770,11 +2784,20 @@ sendMetricReq = async function (
       const slicedMetricIdsStr = buildMetricIdsArray(slicedMetricIds);
 
       // Request 3: End after range
-      reqjson = '{"size":' + bigQuerySize + ',"_source":["metric_data.begin","metric_data.end","metric_data.value"],' +
+      reqjson =
+        '{"size":' +
+        bigQuerySize +
+        ',"_source":["metric_data.begin","metric_data.end","metric_data.value"],' +
         '"query":{"bool":{"filter":[' +
-        '{"range":{"metric_data.end":{"gt":"' + thisEnd + '"}}},' +
-        '{"range":{"metric_data.begin":{"lte":"' + thisEnd + '"}}},' +
-        '{"terms":{"metric_desc.metric_desc-uuid":' + slicedMetricIdsStr + '}}' +
+        '{"range":{"metric_data.end":{"gt":"' +
+        thisEnd +
+        '"}}},' +
+        '{"range":{"metric_data.begin":{"lte":"' +
+        thisEnd +
+        '"}}},' +
+        '{"terms":{"metric_desc.metric_desc-uuid":' +
+        slicedMetricIdsStr +
+        '}}' +
         ']}}}';
 
       jsonArr.push(indexjson, reqjson);
@@ -2782,12 +2805,21 @@ sendMetricReq = async function (
       jsonArrEstimatedBytes += (indexjson.length + reqjson.length) * 2;
 
       // Request 4: Begin before range
-      reqjson = '{"size":' + bigQuerySize + ',"_source":["metric_data.begin","metric_data.end","metric_data.value"],' +
+      reqjson =
+        '{"size":' +
+        bigQuerySize +
+        ',"_source":["metric_data.begin","metric_data.end","metric_data.value"],' +
         '"query":{"bool":{"filter":[' +
-        '{"range":{"metric_data.end":{"gte":' + thisBegin + '}}},' +
-        '{"range":{"metric_data.begin":{"lt":' + thisBegin + '}}},' +
+        '{"range":{"metric_data.end":{"gte":' +
+        thisBegin +
+        '}}},' +
+        '{"range":{"metric_data.begin":{"lt":' +
+        thisBegin +
+        '}}},' +
         //'{"terms":{"metric_desc.metric_desc-uuid":' + JSON.stringify(slicedMetricIds) + '}}' +
-        '{"terms":{"metric_desc.metric_desc-uuid":' + slicedMetricIdsStr + '}}' +
+        '{"terms":{"metric_desc.metric_desc-uuid":' +
+        slicedMetricIdsStr +
+        '}}' +
         ']}}}';
 
       jsonArr.push(indexjson, reqjson);
@@ -2805,8 +2837,8 @@ sendMetricReq = async function (
       thisEnd = end;
     }
 
-    if ((jsonArrEstimatedBytes / (1024 * 1024) > chunkMBytes) || (thisBegin > thisEnd && lastPass)) {
-    //if ((thisBegin > thisEnd && lastPass)) {
+    if (jsonArrEstimatedBytes / (1024 * 1024) > chunkMBytes || (thisBegin > thisEnd && lastPass)) {
+      //if ((thisBegin > thisEnd && lastPass)) {
       debuglog('sendMetricReq jsonArr size MB: ' + numMBytes(jsonArr));
       debuglog('sendMetricReq responses size MB: ' + numMBytes(responses));
 
