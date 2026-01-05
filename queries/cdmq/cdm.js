@@ -2718,207 +2718,137 @@ sendMetricReq = async function (
       ']'
   );
 
-  // When jsonArr goes over this, submit the requests we have so far, so we can
-  // get responses and delete these reqs from jsonArr and process and delete the
-  // matching responses.
-  var chunkMBytes = 32;
+  let jsonArrEstimatedBytes = 0;
+  const chunkMBytes = 32;
+  const duration = Math.floor((end - begin) / resolution);
+  let thisBegin = begin;
+  let thisEnd = begin + duration;
 
-  // Create a query for each data-point in a line graph.  Resolution = number of data-points
-  // These vars are used for defining the requests and are altered in each loop cycle below (while)
-  // These are not used for processing responses, as response processing is triggered on demand,
-  // and these vars won't have the correct info.
-  //
-  // The resolution determines how many times we compute a value, each value for a
-  // different "slice" in the original begin-to-end time domain.
-  var duration = Math.floor((end - begin) / resolution);
-  var thisBegin = begin;
-  var thisEnd = begin + duration;
+  const indexName = getIndexName('metric_data', instance, yearDotMonth);
 
-  // To have the correct info for processing responses, it is stoted in this array, where the array index*2
-  // corresponds to the index in the jsonArr request.
-  //var info = { 'label': label, 'set': set, 'begin': thisBegin, 'end': thisEnd, 'numMetricIds': metricIds.length };
+  // Pre-serialize metricIds once instead of in every loop iteration
+  const metricIdsJson = JSON.stringify(metricIds);
+
+  // Helper function to build metric IDs array string more efficiently
+  const buildMetricIdsArray = (ids) => {
+    if (ids.length === 0) return '[]';
+    return '["' + ids.join('","') + '"]';
+  };
+
+  const metricIdsArrayStr = buildMetricIdsArray(metricIds);
 
   while (true) {
-    // Calculating a single value representing an average for thisBegin - thisEnd
-    // relies on an [weighted average] aggregation, plus a few other queries.  An
-    // alternative method would involve querying all documents for the orignal
-    // begin - end time range, then [locally] computing a weighted average per
-    // thisBegin - thisEnd slice. Each method has pros/cons depending on the
-    // resolution and the total number of metric_data documents.
-    //
-    // This first request is for the weighted average, but does not include the
-    // documents which are partially outside the time range we need.
-    indexjson = '{"index": "' + getIndexName('metric_data', instance, yearDotMonth) + '" }\n';
-    reqjson = '{';
-    reqjson += '  "size": 0,';
-    reqjson += '  "query": {';
-    reqjson += '    "bool": {';
-    reqjson += '      "filter": [';
-    reqjson += '        {"range": {"metric_data.end": { "lte": "' + thisEnd + '"}}},';
-    reqjson += '        {"range": {"metric_data.begin": { "gte": "' + thisBegin + '"}}},';
-    reqjson += '        {"terms": {"metric_desc.metric_desc-uuid": ' + JSON.stringify(metricIds) + '}}';
-    reqjson += '      ]';
-    reqjson += '    }';
-    reqjson += '  },';
-    reqjson += '  "aggs": {';
-    reqjson += '    "metric_avg": {';
-    reqjson += '      "weighted_avg": {';
-    reqjson += '        "value": {';
-    reqjson += '          "field": "metric_data.value"';
-    reqjson += '        },';
-    reqjson += '        "weight": {';
-    reqjson += '          "field": "metric_data.duration"';
-    reqjson += '        }';
-    reqjson += '      }';
-    reqjson += '    }';
-    reqjson += '  }';
-    reqjson += '}';
-    var index = JSON.parse(indexjson);
-    var req = JSON.parse(reqjson);
-    jsonArr.push(JSON.stringify(index));
-    jsonArr.push(JSON.stringify(req));
-    jsonArrTracker.push({ label: label, set: set, begin: thisBegin, end: thisEnd, numMetricIds: metricIds.length });
-    // This second request is for the total weight of the previous weighted average request.
-    // We need this because we are going to recompute the weighted average by adding
-    // a few more documents that are partially outside the time domain.
-    indexjson = '{"index": "' + getIndexName('metric_data', instance, yearDotMonth) + '" }\n';
-    reqjson = '{';
-    reqjson += '  "size": 0,';
-    reqjson += '  "query": {';
-    reqjson += '    "bool": {';
-    reqjson += '      "filter": [';
-    reqjson += '        {"range": {"metric_data.end": { "lte": "' + thisEnd + '"}}},';
-    reqjson += '        {"range": {"metric_data.begin": { "gte": "' + thisBegin + '"}}},';
-    reqjson += '        {"terms": {"metric_desc.metric_desc-uuid": ' + JSON.stringify(metricIds) + '}}';
-    reqjson += '      ]';
-    reqjson += '    }';
-    reqjson += '  },';
-    reqjson += '  "aggs": {';
-    reqjson += '    "total_weight": {';
-    reqjson += '      "sum": {"field": "metric_data.duration"}';
-    reqjson += '    }';
-    reqjson += '  }';
-    reqjson += '}\n';
-    index = JSON.parse(indexjson);
-    req = JSON.parse(reqjson);
-    jsonArr.push(JSON.stringify(index));
-    jsonArr.push(JSON.stringify(req));
+    const indexjson = '{"index": "' + indexName + '" }';
+
+    // Request 1: Weighted average for documents fully within range
+    let reqjson = '{"size":0,"query":{"bool":{"filter":[' +
+      '{"range":{"metric_data.end":{"lte":"' + thisEnd + '"}}},' +
+      '{"range":{"metric_data.begin":{"gte":"' + thisBegin + '"}}},' +
+      '{"terms":{"metric_desc.metric_desc-uuid":' + metricIdsArrayStr + '}}' +
+      ']}},"aggs":{"metric_avg":{"weighted_avg":{"value":{"field":"metric_data.value"},' +
+      '"weight":{"field":"metric_data.duration"}}}}}';
+
+    jsonArr.push(indexjson, reqjson);
+    jsonArrTracker.push({ label, set, begin: thisBegin, end: thisEnd, numMetricIds: metricIds.length });
+    jsonArrEstimatedBytes += (indexjson.length + reqjson.length) * 2;
+
+    // Request 2: Total weight
+    reqjson = '{"size":0,"query":{"bool":{"filter":[' +
+      '{"range":{"metric_data.end":{"lte":"' + thisEnd + '"}}},' +
+      '{"range":{"metric_data.begin":{"gte":"' + thisBegin + '"}}},' +
+      '{"terms":{"metric_desc.metric_desc-uuid":' + metricIdsArrayStr + '}}' +
+      ']}},"aggs":{"total_weight":{"sum":{"field":"metric_data.duration"}}}}';
+
+    jsonArr.push(indexjson, reqjson);
     jsonArrTracker.push({});
-    // This third request is for documents that had its begin during or before the time range, but
-    // its end was after the time range.
-    //
-    // Due to some limitations in how many documents can be returned from a query,
-    // (in spite of using size:<huge number>)
-    // the number of metricIds inlcuded in the search is limited to 10,000.  If there
-    // are more than 10,000 metric IDs to query for, use more queries.
+    jsonArrEstimatedBytes += (indexjson.length + reqjson.length) * 2;
+
+    // Requests 3 & 4: Documents partially outside range (chunked by 10k metricIds)
     const chunkSize = 10000;
     for (let i = 0; i < metricIds.length; i += chunkSize) {
-      indexjson = '{"index": "' + getIndexName('metric_data', instance, yearDotMonth) + '" }\n';
-      reqjson = '{';
-      reqjson += '  "size": ' + bigQuerySize + ',';
-      reqjson += '  "_source": ["metric_data.begin", "metric_data.end", "metric_data.value"],';
-      reqjson += '  "query": {';
-      reqjson += '    "bool": {';
-      reqjson += '      "filter": [';
-      reqjson += '        {"range": {"metric_data.end": { "gt": "' + thisEnd + '"}}},';
-      reqjson += '        {"range": {"metric_data.begin": { "lte": "' + thisEnd + '"}}},';
-      reqjson +=
-        '        {"terms": {"metric_desc.metric_desc-uuid": ' +
-        JSON.stringify(metricIds.slice(i, i + chunkSize)) +
-        '}}\n';
-      reqjson += '      ]';
-      reqjson += '    }';
-      reqjson += '  }';
-      reqjson += '}';
-      index = JSON.parse(indexjson);
-      req = JSON.parse(reqjson);
-      jsonArr.push(JSON.stringify(index));
-      jsonArr.push(JSON.stringify(req));
+      const slicedMetricIds = metricIds.slice(i, i + chunkSize);
+      const slicedMetricIdsStr = buildMetricIdsArray(slicedMetricIds);
+
+      // Request 3: End after range
+      reqjson = '{"size":' + bigQuerySize + ',"_source":["metric_data.begin","metric_data.end","metric_data.value"],' +
+        '"query":{"bool":{"filter":[' +
+        '{"range":{"metric_data.end":{"gt":"' + thisEnd + '"}}},' +
+        '{"range":{"metric_data.begin":{"lte":"' + thisEnd + '"}}},' +
+        '{"terms":{"metric_desc.metric_desc-uuid":' + slicedMetricIdsStr + '}}' +
+        ']}}}';
+
+      jsonArr.push(indexjson, reqjson);
       jsonArrTracker.push({});
-      // This fourth request is for documents that had its begin before the time range, but
-      //  its end was during or after the time range
-      var indexjson = '{"index": "' + getIndexName('metric_data', instance, yearDotMonth) + '" }\n';
-      var reqjson = '';
-      reqjson += '{';
-      reqjson += '  "size": ' + bigQuerySize + ',';
-      reqjson += '  "_source": ["metric_data.begin", "metric_data.end", "metric_data.value"],';
-      reqjson += '  "query": {';
-      reqjson += '    "bool": {';
-      reqjson += '      "filter": [';
-      reqjson += '        {"range": {"metric_data.end": { "gte": ' + thisBegin + '}}},';
-      reqjson += '        {"range": {"metric_data.begin": { "lt": ' + thisBegin + '}}},';
-      reqjson +=
-        '        {"terms": {"metric_desc.metric_desc-uuid": ' +
-        JSON.stringify(metricIds.slice(i, i + chunkSize)) +
-        '}}\n';
-      reqjson += '      ]';
-      reqjson += '    }';
-      reqjson += '  }';
-      reqjson += '}\n';
-      index = JSON.parse(indexjson);
-      req = JSON.parse(reqjson);
-      jsonArr.push(JSON.stringify(index));
-      jsonArr.push(JSON.stringify(req));
+      jsonArrEstimatedBytes += (indexjson.length + reqjson.length) * 2;
+
+      // Request 4: Begin before range
+      reqjson = '{"size":' + bigQuerySize + ',"_source":["metric_data.begin","metric_data.end","metric_data.value"],' +
+        '"query":{"bool":{"filter":[' +
+        '{"range":{"metric_data.end":{"gte":' + thisBegin + '}}},' +
+        '{"range":{"metric_data.begin":{"lt":' + thisBegin + '}}},' +
+        //'{"terms":{"metric_desc.metric_desc-uuid":' + JSON.stringify(slicedMetricIds) + '}}' +
+        '{"terms":{"metric_desc.metric_desc-uuid":' + slicedMetricIdsStr + '}}' +
+        ']}}}';
+
+      jsonArr.push(indexjson, reqjson);
       jsonArrTracker.push({});
+      jsonArrEstimatedBytes += (indexjson.length + reqjson.length) * 2;
     }
 
     debuglog('jsonArrTracker.length: ' + jsonArrTracker.length);
     debuglog('jsonArrTracker right before begin and end are updated: ' + JSON.stringify(jsonArrTracker, null, 2));
 
-    // Cycle through every "slice" of the time domain, adding the requests for the entire time domain
+    // Move to next time slice
     thisBegin = thisEnd + 1;
     thisEnd += duration + 1;
     if (thisEnd > end) {
       thisEnd = end;
     }
 
-    // We can't let the jsonArr or the responses arrays to grow too big, so
-    // we have to work them down as we submit requests.
-    // Two things can trigger submitting the request:
-    // 1) The jsonArr has grown too large
-    // 2) The jsonArr may does not exceed the size threshold, but
-    //    This is the final call to sendMetricReq() and on the final data-point,
-    //    so this is the last opportunity to submit the request.
-    if (numMBytes(jsonArr) > chunkMBytes || (thisBegin > thisEnd && lastPass)) {
+    if ((jsonArrEstimatedBytes / (1024 * 1024) > chunkMBytes) || (thisBegin > thisEnd && lastPass)) {
+    //if ((thisBegin > thisEnd && lastPass)) {
       debuglog('sendMetricReq jsonArr size MB: ' + numMBytes(jsonArr));
       debuglog('sendMetricReq responses size MB: ' + numMBytes(responses));
+
       const theseResponses = await esJsonArrRequest(instance, 'metric_data', '/_msearch', jsonArr, yearDotMonth);
       responses.push(...theseResponses);
-      jsonArr.length = 0; // No longer needed since we have the response; Deleting to save memory.
+      jsonArr.length = 0;
+      jsonArrEstimatedBytes = 0;
 
-      // Now that there are some responses available, we process those so we can also delete the data
-      // in the reeponses array.  The elements in the responses array can get very big relative
-      // to the data calculated and stored in the valueSets.
-      // Note: the number of elements on responses should be exaclty half the number of
-      // elements in jsonArr, because each request in the jsonArr uses one entry for the index
-      // and another entry for the query, which generates a single entry in the responses array.
+      // Process responses
       debuglog('sendMetricReq jsonArrTracker.length:' + jsonArrTracker.length);
       debuglog('sendMetricReq jsonArrTracker:' + JSON.stringify(jsonArrTracker, null, 2));
       debuglog('jsonArrIdx:' + jsonArrIdx);
+
       while (jsonArrIdx < responses.length * 2) {
-        const setIdx = jsonArrTracker[jsonArrIdx / 2]['set'];
-        const label = jsonArrTracker[jsonArrIdx / 2]['label'];
-        debuglog('sendMetricReq setIdx: [' + setIdx + ']  label: [' + label + ']');
-        if (typeof valueSets[setIdx] == 'undefined') {
+        const trackerIdx = jsonArrIdx / 2;
+        const tracker = jsonArrTracker[trackerIdx];
+        const setIdx = tracker.set;
+        const trackerLabel = tracker.label;
+
+        debuglog('sendMetricReq setIdx: [' + setIdx + ']  label: [' + trackerLabel + ']');
+
+        // Initialize nested structure more efficiently
+        if (!valueSets[setIdx]) {
           valueSets[setIdx] = {};
         }
-        if (typeof valueSets[setIdx][label] == 'undefined') {
-          valueSets[setIdx][label] = [];
+        if (!valueSets[setIdx][trackerLabel]) {
+          valueSets[setIdx][trackerLabel] = [];
         }
+
         jsonArrIdx = calcAvg(
-          jsonArrTracker[jsonArrIdx / 2]['begin'],
-          jsonArrTracker[jsonArrIdx / 2]['end'],
+          tracker.begin,
+          tracker.end,
           responses,
           jsonArrIdx,
           jsonArrTracker,
-          jsonArrTracker[jsonArrIdx / 2]['numMetricIds'],
-          valueSets[setIdx][label]
+          tracker.numMetricIds,
+          valueSets[setIdx][trackerLabel]
         );
       }
     }
 
     if (thisBegin > thisEnd) {
-      // why not thisBegin > end ?
       break;
     }
   }
