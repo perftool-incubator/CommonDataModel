@@ -129,36 +129,6 @@ app.post('/api/metric-data', async (req, res) => {
     console.log('\nFrom Opensearch instance: ' + instance['host'] + ' and cdm: ' + instance['ver'] + '\n');
     console.log(JSON.stringify(resp, null, 2));
 
-/*
-    // Validate the returned data structure
-    if (!data || typeof data.label !== 'string' || !Array.isArray(data.datapoints)) {
-      console.error('Invalid data structure returned from getMetricData:', data);
-      return res.status(500).json({
-        error: 'Invalid data structure returned from metric service'
-      });
-    }
-
-    // Validate each datapoint has the required structure
-    for (let i = 0; i < data.datapoints.length; i++) {
-      const point = data.datapoints[i];
-      if (!point.hasOwnProperty('time') || !point.hasOwnProperty('value')) {
-        console.error(`Invalid datapoint at index ${i}:`, point);
-        return res.status(500).json({
-          error: `Invalid datapoint structure at index ${i}`
-        });
-      }
-
-      // Ensure time is a number (epoch milliseconds)
-      if (typeof point.time !== 'number') {
-        console.error(`Invalid time value at datapoint ${i}:`, point.time);
-        return res.status(500).json({
-          error: `Invalid time value at datapoint ${i}. Expected number (epoch milliseconds).`
-        });
-      }
-    }
-
-    console.log(`Successfully fetched ${data.datapoints.length} datapoints for "${data.label}"`);
-*/
     // Return the data
     res.json(metric_data);
   } catch (error) {
