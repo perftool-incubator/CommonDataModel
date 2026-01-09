@@ -51,13 +51,12 @@ getInstancesInfo(instances);
 app.use(cors());
 app.use(express.json());
 
-
 // API endpoint to get metric data
 app.post('/api/metric-data', async (req, res) => {
   try {
     var { run, period, begin, end, source, type, resolution, breakout, filter } = req.body;
 
-    console.log("[" + Date.now() + "] Fetching metric data with parameters:", {
+    console.log('[' + Date.now() + '] Fetching metric data with parameters:', {
       run,
       period,
       begin,
@@ -74,14 +73,22 @@ app.post('/api/metric-data', async (req, res) => {
     if (run != null) {
       instance = await findInstanceFromRun(instances, run);
       if (instance == null) {
-        errMsg = 'Could not find run ID ' + period + ' in any of the Opensearch instances:\n' + JSON.stringify(instances, null, 2);
+        errMsg =
+          'Could not find run ID ' +
+          period +
+          ' in any of the Opensearch instances:\n' +
+          JSON.stringify(instances, null, 2);
         console.error(errMsg);
         return res.status(500).json({ error: errMsg });
       }
     } else if (period != null) {
       instance = await findInstanceFromPeriod(instances, period);
       if (instance == null) {
-        errMsg = 'Could not find period ID ' + period + ' in any of the Opensearch instances:\n' + JSON.stringify(instances, null, 2);
+        errMsg =
+          'Could not find period ID ' +
+          period +
+          ' in any of the Opensearch instances:\n' +
+          JSON.stringify(instances, null, 2);
         console.error(errMsg);
         return res.status(500).json({ error: errMsg });
       }
@@ -96,12 +103,12 @@ app.post('/api/metric-data', async (req, res) => {
 
     // getMetricDataSets expects breakout to be an array
     if (typeof breakout != 'string') {
-        breakout = [];
+      breakout = [];
     } else {
-        breakout = breakout.split(",");
+      breakout = breakout.split(',');
     }
     if (typeof resolution == 'undefined') {
-        resolution = 1;
+      resolution = 1;
     }
     var set = {
       run: run,
@@ -122,7 +129,15 @@ app.post('/api/metric-data', async (req, res) => {
     }
     metric_data = resp['data-sets'][0];
 
-    console.log('[' + Date.now() + '] Request completed from Opensearch instance: ' + instance['host'] + ' and cdm: ' + instance['ver'] + '\n');
+    console.log(
+      '[' +
+        Date.now() +
+        '] Request completed from Opensearch instance: ' +
+        instance['host'] +
+        ' and cdm: ' +
+        instance['ver'] +
+        '\n'
+    );
 
     // Return the data
     res.json(metric_data);
@@ -150,7 +165,7 @@ app.use((error, req, res, next) => {
 });
 
 // Handle 404 for unknown routes
-  app.use((req, res) => {
+app.use((req, res) => {
   res.status(404).json({
     error: 'Route not found'
   });
@@ -164,7 +179,3 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
-
-
-
-
