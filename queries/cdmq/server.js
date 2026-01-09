@@ -47,9 +47,7 @@ program
 const options = program.opts();
 
 getInstancesInfo(instances);
-console.log("instances:\n" + JSON.stringify(instances, null, 2));
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 
@@ -59,7 +57,7 @@ app.post('/api/metric-data', async (req, res) => {
   try {
     var { run, period, begin, end, source, type, resolution, breakout, filter } = req.body;
 
-    console.log(`Fetching metric data with parameters:`, {
+    console.log("[" + Date.now() + "] Fetching metric data with parameters:", {
       run,
       period,
       begin,
@@ -71,7 +69,6 @@ app.post('/api/metric-data', async (req, res) => {
       filter
     });
 
-    getInstancesInfo(instances);
     var yearDotMonth;
     var instance;
     if (run != null) {
@@ -98,7 +95,6 @@ app.post('/api/metric-data', async (req, res) => {
     var yearDotMonth = await findYearDotMonthFromRun(instance, run);
 
     // getMetricDataSets expects breakout to be an array
-    console.log("breakout: " + typeof breakout);
     if (typeof breakout != 'string') {
         breakout = [];
     } else {
@@ -126,8 +122,7 @@ app.post('/api/metric-data', async (req, res) => {
     }
     metric_data = resp['data-sets'][0];
 
-    console.log('\nFrom Opensearch instance: ' + instance['host'] + ' and cdm: ' + instance['ver'] + '\n');
-    console.log(JSON.stringify(resp, null, 2));
+    console.log('[' + Date.now() + '] Request completed from Opensearch instance: ' + instance['host'] + ' and cdm: ' + instance['ver'] + '\n');
 
     // Return the data
     res.json(metric_data);

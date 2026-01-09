@@ -2627,8 +2627,6 @@ getMetricGroupsFromBreakouts = async function (instance, sets, yearDotMonth) {
   var index = JSON.parse(indexjson);
   var jsonArr = [];
 
-  console.log("sets: " + JSON.stringify(sets, null, 2));
-
   sets.forEach((set) => {
     var result = getBreakoutAggregation(set.source, set.type, set.breakout);
     var aggs = JSON.parse(result);
@@ -2682,7 +2680,6 @@ getMetricGroupsFromBreakouts = async function (instance, sets, yearDotMonth) {
     termsSets.push(thisLabelSet);
   }
   var resp = await mgetMetricIdsFromTerms(instance, termsSets, yearDotMonth);
-  //console.log("resp from mgetMetricIdsFromTerms(): " + JSON.stringify(resp, null, 2));
   if (resp['ret-code'] == 0) {
     return { 'ret-code': retCode, 'ret-msg': retMsg, 'metric-id-sets': resp['metric-id-sets'] };
   }
@@ -3022,7 +3019,7 @@ calcAvg = function (thisBegin, thisEnd, responses, jsonArrIdx, jsonArrTracker, n
 // then there are enough metric_data documents to compute the results.
 getMetricDataFromIdsSets = async function (instance, sets, metricGroupIdsByLabelSets, yearDotMonth) {
   var jsonArr = []; // What is used to submit metric query requests in bulk
-  var jsonArrTracker = []; // Detailed iInfo (set, label, begin, end) about each element in jsonArr
+  var jsonArrTracker = []; // Detailed Info (set, label, begin, end) about each element in jsonArr
   var jsonArrIdx = 0; // Index of next element in jsonArr that needs its response processed
   var responses = []; // Ordered responses for jsonArr
   var valueSets = [];
@@ -3052,13 +3049,6 @@ getMetricDataFromIdsSets = async function (instance, sets, metricGroupIdsByLabel
       var duration = Math.floor((end - begin) / resolution);
 
       const lastPass = idx + 1 >= metricGroupIdsByLabelSets.length && k + 1 >= sortedKeys.length;
-      console.log(
-        instance,
-        begin,
-        end,
-        resolution,
-        metricIds,
-        yearDotMonth);
       await sendMetricReq(
         jsonArr,
         jsonArrTracker,
@@ -3105,7 +3095,6 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
     // If a run and period are not defined, error out.
     if (typeof sets[i].run == 'undefined') {
       if (typeof sets[i].period != 'undefined') {
-        console.log('getRunFromPeriod');
         sets[i].run = await getRunFromPeriod(instance, sets[i].period, yearDotMonth);
       } else {
         retMsg = 'ERROR: run and period was not defined';
