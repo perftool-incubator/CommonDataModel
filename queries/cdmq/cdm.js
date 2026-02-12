@@ -20,7 +20,68 @@ const indexSettings = {
   refresh_interval: '5s'
 };
 
-// Index definitions
+// --------------------------------------------------------------------------------------------------------------
+// UTILITY FUNCTIONS
+// --------------------------------------------------------------------------------------------------------------
+
+function deepClone(obj) {
+  return JSON.parse(JSON.stringify(obj));
+}
+
+function isDefined(value) {
+  return typeof value !== 'undefined';
+}
+
+function isUndefined(value) {
+  return typeof value === 'undefined';
+}
+
+function createResponse(retCode = 0, retMsg = '', additionalProps = {}) {
+  return {
+    'ret-code': retCode,
+    'ret-msg': retMsg,
+    ...additionalProps
+  };
+}
+
+function flattenWith2DRestructure(arr2D) {
+  const flattened = [];
+  const dimensions = [];
+
+  for (let i = 0; i < arr2D.length; i++) {
+    dimensions.push(arr2D[i].length);
+    for (let j = 0; j < arr2D[i].length; j++) {
+      flattened.push(arr2D[i][j]);
+    }
+  }
+
+  const restructure = (flatData) => {
+    const result = [];
+    let idx = 0;
+    for (let i = 0; i < dimensions.length; i++) {
+      result[i] = [];
+      for (let j = 0; j < dimensions[i]; j++) {
+        result[i][j] = flatData[idx];
+        idx++;
+      }
+    }
+    return result;
+  };
+
+  return { flattened, restructure };
+}
+
+function createGetFromMget(mgetFunc, wrapParamIndex, unwrap = (r) => r[0]) {
+  return async function(...args) {
+    args[wrapParamIndex] = [args[wrapParamIndex]];
+    const result = await mgetFunc(...args);
+    return unwrap(result);
+  };
+}
+
+// --------------------------------------------------------------------------------------------------------------
+// INDEX DEFINITIONS
+// --------------------------------------------------------------------------------------------------------------
 
 var indexDefs = { v7dev: {}, v8dev: {}, v9dev: {} };
 
@@ -48,7 +109,7 @@ indexDefs['v8dev']['run_micro'] = {
     }
   }
 };
-indexDefs['v9dev']['run_micro'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['run_micro']));
+indexDefs['v9dev']['run_micro'] = deepClone(indexDefs['v8dev']['run_micro']);
 
 // run is used for all mappings except metric_data
 indexDefs['v8dev']['run'] = {
@@ -87,10 +148,10 @@ indexDefs['v8dev']['run'] = {
     }
   }
 };
-indexDefs['v9dev']['run'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['run']));
+indexDefs['v9dev']['run'] = deepClone(indexDefs['v8dev']['run']);
 
 // both tag and iteration start with the run mapping
-indexDefs['v8dev']['tag'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['run']));
+indexDefs['v8dev']['tag'] = deepClone(indexDefs['v8dev']['run']);
 indexDefs['v8dev']['tag']['mappings']['properties']['tag'] = {
   properties: {
     'tag-uuid': { type: 'keyword' },
@@ -98,9 +159,9 @@ indexDefs['v8dev']['tag']['mappings']['properties']['tag'] = {
     val: { type: 'keyword' }
   }
 };
-indexDefs['v9dev']['tag'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['tag']));
+indexDefs['v9dev']['tag'] = deepClone(indexDefs['v8dev']['tag']);
 
-indexDefs['v8dev']['iteration'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['run']));
+indexDefs['v8dev']['iteration'] = deepClone(indexDefs['v8dev']['run']);
 indexDefs['v8dev']['iteration']['mappings']['properties']['iteration'] = {
   properties: {
     'iteration-uuid': { type: 'keyword' },
@@ -111,10 +172,10 @@ indexDefs['v8dev']['iteration']['mappings']['properties']['iteration'] = {
     'primary-period': { type: 'keyword' }
   }
 };
-indexDefs['v9dev']['iteration'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['iteration']));
+indexDefs['v9dev']['iteration'] = deepClone(indexDefs['v8dev']['iteration']);
 
 // param and sample mappings start with the iteration mapping (which includes the run mapping)
-indexDefs['v8dev']['param'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['iteration']));
+indexDefs['v8dev']['param'] = deepClone(indexDefs['v8dev']['iteration']);
 indexDefs['v8dev']['param']['mappings']['properties']['param'] = {
   properties: {
     'param-uuid': { type: 'keyword' },
@@ -124,9 +185,9 @@ indexDefs['v8dev']['param']['mappings']['properties']['param'] = {
     val: { type: 'keyword' }
   }
 };
-indexDefs['v9dev']['param'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['param']));
+indexDefs['v9dev']['param'] = deepClone(indexDefs['v8dev']['param']);
 
-indexDefs['v8dev']['sample'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['iteration']));
+indexDefs['v8dev']['sample'] = deepClone(indexDefs['v8dev']['iteration']);
 indexDefs['v8dev']['sample']['mappings']['properties']['sample'] = {
   properties: {
     'sample-uuid': { type: 'keyword' },
@@ -135,10 +196,10 @@ indexDefs['v8dev']['sample']['mappings']['properties']['sample'] = {
     path: { type: 'keyword' }
   }
 };
-indexDefs['v9dev']['sample'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['sample']));
+indexDefs['v9dev']['sample'] = deepClone(indexDefs['v8dev']['sample']);
 
 // period mapping starts with the sample mapping (which has iteration, which has run)
-indexDefs['v8dev']['period'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['sample']));
+indexDefs['v8dev']['period'] = deepClone(indexDefs['v8dev']['sample']);
 indexDefs['v8dev']['period']['mappings']['properties']['period'] = {
   properties: {
     'period-uuid': { type: 'keyword' },
@@ -148,10 +209,10 @@ indexDefs['v8dev']['period']['mappings']['properties']['period'] = {
     prev_id: { type: 'keyword' }
   }
 };
-indexDefs['v9dev']['period'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['period']));
+indexDefs['v9dev']['period'] = deepClone(indexDefs['v8dev']['period']);
 
 // metric_desc mapping starts with period mapping (which has sample, which has iteration, which has run)
-indexDefs['v8dev']['metric_desc'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['period']));
+indexDefs['v8dev']['metric_desc'] = deepClone(indexDefs['v8dev']['period']);
 indexDefs['v8dev']['metric_desc']['mappings']['properties']['metric_desc'] = {
   properties: {
     'metric_desc-uuid': { type: 'keyword' },
@@ -287,7 +348,7 @@ indexDefs['v8dev']['metric_desc']['mappings']['properties']['metric_desc'] = {
     }
   }
 };
-indexDefs['v9dev']['metric_desc'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['metric_desc']));
+indexDefs['v9dev']['metric_desc'] = deepClone(indexDefs['v8dev']['metric_desc']);
 
 // TODO: add new names for cdmv9
 
@@ -305,7 +366,7 @@ indexDefs['v9dev']['metric_desc'] = JSON.parse(JSON.stringify(indexDefs['v8dev']
 // mestric_desc-uuid:  same uuid in metric_desc doc that has source: mpstat, type: Busy-CPU
 // name: package
 // definition: The ID of a physical grouping of CPU cores on a single chip.  Often the same as a NUMA node ID.
-indexDefs['v9dev']['metric_def'] = JSON.parse(JSON.stringify(indexDefs['v9dev']['period']));
+indexDefs['v9dev']['metric_def'] = deepClone(indexDefs['v9dev']['period']);
 indexDefs['v9dev']['metric_def']['mappings']['properties']['metric_def'] = {
   properties: {
     'metric_desc-uuid': { type: 'keyword' },
@@ -314,7 +375,7 @@ indexDefs['v9dev']['metric_def']['mappings']['properties']['metric_def'] = {
   }
 };
 
-indexDefs['v8dev']['metric_data'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['run_micro']));
+indexDefs['v8dev']['metric_data'] = deepClone(indexDefs['v8dev']['run_micro']);
 indexDefs['v8dev']['metric_data']['mappings']['properties']['metric_desc'] = {
   properties: {
     'metric_desc-uuid': { type: 'keyword' }
@@ -328,7 +389,7 @@ indexDefs['v8dev']['metric_data']['mappings']['properties']['metric_data'] = {
     duration: { type: 'long' }
   }
 };
-indexDefs['v9dev']['metric_data'] = JSON.parse(JSON.stringify(indexDefs['v8dev']['metric_data']));
+indexDefs['v9dev']['metric_data'] = deepClone(indexDefs['v8dev']['metric_data']);
 
 // --------------------------------------------------------------------------------------------------------------
 function memUsage() {
@@ -377,7 +438,7 @@ getCdmVerFromIndex = function (index) {
     retMsg = 'ERROR: index [' + index + '] is not recognized';
     retCode = 1;
   }
-  return { 'cdm-ver': cdmVer, 'ret-code': retCode, 'ret-msg': retMsg };
+  return createResponse(retCode, retMsg, { 'cdm-ver': cdmVer });
 };
 
 // --------------------------------------------------------------------------------------------------------------
@@ -393,16 +454,16 @@ checkCreateIndex = function (instance, index) {
 
   var resp = getCdmVerFromIndex(index);
   if (resp['ret-code'] != 0) {
-    retMsg = 'ERROR: calling getCdmVerFromIndex returned ' + resp.ret - msg;
+    retMsg = 'ERROR: calling getCdmVerFromIndex returned ' + resp['ret-msg'];
     retCode = 1;
-    return { 'ret-code': retCode, 'ret-msg': retMsg };
+    return createResponse(retCode, retMsg);
   }
   var cdmVer = resp['cdm-ver'];
 
   if (Object.keys(instance['indices']).includes(cdmVer)) {
     if (instance['indices'][cdmVer].includes(index)) {
       var retMsg = 'INFO: Not going to create index because index already exists';
-      return { 'ret-code': retCode, 'ret-msg': retMsg };
+      return createResponse(retCode, retMsg);
     }
   }
 
@@ -410,14 +471,14 @@ checkCreateIndex = function (instance, index) {
   var matches = regExp.exec(index);
   if (matches) {
     retMsg = 'INFO: Not going to create index because it includes a wildcard: [' + index + ']';
-    return { 'ret-code': retCode, 'ret-msg': retMsg };
+    return createResponse(retCode, retMsg);
   }
 
   resp = getDocType(index);
   if (resp['ret-code'] != 0) {
-    retMsg = 'ERROR: calling getDocType returned ' + resp.ret - msg;
+    retMsg = 'ERROR: calling getDocType returned ' + resp['ret-msg'];
     retCode = 1;
-    return { 'ret-code': retCode, 'ret-msg': retMsg };
+    return createResponse(retCode, retMsg);
   }
   var docType = resp['doc-type'];
 
@@ -433,7 +494,7 @@ checkCreateIndex = function (instance, index) {
   instance['indices'][cdmVer].push(index);
   //TODO: query opensearch to verify index is present
   var retMsg = 'INFO: Created index [' + index + ']';
-  return { 'ret-code': retCode, 'ret-msg': retMsg };
+  return createResponse(retCode, retMsg);
 };
 exports.checkCreateIndex = checkCreateIndex;
 
@@ -443,9 +504,9 @@ function getDocType(index) {
   var retCode = 0;
   const resp = getCdmVerFromIndex(index);
   if (resp['ret-code'] != 0) {
-    retMsg = 'ERROR: calling getCdmVerFromIndex returned ' + resp.ret - msg;
+    retMsg = 'ERROR: calling getCdmVerFromIndex returned ' + resp['ret-msg'];
     retCode = 1;
-    return { 'ret-code': retCode, 'ret-msg': retMsg };
+    return createResponse(retCode, retMsg);
   }
   const cdmVer = resp['cdm-ver'];
 
@@ -459,12 +520,12 @@ function getDocType(index) {
       } else {
         retMsg = 'ERROR: index [' + index + '] does not match a docType: ' + docTypes[cdmVer];
         retCode = 1;
-        return { 'ret-code': retCode, 'ret-msg': retMsg };
+        return createResponse(retCode, retMsg);
       }
     } else {
       retMsg = 'ERROR: index name [' + index + '] does not match cdmv7/8 format';
       retCode = 2;
-      return { 'ret-code': retCode, 'ret-msg': retMsg };
+      return createResponse(retCode, retMsg);
     }
   }
 
@@ -474,22 +535,22 @@ function getDocType(index) {
     if (matches) {
       docType = matches[1];
       if (docTypes[cdmVer].includes(docType)) {
-        return { 'doc-type': docType, 'ret-code': retCode, 'ret-msg': retMsg };
+        return createResponse(retCode, retMsg, { 'doc-type': docType });
       } else {
         retMsg = 'ERROR: index [' + index + '] does not match a docType: ' + docTypes[cdmVer];
         retCode = 3;
-        return { 'ret-code': retCode, 'ret-msg': retMsg };
+        return createResponse(retCode, retMsg);
       }
     } else {
       retMsg = 'ERROR: index name [' + index + '] does not match cdmv9 format';
       retCode = 4;
-      return { 'ret-code': retCode, 'ret-msg': retMsg };
+      return createResponse(retCode, retMsg);
     }
   }
 
   retMsg = 'ERROR: the cdmVer provided [' + cdmVer + '] is not supported';
   retCode = 4;
-  return { 'ret-code': retCode, 'ret-msg': retMsg };
+  return createResponse(retCode, retMsg);
 }
 
 // --------------------------------------------------------------------------------------------------------------
@@ -544,7 +605,7 @@ exports.subtractTwoArrays = subtractTwoArrays;
 function getObjVals(a, k) {
   const c = [];
   a.forEach((b) => {
-    if (typeof b[k] !== 'undefined' && !c.includes(b[k])) c.push(b[k]);
+    if (isDefined(b[k]) && !c.includes(b[k])) c.push(b[k]);
   });
   return c;
 }
@@ -770,13 +831,13 @@ mSearch = async function (instance, index, yearDotMonth, termKeys, values, sourc
       var termStr = '{ "term": { "' + termKeys[x] + '": "' + values[x][i] + '"}}';
       req['query']['bool']['filter'].push(JSON.parse(termStr));
 
-      if (typeof size !== 'undefined') {
+      if (isDefined(size)) {
         req.size = size;
       } else {
         req.size = bigQuerySize;
       }
 
-      if (typeof sort !== 'undefined') req.sort = sort;
+      if (isDefined(sort)) req.sort = sort;
     }
     // aggs is not an array, and is used the same for all queries
     if (aggs !== null) {
@@ -794,7 +855,7 @@ mSearch = async function (instance, index, yearDotMonth, termKeys, values, sourc
   var retData = [];
   for (var i = 0; i < responses.length; i++) {
     // For queries with aggregation
-    if (typeof responses[i].aggregations !== 'undefined' && Array.isArray(responses[i].aggregations.source.buckets)) {
+    if (isDefined(responses[i].aggregations) && Array.isArray(responses[i].aggregations.source.buckets)) {
       if (responses[i].aggregations.source.sum_other_doc_count > 0) {
         console.log(
           'WARNING! msearch aggregation returned sum_other_doc_count > 0, which means not all terms were returned.  This query needs a larger "size"'
@@ -842,7 +903,7 @@ mSearch = async function (instance, index, yearDotMonth, termKeys, values, sourc
           if (source !== '' && source !== null) {
             // a blank source assumes you want everything returned
             source.split('.').forEach((thisObj) => {
-              if (typeof obj[thisObj] == 'undefined') {
+              if (isUndefined(obj[thisObj])) {
                 console.log(
                   'WARNING: the requested source for this query [' + source + '] does not exist in the returned data:\n'
                 );
@@ -865,10 +926,12 @@ mSearch = async function (instance, index, yearDotMonth, termKeys, values, sourc
 };
 exports.mSearch = mSearch;
 
-// Functions starting with mget use msearch, and require 1D array of values and return a 1D array or results
-// Functions starting with get are just for legacy support, where caller expects to provide a single value,
-// but these functions just wrap the value in 2D array for msearch (and a key in a 1D array).  Effectively
-// all query functions use msearch, even if there is a single query.
+// --------------------------------------------------------------------------------------------------------------
+// QUERY FUNCTIONS
+// --------------------------------------------------------------------------------------------------------------
+// Functions starting with mget use msearch, and require 1D array of values and return a 1D array or results.
+// Functions starting with get are for convenience, where caller provides a single value.
+// These get functions wrap the value in an array for the corresponding mget function.
 
 // --------------------------------------------------------------------------------------------------------------
 mgetPrimaryMetric = async function (instance, iterations, yearDotMonth) {
@@ -891,10 +954,7 @@ mgetPrimaryMetric = async function (instance, iterations, yearDotMonth) {
 exports.mgetPrimaryMetric = mgetPrimaryMetric;
 
 // --------------------------------------------------------------------------------------------------------------
-getPrimaryMetric = async function (instance, iteration, yearDotMonth) {
-  var primaryMetrics = await mgetPrimaryMetric(instance, [iteration], yearDotMonth);
-  return primaryMetrics[0][0];
-};
+getPrimaryMetric = createGetFromMget(mgetPrimaryMetric, 1, (r) => r[0][0]);
 exports.getPrimaryMetric = getPrimaryMetric;
 
 // --------------------------------------------------------------------------------------------------------------
@@ -918,10 +978,7 @@ mgetPrimaryPeriodName = async function (instance, iterations, yearDotMonth) {
 exports.mgetPrimaryPeriodName = mgetPrimaryPeriodName;
 
 // --------------------------------------------------------------------------------------------------------------
-getPrimaryPeriodName = async function (instance, iteration, yearDotMonth) {
-  var primaryPeriodNames = await mgetPrimaryPeriodName(instance, [iteration], yearDotMonth);
-  return primaryPeriodNames[0][0];
-};
+getPrimaryPeriodName = createGetFromMget(mgetPrimaryPeriodName, 1, (r) => r[0][0]);
 exports.getPrimaryPeriodName = getPrimaryPeriodName;
 
 // --------------------------------------------------------------------------------------------------------------
@@ -941,10 +998,7 @@ mgetSamples = async function (instance, iters, yearDotMonth) {
 exports.mgetSamples = mgetSamples;
 
 // --------------------------------------------------------------------------------------------------------------
-getSamples = async function (instance, iter, yearDotMonth) {
-  var samples = await mgetSamples(instance, [iter], yearDotMonth);
-  return samples[0];
-};
+getSamples = createGetFromMget(mgetSamples, 1);
 exports.getSamples = getSamples;
 
 // --------------------------------------------------------------------------------------------------------------
@@ -967,22 +1021,14 @@ exports.mgetMetricNames = mgetMetricNames;
 
 // --------------------------------------------------------------------------------------------------------------
 getMetricNames = async function (instance, runId, source, type, yearDotMonth) {
-  var metricNames = await mgetMetricNames(instance, [runId], [source], [type], yearDotMonth);
-  return metricNames[0];
+  return (await mgetMetricNames(instance, [runId], [source], [type], yearDotMonth))[0];
 };
+exports.getMetricNames = getMetricNames;
 
 // --------------------------------------------------------------------------------------------------------------
 mgetSampleNums = async function (instance, Ids, yearDotMonth) {
-  var sampleIds = [];
-  var idx = 0;
-  for (var i = 0; i < Ids.length; i++) {
-    for (j = 0; j < Ids[i].length; j++) {
-      sampleIds[idx] = Ids[i][j];
-      idx++;
-    }
-  }
-
-  var data = await mSearch(
+  const { flattened: sampleIds, restructure } = flattenWith2DRestructure(Ids);
+  const data = await mSearch(
     instance,
     'sample',
     yearDotMonth,
@@ -992,40 +1038,19 @@ mgetSampleNums = async function (instance, Ids, yearDotMonth) {
     null,
     1
   );
-  var sampleNums = []; // Will be 2D array of [iter][sampIds];
-  idx = 0;
-  for (var i = 0; i < Ids.length; i++) {
-    for (j = 0; j < Ids[i].length; j++) {
-      if (typeof sampleNums[i] == 'undefined') {
-        sampleNums[i] = [];
-      }
-      sampleNums[i][j] = data[idx][0];
-      idx++;
-    }
-  }
-  return sampleNums;
+  const flatData = data.map((d) => d[0]);
+  return restructure(flatData);
 };
 exports.mgetSampleNums = mgetSampleNums;
 
 // --------------------------------------------------------------------------------------------------------------
-getSampleNum = async function (instance, sampId, yearDotMonth) {
-  var sampleNum = await mgetSampleNums(instance, [sampId], yearDotMonth);
-  return sampleNums[0][0];
-};
+getSampleNum = createGetFromMget(mgetSampleNums, 1, (r) => r[0][0]);
 exports.getSampleNum = getSampleNum;
 
 // --------------------------------------------------------------------------------------------------------------
 mgetSampleStatuses = async function (instance, Ids, yearDotMonth) {
-  var sampleIds = [];
-  var idx = 0;
-  for (var i = 0; i < Ids.length; i++) {
-    for (j = 0; j < Ids[i].length; j++) {
-      sampleIds[idx] = Ids[i][j];
-      idx++;
-    }
-  }
-
-  var data = await mSearch(
+  const { flattened: sampleIds, restructure } = flattenWith2DRestructure(Ids);
+  const data = await mSearch(
     instance,
     'sample',
     yearDotMonth,
@@ -1035,26 +1060,13 @@ mgetSampleStatuses = async function (instance, Ids, yearDotMonth) {
     null,
     1
   );
-  var sampleStatus = []; // Will be 2D array of [iter][sampIds];
-  idx = 0;
-  for (var i = 0; i < Ids.length; i++) {
-    for (j = 0; j < Ids[i].length; j++) {
-      if (typeof sampleStatus[i] == 'undefined') {
-        sampleStatus[i] = [];
-      }
-      sampleStatus[i][j] = data[idx][0];
-      idx++;
-    }
-  }
-  return sampleStatus;
+  const flatData = data.map((d) => d[0]);
+  return restructure(flatData);
 };
 exports.mgetSampleStatuses = mgetSampleStatuses;
 
 // --------------------------------------------------------------------------------------------------------------
-getSampleStatus = async function (instance, sampId) {
-  var sampleStatuses = await mgetSampleStatuses(instance, [sampId]);
-  return sampleStatuses[0][0];
-};
+getSampleStatus = createGetFromMget(mgetSampleStatuses, 1, (r) => r[0][0]);
 exports.getSampleStatus = getSampleStatus;
 
 // --------------------------------------------------------------------------------------------------------------
@@ -1065,18 +1077,15 @@ mgetPrimaryPeriodId = async function (instance, sampIds, periNames, yearDotMonth
     // Only 1 primary-period-name provided, so assume all sample IDs have same primary-period-name
     for (i = 1; i < sampIds.length; i++) periNames[i] = periNames[0];
   }
-  // Need to convert to 1D array for sampleIds, with 1 periName for each, in order to call mSearch()
-  var sampleIds = [];
-  var perSamplePeriNames = [];
-  var idx = 0;
-  for (var i = 0; i < sampIds.length; i++) {
-    for (j = 0; j < sampIds[i].length; j++) {
-      sampleIds[idx] = sampIds[i][j];
-      perSamplePeriNames[idx] = periNames[i];
-      idx++;
+  const { flattened: sampleIds, restructure } = flattenWith2DRestructure(sampIds);
+  const perSamplePeriNames = sampleIds.map((_, idx) => {
+    let cumulative = 0;
+    for (let i = 0; i < sampIds.length; i++) {
+      if (idx < cumulative + sampIds[i].length) return periNames[i];
+      cumulative += sampIds[i].length;
     }
-  }
-  var data = await mSearch(
+  });
+  const data = await mSearch(
     instance,
     'period',
     yearDotMonth,
@@ -1086,28 +1095,14 @@ mgetPrimaryPeriodId = async function (instance, sampIds, periNames, yearDotMonth
     null,
     1
   );
-  // mSearch returns a 2D array, in other words, a list of values (inner array) for each query (outer array)
-  // In this case, the queries are 1 per sampleId/periodName (for all iterations ordered), and the list of values
-  // happens to be exactly 1 value, the primaryPeriodId.
-  var periodIds = []; // Will be 2D array of [iter][periIds];
-  idx = 0;
-  for (var i = 0; i < sampIds.length; i++) {
-    for (j = 0; j < sampIds[i].length; j++) {
-      if (typeof periodIds[i] == 'undefined') {
-        periodIds[i] = [];
-      }
-      periodIds[i][j] = data[idx][0];
-      idx++;
-    }
-  }
-  return periodIds;
+  const flatData = data.map((d) => d[0]);
+  return restructure(flatData);
 };
 exports.mgetPrimaryPeriodId = mgetPrimaryPeriodId;
 
 // --------------------------------------------------------------------------------------------------------------
-getPrimaryPeriodId = async function (instance, sampId, periName) {
-  var primaryPeriodIds = await mgetPrimaryPeriodId(instance, [sampId], [periName]);
-  return primaryPeriodIds[0][0];
+getPrimaryPeriodId = async function (instance, sampId, periName, yearDotMonth) {
+  return (await mgetPrimaryPeriodId(instance, [sampId], [periName], yearDotMonth))[0][0];
 };
 exports.getPrimaryPeriodId = getPrimaryPeriodId;
 
@@ -1132,11 +1127,11 @@ mgetPeriodRange = async function (instance, periodIds, yearDotMonth) {
   var ranges = []; // Will be 2D array of [iter][periIds];
   idx = 0;
   for (var i = 0; i < periodIds.length; i++) {
-    if (typeof ranges[i] == 'undefined') {
+    if (isUndefined(ranges[i])) {
       ranges[i] = [];
     }
     for (j = 0; j < periodIds[i].length; j++) {
-      if (typeof ranges[i][j] == 'undefined') {
+      if (isUndefined(ranges[i][j])) {
         ranges[i][j] = {};
       }
       ranges[i][j]['begin'] = data[idx][0]['begin'];
@@ -1150,8 +1145,7 @@ exports.mgetPeriodRange = mgetPeriodRange;
 
 // --------------------------------------------------------------------------------------------------------------
 getPeriodRange = async function (instance, periId, yearDotMonth) {
-  var periodRanges = await mgetPeriodRange(instance, [[periId]], yearDotMonth);
-  return periodRanges[0][0];
+  return (await mgetPeriodRange(instance, [[periId]], yearDotMonth))[0][0];
 };
 exports.getPeriodRange = getPeriodRange;
 
@@ -1170,10 +1164,7 @@ mgetMetricDescs = async function (instance, runIds, yearDotMonth) {
 };
 
 // --------------------------------------------------------------------------------------------------------------
-getMetricDescs = async function (instance, runId) {
-  var metricDescs = await mgetMetricDescs(instance, [runId]);
-  return metricDescs[0];
-};
+getMetricDescs = createGetFromMget(mgetMetricDescs, 1);
 exports.getMetricDescs = getMetricDescs;
 
 // --------------------------------------------------------------------------------------------------------------
@@ -1191,10 +1182,7 @@ mgetMetricDataDocs = async function (instance, metricIds, yearDotMonth) {
 };
 
 // --------------------------------------------------------------------------------------------------------------
-getMetricDataDocs = async function (instance, metricId) {
-  var metricDataDocs = await mgetMetricDataDocs(instance, [metricId]);
-  return await mgetMetricDataDocs(instance, [metricId])[0];
-};
+getMetricDataDocs = createGetFromMget(mgetMetricDataDocs, 1);
 exports.getMetricDataDocs = getMetricDataDocs;
 
 // --------------------------------------------------------------------------------------------------------------
@@ -1243,10 +1231,7 @@ mgetIterations = async function (instance, runIds, yearDotMonth) {
 };
 
 // --------------------------------------------------------------------------------------------------------------
-getIterations = async function (instance, runId, yearDotMonth) {
-  var iterations = await mgetIterations(instance, [runId], yearDotMonth);
-  return iterations[0];
-};
+getIterations = createGetFromMget(mgetIterations, 1);
 exports.getIterations = getIterations;
 
 // --------------------------------------------------------------------------------------------------------------
@@ -1255,10 +1240,7 @@ mgetTags = async function (instance, runIds, yearDotMonth) {
 };
 
 // --------------------------------------------------------------------------------------------------------------
-getTags = async function (instance, runId, yearDotMonth) {
-  var tags = await mgetTags(instance, [runId], yearDotMonth);
-  return tags[0];
-};
+getTags = createGetFromMget(mgetTags, 1);
 exports.getTags = getTags;
 
 // --------------------------------------------------------------------------------------------------------------
@@ -1276,10 +1258,7 @@ mgetRunFromIter = async function (instance, iterIds, yearDotMonth) {
 };
 
 // --------------------------------------------------------------------------------------------------------------
-getRunFromIter = async function (instance, iterId, yearDotMonth) {
-  var runsFromIter = await mgetRunFromIter(instance, [iterId], yearDotMonth);
-  return runsFromIter[0][0];
-};
+getRunFromIter = createGetFromMget(mgetRunFromIter, 1, (r) => r[0][0]);
 exports.getRunFromIter = getRunFromIter;
 
 // --------------------------------------------------------------------------------------------------------------
@@ -1288,10 +1267,7 @@ mgetRunFromPeriod = async function (instance, periIds, yearDotMonth) {
 };
 
 // --------------------------------------------------------------------------------------------------------------
-getRunFromPeriod = async function (instance, periId, yearDotMonth) {
-  var runFromPeriods = await mgetRunFromPeriod(instance, [periId], yearDotMonth);
-  return runFromPeriods[0][0];
-};
+getRunFromPeriod = createGetFromMget(mgetRunFromPeriod, 1, (r) => r[0][0]);
 exports.getRunFromPeriod = getRunFromPeriod;
 
 // --------------------------------------------------------------------------------------------------------------
@@ -1310,7 +1286,7 @@ getInstancesInfo = function (instances) {
       instances[inst_idx]['online'] = false;
       continue;
     }
-    if (typeof resp != 'undefined') {
+    if (isDefined(resp)) {
       var indices = JSON.parse(resp.getBody());
       instances[inst_idx]['indices'] = {};
       for (const index of indices) {
@@ -1397,43 +1373,33 @@ findYearDotMonthFromRun = async function (instance, runId) {
 exports.findYearDotMonthFromRun = findYearDotMonthFromRun;
 
 // --------------------------------------------------------------------------------------------------------------
-findInstanceFromRun = async function (instances, runId) {
-  var foundInstance;
+// INSTANCE DISCOVERY FUNCTIONS
+// --------------------------------------------------------------------------------------------------------------
+
+async function findInstanceForEntity(instances, entityId, testFunc) {
   for (const instance of instances) {
     if (invalidInstance(instance)) {
-      console.log('not a valid instance: ' + JSON.stringify(instance, null, 2));
+      debuglog('not a valid instance: ' + JSON.stringify(instance, null, 2));
       continue;
     }
-    // Use any function which searches by run id and always returns something if the run id is present
-    debuglog('findInstanceFromRun(): about to call getIterations()');
-    var result = await getIterations(instance, runId, '@*');
-    debuglog('findInstanceFromRun(): returned from calling getIterations()');
-    if (typeof result != 'undefined' && result.length > 0) {
+    const result = await testFunc(instance, entityId);
+    if (isDefined(result) && (Array.isArray(result) ? result.length > 0 : true)) {
       debuglog('found valid instance: ' + JSON.stringify(instance, null, 2));
-      foundInstance = instance;
-      break;
+      return instance;
     }
   }
-  debuglog('findInstanceFromRun(): about to return');
-  return foundInstance;
+  return undefined;
+}
+
+// --------------------------------------------------------------------------------------------------------------
+findInstanceFromRun = async function (instances, runId) {
+  return await findInstanceForEntity(instances, runId, async (instance, runId) => await getIterations(instance, runId, '@*'));
 };
 exports.findInstanceFromRun = findInstanceFromRun;
 
 // --------------------------------------------------------------------------------------------------------------
 findInstanceFromPeriod = async function (instances, periId) {
-  var foundInstance;
-  for (const instance of instances) {
-    if (invalidInstance(instance)) {
-      continue;
-    }
-    //var result = await mgetRunFromPeriod(instance, [periId])[0][0];
-    var result = await getRunFromPeriod(instance, [periId], '@*');
-    if (typeof result != 'undefined') {
-      foundInstance = instance;
-      break;
-    }
-  }
-  return foundInstance;
+  return await findInstanceForEntity(instances, periId, async (instance, periId) => await getRunFromPeriod(instance, periId, '@*'));
 };
 exports.findInstanceFromPeriod = findInstanceFromPeriod;
 
@@ -1444,9 +1410,7 @@ mgetParams = async function (instance, iterIds, yearDotMonth) {
 exports.mgetParams = mgetParams;
 
 // --------------------------------------------------------------------------------------------------------------
-getParams = async function (instance, iterId, yearDotMonth) {
-  return await mgetParams(instance, [iterId], yearDotMonth)[0];
-};
+getParams = createGetFromMget(mgetParams, 1);
 exports.getParams = getParams;
 
 // --------------------------------------------------------------------------------------------------------------
@@ -1455,10 +1419,7 @@ mgetIterationDoc = async function (instance, iterIds, yearDotMonth) {
 };
 
 // --------------------------------------------------------------------------------------------------------------
-getIterationDoc = async function (instance, iterId, yearDotMonth) {
-  var iterationDocs = await mgetIterationDoc(instance, [iterId], yearDotMonth);
-  return iterationDocs[0][0];
-};
+getIterationDoc = createGetFromMget(mgetIterationDoc, 1, (r) => r[0][0]);
 exports.getIterationDoc = getIterationDoc;
 
 // --------------------------------------------------------------------------------------------------------------
@@ -1476,10 +1437,7 @@ mgetBenchmarkNameFromIter = async function (instance, Ids, yearDotMonth) {
 };
 
 // --------------------------------------------------------------------------------------------------------------
-getBenchmarkNameFromIter = async function (instance, Id, yearDotMonth) {
-  var benchmarkNameforIters = await mgetBenchmarkNameFromIter(instance, [Id], yearDotMonth);
-  return benchmarkNameFromIters[0][0];
-};
+getBenchmarkNameFromIter = createGetFromMget(mgetBenchmarkNameFromIter, 1, (r) => r[0][0]);
 exports.getBenchmarkNameFromIter = getBenchmarkNameFromIter;
 
 // --------------------------------------------------------------------------------------------------------------
@@ -1488,10 +1446,7 @@ mgetBenchmarkName = async function (instance, runIds, yearDotMonth) {
 };
 
 // --------------------------------------------------------------------------------------------------------------
-getBenchmarkName = async function (instance, runId, yearDotMonth) {
-  var benchmarkNames = await mgetBenchmarkName(instance, [runId], yearDotMonth);
-  return benchmarkNames[0][0];
-};
+getBenchmarkName = createGetFromMget(mgetBenchmarkName, 1, (r) => r[0][0]);
 exports.getBenchmarkName = getBenchmarkName;
 
 // --------------------------------------------------------------------------------------------------------------
@@ -1500,13 +1455,13 @@ mgetRunData = async function (instance, runIds, yearDotMonth) {
 };
 
 // --------------------------------------------------------------------------------------------------------------
-getRunData = async function (instance, runId, yearDotMonth) {
-  var runData = await mgetRunData(instance, [runId], yearDotMonth);
-  return runData[0];
-};
+getRunData = createGetFromMget(mgetRunData, 1);
 exports.getRunData = getRunData;
 
 // --------------------------------------------------------------------------------------------------------------
+// DATA PROCESSING FUNCTIONS
+// --------------------------------------------------------------------------------------------------------------
+
 calcIterMetrics = function (vals) {
   var count = vals.length;
   if (count == 0) return -1;
@@ -1537,19 +1492,19 @@ mgetIterMetrics = async function (instance, iterationIds) {
   if (benchmarkNames.length !== 1) {
     retMsg = 'ERROR: The benchmark-name for all iterations was not the same, includes: ' + benchmarkNames;
     retCode = 1;
-    return { results: results, 'ret-code': retCode, 'ret-msg': retMsg };
+    return createResponse(retCode, retMsg, { results: results });
   }
   var primaryMetrics = consolidateAllArrays(await mgetPrimaryMetric(instance, iterationIds));
   if (primaryMetrics.length !== 1) {
     retMsg = 'ERROR: The primary-metric for all iterations was not the same, includes: ' + primaryMetrics;
     retCode = 2;
-    return { results: results, 'ret-code': retCode, 'ret-msg': retMsg };
+    return createResponse(retCode, retMsg, { results: results });
   }
   var primaryPeriodNames = consolidateAllArrays(await mgetPrimaryPeriodName(instance, iterationIds));
   if (primaryPeriodNames.length !== 1) {
     retMsg = 'ERROR: The primary-period-name for all iterations was not the same, includes: ' + primaryPeriodNames;
     retCode = 3;
-    return { results: results, 'ret-code': retCode, 'ret-msg': retMsg };
+    return createResponse(retCode, retMsg, { results: results });
   }
   // Find all of the passing samples, then all of the primary-periods, then get the metric for all of them in one request
   var samples = await mgetSamples(instance, iterationIds); // Samples organized in 2D array, first dimension matching iterationIds
@@ -1564,7 +1519,7 @@ mgetIterMetrics = async function (instance, iterationIds) {
     });
   }
   var consSamples = consolidateAllArrays(samples); // All sample IDs flattened into 1 array
-  var consSamplesStatus = await mgetSampleStatus(instance, consSamples);
+  var consSamplesStatus = await mgetSampleStatuses(instance, consSamples);
   var consPassingSamples = []; // Only passing samples in flattened array
   for (i = 0; i < consSamplesStatus.length; i++) {
     if (consSamplesStatus[i] == 'pass') consPassingSamples.push(consSamples[i]);
@@ -1630,7 +1585,7 @@ mgetIterMetrics = async function (instance, iterationIds) {
   }
   var thisResult = calcIterMetrics(vals);
   results[iter] = thisResult;
-  return { results: results, 'ret-code': retCode, 'ret-msg': retMsg };
+  return createResponse(retCode, retMsg, { results: results });
 };
 exports.mgetIterMetrics = mgetIterMetrics;
 
@@ -1665,7 +1620,7 @@ buildIterTree = function (
   // params: 2-d hash, {arg}{val}, value = [list of iteration IDs that has this val]
   // tags: 2-d hash, {name}{val}, value = [list of iteration IDs that has this val]
 
-  if (typeof indent == 'undefined') {
+  if (isUndefined(indent)) {
     indent = '';
   }
 
@@ -1678,7 +1633,7 @@ buildIterTree = function (
   // Move any params which have only 1 value to current iterNode
   Object.keys(newParams).forEach((arg) => {
     if (Object.keys(newParams[arg]).length == 1) {
-      if (typeof iterNode['params'] == 'undefined') {
+      if (isUndefined(iterNode['params'])) {
         iterNode['params'] = [];
       }
       var val = Object.keys(newParams[arg])[0]; // the one and only value
@@ -1691,7 +1646,7 @@ buildIterTree = function (
   // Move any tags which have only 1 value to current iterNode
   Object.keys(newTags).forEach((name) => {
     if (Object.keys(newTags[name]).length == 1) {
-      if (typeof iterNode['tags'] == 'undefined') {
+      if (isUndefined(iterNode['tags'])) {
         iterNode['tags'] = [];
       }
       var val = Object.keys(newTags[name])[0]; // the one and only value
@@ -1719,7 +1674,7 @@ buildIterTree = function (
         break;
       }
     }
-    if (typeof nextArg == 'undefined') {
+    if (isUndefined(nextArg)) {
       nextArg = args[0];
     }
     var intersectedIterCount = 0;
@@ -1750,8 +1705,8 @@ buildIterTree = function (
           breakoutOrderParams,
           indent + '  '
         );
-        if (typeof newIter !== 'undefined' && Object.keys(newIter).length > 0) {
-          if (typeof iterNode['breakout'] == 'undefined') {
+        if (isDefined(newIter) && Object.keys(newIter).length > 0) {
+          if (isUndefined(iterNode['breakout'])) {
             iterNode['breakout'] = [];
           }
           iterNode['breakout'].push(newIter);
@@ -1783,7 +1738,7 @@ buildIterTree = function (
         break;
       }
     }
-    if (typeof nextName == 'undefined') {
+    if (isUndefined(nextName)) {
       nextName = names[0];
     }
     var intersectedIterCount = 0;
@@ -1814,8 +1769,8 @@ buildIterTree = function (
           breakoutOrderParams,
           indent + '  '
         );
-        if (typeof newIter !== 'undefined' && Object.keys(newIter).length > 0) {
-          if (typeof iterNode['breakout'] == 'undefined') {
+        if (isDefined(newIter) && Object.keys(newIter).length > 0) {
+          if (isUndefined(iterNode['breakout'])) {
             iterNode['breakout'] = [];
           }
           iterNode['breakout'].push(newIter);
@@ -1852,12 +1807,12 @@ buildIterTree = function (
       max: results[id]['max']
     };
     Object.keys(newTags).forEach((name) => {
-      if (typeof tagValueByIterAndName[id][name] !== 'undefined') {
+      if (isDefined(tagValueByIterAndName[id][name])) {
         thisIter['labels'] += ' ' + name + ':' + tagValueByIterAndName[id][name];
       }
     });
     Object.keys(newParams).forEach((arg) => {
-      if (typeof paramValueByIterAndArg[id][arg] !== 'undefined') {
+      if (isDefined(paramValueByIterAndArg[id][arg])) {
         thisIter['labels'] += ' ' + arg + ':' + paramValueByIterAndArg[id][arg];
       }
     });
@@ -1872,7 +1827,7 @@ buildIterTree = function (
 reportIters = function (iterTree, indent, count) {
   //if (typeof(indent) == "undefined" || indent == "") {
   //}
-  if (typeof count == 'undefined') {
+  if (isUndefined(count)) {
     count = 0;
   }
 
@@ -1881,12 +1836,12 @@ reportIters = function (iterTree, indent, count) {
 
   // Print the params and tags for this subsection
   var tagStr = '';
-  if (typeof iterTree.tags != 'undefined') {
+  if (isDefined(iterTree.tags)) {
     if (iterTree.tags.length == 1) {
       tagStr += iterTree.tags[0].name + ':' + iterTree.tags[0].val;
     } else {
       var separator;
-      if (typeof indent == 'undefined' || indent == '') {
+      if (isUndefined(indent) || indent == '') {
         indent = '';
         tagStr = 'All common tags:';
         separator = ' '; // params common to all results at top full width
@@ -1902,17 +1857,17 @@ reportIters = function (iterTree, indent, count) {
       len = tagStr.length;
     }
     process.stdout.write(tagStr + '\n');
-    if (typeof indent == 'undefined' || indent == '') {
+    if (isUndefined(indent) || indent == '') {
       console.log('');
     }
   }
   var paramStr = '';
-  if (typeof iterTree.params != 'undefined') {
+  if (isDefined(iterTree.params)) {
     if (iterTree.params.length == 1) {
       paramStr += iterTree.params[0].arg + ':' + iterTree.params[0].val;
     } else {
       var separator;
-      if (typeof indent == 'undefined' || indent == '') {
+      if (isUndefined(indent) || indent == '') {
         indent = '';
         paramStr = 'All common params:';
         separator = ' '; // params common to all results at top full width
@@ -1928,22 +1883,22 @@ reportIters = function (iterTree, indent, count) {
       len = paramStr.length;
     }
     process.stdout.write(paramStr + '\n');
-    if (typeof indent == 'undefined' || indent == '') {
+    if (isUndefined(indent) || indent == '') {
       console.log('');
     }
   }
 
   // Print the headers if this is the first call to reportIters
-  if (typeof indent == 'undefined' || indent == '') {
+  if (isUndefined(indent) || indent == '') {
     // print the row names after all common tags/params are printed
     var header = sprintf('\n%' + midPoint + 's' + ' %10s %10s %36s', 'label', 'mean', 'stddevpct', 'iter-id');
     console.log(header);
     indent = '';
   }
 
-  if (typeof iterTree.iterations == 'undefined') {
+  if (isUndefined(iterTree.iterations)) {
     // We are not at the leaf, need to go deeper
-    if (typeof iterTree.breakout != 'undefined' && iterTree.breakout.length > 0) {
+    if (isDefined(iterTree.breakout) && iterTree.breakout.length > 0) {
       iterTree.breakout.forEach((iter) => {
         var retCount = reportIters(iter, '  ' + indent, 0);
         count = count + retCount;
@@ -2161,7 +2116,7 @@ getIters = async function (
 
   // Now we can add any iterations from --add-runs and --add-iterations.
   // These options are not subject to the tags and params filters.
-  if (typeof addRuns != 'undefined' && addRuns != []) {
+  if (isDefined(addRuns) && addRuns != []) {
     var ids = await getIterations(instance, addRuns);
     ids.forEach((id) => {
       if (!allIterIds.includes(id)) {
@@ -2169,7 +2124,7 @@ getIters = async function (
       }
     });
   }
-  if (typeof addIterations != 'undefined' && addRuns != []) {
+  if (isDefined(addIterations) && addRuns != []) {
     addIterations.forEach((id) => {
       if (!allIterIds.includes(id)) {
         allIterIds.push(id);
@@ -2212,7 +2167,7 @@ getIters = async function (
     var l = params.length;
     for (var i = 0; i < l; i++) {
       var arg = params[i].arg;
-      if (typeof paramIdx[arg] !== 'undefined') {
+      if (isDefined(paramIdx[arg])) {
         // This param arg was already found, combine this value with exiting param
         var existing_arg_idx = paramIdx[arg];
         params[existing_arg_idx]['val'] += '_' + params[i]['val'];
@@ -2227,7 +2182,7 @@ getIters = async function (
     var thisIter = { iterId: iter, tags: tags, params: params };
     var loggedParams = [];
     params.forEach((thisParam) => {
-      if (typeof paramValueByIterAndArg[iter] == 'undefined') {
+      if (isUndefined(paramValueByIterAndArg[iter])) {
         paramValueByIterAndArg[iter] = {};
       }
       if (loggedParams.includes(thisParam['arg'])) {
@@ -2251,7 +2206,7 @@ getIters = async function (
       }
     });
     tags.forEach((thisTag) => {
-      if (typeof tagValueByIterAndName[iter] == 'undefined') {
+      if (isUndefined(tagValueByIterAndName[iter])) {
         tagValueByIterAndName[iter] = {};
       }
       tagValueByIterAndName[iter][thisTag['name']] = thisTag['val'];
@@ -2268,7 +2223,7 @@ getIters = async function (
     var iter = allIterIds[j];
     for (i = 0; i < allTagNames.length; i++) {
       var name = allTagNames[i];
-      if (typeof tagValueByIterAndName[iter][name] == 'undefined') {
+      if (isUndefined(tagValueByIterAndName[iter][name])) {
         if (!notCommonTagNames.includes(name)) {
           notCommonTagNames.push(name);
         }
@@ -2281,7 +2236,7 @@ getIters = async function (
     }
     for (i = 0; i < allParamArgs.length; i++) {
       var arg = allParamArgs[i];
-      if (typeof paramValueByIterAndArg[iter][arg] == 'undefined') {
+      if (isUndefined(paramValueByIterAndArg[iter][arg])) {
         if (!notCommonParamArgs.includes(arg)) {
           notCommonParamArgs.push(arg);
         }
@@ -2340,10 +2295,10 @@ getIters = async function (
   iterations.forEach((thisIter) => {
     thisIter['tags'].forEach((tag) => {
       if (!omitTags.includes(tag.name)) {
-        if (typeof tags[tag.name] == 'undefined') {
+        if (isUndefined(tags[tag.name])) {
           tags[tag.name] = {};
         }
-        if (typeof tags[tag.name][tag.val] == 'undefined') {
+        if (isUndefined(tags[tag.name][tag.val])) {
           tags[tag.name][tag.val] = [];
         }
         tags[tag.name][tag.val].push(thisIter.iterId);
@@ -2352,10 +2307,10 @@ getIters = async function (
 
     thisIter.params.forEach((param) => {
       if (!omitParams.includes(param.arg)) {
-        if (typeof params[param.arg] == 'undefined') {
+        if (isUndefined(params[param.arg])) {
           params[param.arg] = {};
         }
-        if (typeof params[param.arg][param.val] == 'undefined') {
+        if (isUndefined(params[param.arg][param.val])) {
           params[param.arg][param.val] = [];
         }
         params[param.arg][param.val].push(thisIter.iterId);
@@ -2418,10 +2373,10 @@ exports.getDocCount = getDocCount;
 // for each metric group.
 getMetricGroupTermsFromAgg = function (agg, terms) {
   var value;
-  if (typeof terms == 'undefined') {
+  if (isUndefined(terms)) {
     terms = '';
   }
-  if (typeof agg.key != 'undefined') {
+  if (isDefined(agg.key)) {
     value = agg.key;
     terms += '"' + value + '"}}';
   }
@@ -2430,7 +2385,7 @@ getMetricGroupTermsFromAgg = function (agg, terms) {
   Object.keys(agg).forEach((field) => {
     if (/^metric_desc/.exec(field)) {
       count++;
-      if (typeof agg[field].buckets != 'undefined') {
+      if (isDefined(agg[field].buckets)) {
         agg[field].buckets.forEach((bucket) => {
           metricGroupTerms = metricGroupTerms.concat(
             getMetricGroupTermsFromAgg(bucket, terms + ',' + '{"term": {"' + field + '": ')
@@ -2542,7 +2497,7 @@ mgetMetricIdsFromTerms = async function (instance, termsSets, yearDotMonth) {
         if (periId == null && runId == null) {
           retMsg = 'ERROR: mgetMetricIdsFromTerms(), terms[' + i + ']  must have either a period-id or run-id';
           retCode = 1;
-          return { 'metric-id-sets': metricIdsSets, 'ret-code': retCode, 'ret-msg': retMsg };
+          return createResponse(retCode, retMsg, { 'metric-id-sets': metricIdsSets });
         }
         if (periId != null) {
           q.query.bool.filter.push(JSON.parse('{"term": {"period.period-uuid": "' + periId + '"}}'));
@@ -2911,7 +2866,7 @@ calcAvg = function (thisBegin, thisEnd, responses, jsonArrIdx, jsonArrTracker, n
   var newWeight;
   debuglog('calcAvg responses[' + jsonArrIdx / 2 + ']:' + JSON.stringify(responses[jsonArrIdx / 2], null, 2));
   aggAvg = responses[jsonArrIdx / 2].aggregations.metric_avg.value;
-  if (typeof aggAvg != 'undefined') {
+  if (isDefined(aggAvg)) {
     // We have the weighted average for documents that don't overlap the time range,
     // but we need to combine that with the documents that are partially outside
     // the time range.  We need to know the total weight from the documents we
@@ -3031,7 +2986,7 @@ getMetricDataFromIdsSets = async function (instance, sets, metricGroupIdsByLabel
       const label = sortedKeys[k];
       debuglog('label: [' + label + ']');
       var metricIds = metricGroupIdsByLabelSets[idx][label];
-      if (typeof sets[idx].begin == 'undefined') {
+      if (isUndefined(sets[idx].begin)) {
         console.log('ERROR: sets.[' + idx + '].begin is not defined:\n' + JSON.stringify(sets[idx]), null, 2);
         process.exit(1);
       }
@@ -3040,7 +2995,7 @@ getMetricDataFromIdsSets = async function (instance, sets, metricGroupIdsByLabel
         console.log('ERROR: begin is not defined');
         process.exit(1);
       }
-      if (typeof sets[idx].end == 'undefined') {
+      if (isUndefined(sets[idx].end)) {
         console.log('ERROR: sets.[' + idx + '].end is not defined');
         process.exit(1);
       }
@@ -3093,8 +3048,8 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
     // If a begin and/or end are not defined, and the period is not defined, error out.
     // If a run is not defined, get it from the period.
     // If a run and period are not defined, error out.
-    if (typeof sets[i].run == 'undefined') {
-      if (typeof sets[i].period != 'undefined') {
+    if (isUndefined(sets[i].run)) {
+      if (isDefined(sets[i].period)) {
         sets[i].run = await getRunFromPeriod(instance, sets[i].period, yearDotMonth);
       } else {
         retMsg = 'ERROR: run and period was not defined';
@@ -3103,8 +3058,8 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
       }
     }
     var periodRange;
-    if (typeof sets[i].begin == 'undefined') {
-      if (typeof sets[i].period != 'undefined') {
+    if (isUndefined(sets[i].begin)) {
+      if (isDefined(sets[i].period)) {
         periodRange = await getPeriodRange(instance, sets[i].period, yearDotMonth);
         sets[i]['begin'] = periodRange['begin'];
       } else {
@@ -3113,9 +3068,9 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
         return { 'data-sets': [], 'ret-code': retCode, 'ret-msg': retMsg };
       }
     }
-    if (typeof sets[i].end == 'undefined') {
-      if (typeof sets[i].period != 'undefined') {
-        if (typeof periodRange == 'undefined') {
+    if (isUndefined(sets[i].end)) {
+      if (isDefined(sets[i].period)) {
+        if (isUndefined(periodRange)) {
           periodRange = await getPeriodRange(instance, sets[i].period, yearDotMonth);
         }
         sets[i].end = periodRange.end;
@@ -3242,7 +3197,7 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
   for (var i = 0; i < sets.length; i++) {
     // Rearrange the actual data into 'values' section
     Object.keys(dataSets[i]).forEach((label) => {
-      if (typeof dataSets[i].values == 'undefined') {
+      if (isUndefined(dataSets[i].values)) {
         dataSets[i].values = {};
       }
       dataSets[i].values[label] = dataSets[i][label];
