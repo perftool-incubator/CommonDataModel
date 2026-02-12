@@ -72,7 +72,7 @@ function flattenWith2DRestructure(arr2D) {
 }
 
 function createGetFromMget(mgetFunc, wrapParamIndex, unwrap = (r) => r[0]) {
-  return async function(...args) {
+  return async function (...args) {
     args[wrapParamIndex] = [args[wrapParamIndex]];
     const result = await mgetFunc(...args);
     return unwrap(result);
@@ -1393,13 +1393,21 @@ async function findInstanceForEntity(instances, entityId, testFunc) {
 
 // --------------------------------------------------------------------------------------------------------------
 findInstanceFromRun = async function (instances, runId) {
-  return await findInstanceForEntity(instances, runId, async (instance, runId) => await getIterations(instance, runId, '@*'));
+  return await findInstanceForEntity(
+    instances,
+    runId,
+    async (instance, runId) => await getIterations(instance, runId, '@*')
+  );
 };
 exports.findInstanceFromRun = findInstanceFromRun;
 
 // --------------------------------------------------------------------------------------------------------------
 findInstanceFromPeriod = async function (instances, periId) {
-  return await findInstanceForEntity(instances, periId, async (instance, periId) => await getRunFromPeriod(instance, periId, '@*'));
+  return await findInstanceForEntity(
+    instances,
+    periId,
+    async (instance, periId) => await getRunFromPeriod(instance, periId, '@*')
+  );
 };
 exports.findInstanceFromPeriod = findInstanceFromPeriod;
 
