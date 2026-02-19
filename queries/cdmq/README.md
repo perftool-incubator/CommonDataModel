@@ -404,7 +404,7 @@ This feature is particularly useful when:
 - You need to reduce output by focusing on a subset of values
 - You want to query multiple specific values in a single command instead of running separate queries
 
-**Note**: Each comma-separated value in a breakout filter (e.g., `csid=1,2`) will produce separate metrics in the output, not an aggregated metric. Future enhancements may support aggregation using a different syntax (e.g., `csid=1+2`).
+**Note**: Each comma-separated value in a breakout filter (e.g., `csid=1,2`) will produce separate metrics in the output, not an aggregated metric. To aggregate specific values into a single metric, use regex alternation with uppercase `R`: `hostname=R/worker-1|worker-2|worker-3/` (see regex section below).
 
 #### Using Regular Expressions in Breakouts
 
@@ -413,7 +413,7 @@ In addition to specifying exact values or lists of values, you can use regular e
 **Syntax**: Use `r/pattern/` for separate metrics (one per match) or `R/pattern/` for aggregated metrics (all matches combined).
 
 - **Lowercase `r`**: Each value matching the pattern gets its own metric (similar to `hostname=a,b,c`)
-- **Uppercase `R`**: All values matching the pattern are aggregated into a single metric (similar to future `hostname=a+b+c`)
+- **Uppercase `R`**: All values matching the pattern are aggregated into a single metric
 
 **Examples:**
 
@@ -423,6 +423,9 @@ node ./get-metric-data.js --period <UUID> --source mpstat --type Busy-CPU --brea
 
 # Get a single aggregated metric for all client nodes
 node ./get-metric-data.js --period <UUID> --source sar-net --type L2-Gbps --breakout hostname=R/^client-.*/
+
+# Aggregate specific values using alternation (|)
+node ./get-metric-data.js --period <UUID> --source mpstat --type Busy-CPU --breakout hostname=R/worker-1|worker-2|worker-3/
 
 # Mix regex with other filters
 node ./get-metric-data.js --period <UUID> --source mpstat --type Busy-CPU --breakout hostname=r/worker-[0-9]+/,cstype=physical
