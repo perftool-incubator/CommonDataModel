@@ -2509,6 +2509,7 @@ mgetMetricIdsFromTerms = async function (instance, termsSets, yearDotMonth) {
   for (i = 0; i < termsSets.length; i++) {
     var periId = termsSets[i].period;
     var runId = termsSets[i].run;
+    var regexpFilters = termsSets[i].regexpFilters || [];
     Object.keys(termsSets[i].termsByLabel)
       .sort()
       .forEach((label) => {
@@ -2529,6 +2530,12 @@ mgetMetricIdsFromTerms = async function (instance, termsSets, yearDotMonth) {
         if (runId != null) {
           q.query.bool.filter.push(JSON.parse('{"term": {"run.run-uuid": "' + runId + '"}}'));
         }
+        // Apply any regexp filters that were excluded from aggregation
+        regexpFilters.forEach((rf) => {
+          q.query.bool.filter.push(
+            JSON.parse('{"regexp": {"metric_desc.names.' + rf.field + '": ' + JSON.stringify(rf.pattern) + '}}')
+          );
+        });
         jsonArr.push('{}');
         jsonArr.push(JSON.stringify(q));
         totalReqs++;
@@ -2685,10 +2692,33 @@ getMetricGroupsFromBreakouts = async function (instance, sets, yearDotMonth) {
     var metricGroupTerms = getMetricGroupTermsFromAgg(responses[idx].aggregations);
     // Derive the label from each group and organize into a dict, key = label, value = the filter terms
     var metricGroupTermsByLabel = getMetricGroupTermsByLabel(metricGroupTerms);
+
+    // Extract regexp filters that were excluded from aggregation (R/pattern/)
+    // These need to be preserved when querying for metric IDs
+    var regexpFilters = [];
+    var regExp = /([^\=]+)\=([^\=]+)/;
+    sets[idx].breakout.forEach((field) => {
+      var matches = regExp.exec(field);
+      if (matches) {
+        var fieldName = matches[1];
+        var value = matches[2];
+        var regexMatch = /^([rR])(.)(.+)\2$/.exec(value);
+        if (regexMatch) {
+          var isAggregated = regexMatch[1] === 'R';
+          var pattern = regexMatch[3];
+          if (isAggregated) {
+            // This field was excluded from aggregation, need to preserve the regexp filter
+            regexpFilters.push({ field: fieldName, pattern: pattern });
+          }
+        }
+      }
+    });
+
     var thisLabelSet = {
       run: sets[idx].run,
       period: sets[idx].period,
-      termsByLabel: metricGroupTermsByLabel
+      termsByLabel: metricGroupTermsByLabel,
+      regexpFilters: regexpFilters
     };
     termsSets.push(thisLabelSet);
   }
