@@ -2425,21 +2425,37 @@ getBreakoutAggregation = function (source, type, breakout) {
     breakout.forEach((field) => {
       //if (/([^\=]+)\=([^\=]+)/.exec(field)) {
       var matches = regExp.exec(field);
+      var shouldAggregate = true; // default: include in aggregation
+
       if (matches) {
         //field = $1;
-        field = matches[1];
+        var fieldName = matches[1];
+        var value = matches[2];
+
+        // Check if this is an aggregated regex pattern (R/pattern/)
+        // If uppercase R, we should NOT add this field to the aggregation
+        // (all matches will be combined into a single metric)
+        if (/^R./.test(value)) {
+          shouldAggregate = false;
+        }
+
+        field = fieldName;
       }
-      agg_str +=
-        ',"aggs": { "metric_desc.names.' +
-        field +
-        '": { "terms": ' +
-        '{ "show_term_doc_count_error": true, "size": ' +
-        bigQuerySize +
-        ',' +
-        '"field": "metric_desc.names.' +
-        field +
-        '" }';
-      field_count++;
+
+      // Only add to aggregation if shouldAggregate is true
+      if (shouldAggregate) {
+        agg_str +=
+          ',"aggs": { "metric_desc.names.' +
+          field +
+          '": { "terms": ' +
+          '{ "show_term_doc_count_error": true, "size": ' +
+          bigQuerySize +
+          ',' +
+          '"field": "metric_desc.names.' +
+          field +
+          '" }';
+        field_count++;
+      }
     });
     while (field_count > 0) {
       agg_str += '}}';
@@ -2493,6 +2509,7 @@ mgetMetricIdsFromTerms = async function (instance, termsSets, yearDotMonth) {
   for (i = 0; i < termsSets.length; i++) {
     var periId = termsSets[i].period;
     var runId = termsSets[i].run;
+    var regexpFilters = termsSets[i].regexpFilters || [];
     Object.keys(termsSets[i].termsByLabel)
       .sort()
       .forEach((label) => {
@@ -2513,6 +2530,12 @@ mgetMetricIdsFromTerms = async function (instance, termsSets, yearDotMonth) {
         if (runId != null) {
           q.query.bool.filter.push(JSON.parse('{"term": {"run.run-uuid": "' + runId + '"}}'));
         }
+        // Apply any regexp filters that were excluded from aggregation
+        regexpFilters.forEach((rf) => {
+          q.query.bool.filter.push(
+            JSON.parse('{"regexp": {"metric_desc.names.' + rf.field + '": ' + JSON.stringify(rf.pattern) + '}}')
+          );
+        });
         jsonArr.push('{}');
         jsonArr.push(JSON.stringify(q));
         totalReqs++;
@@ -2609,14 +2632,48 @@ getMetricGroupsFromBreakouts = async function (instance, sets, yearDotMonth) {
       q.query.bool.filter.push(JSON.parse('{"term": {"run.run-uuid": "' + set.run + '"}}'));
     }
     // If the breakout contains a match requirement (something like "host=myhost"), then we must add a term filter for it.
-    // Eventually it would be nice to have something other than a match, like a regex: host=/^client/.
+    // Multiple values can be specified with commas: "host=a,b,c" which will match any of those values.
+    // Regex patterns can be specified with r/pattern/ (separate metrics) or R/pattern/ (aggregated metric).
     var regExp = /([^\=]+)\=([^\=]+)/;
     set.breakout.forEach((field) => {
       var matches = regExp.exec(field);
       if (matches) {
         field = matches[1];
         value = matches[2];
-        q.query.bool.filter.push(JSON.parse('{"term": {"metric_desc.names.' + field + '": "' + value + '"}}'));
+
+        // Check if it's a regex pattern: r/pattern/ or R/pattern/
+        // Group 1: r or R (lowercase = separate metrics, uppercase = aggregated)
+        // Group 2: delimiter character (usually /, but can be any char)
+        // Group 3: the actual regex pattern
+        // \2: backreference to ensure matching closing delimiter
+        var regexMatch = /^([rR])(.)(.+)\2$/.exec(value);
+
+        if (regexMatch) {
+          // It's a regex pattern
+          var isAggregated = regexMatch[1] === 'R';
+          var delimiter = regexMatch[2];
+          var pattern = regexMatch[3];
+
+          // Add regexp filter to OpenSearch query
+          // Both r/pattern/ and R/pattern/ use the same filter,
+          // the difference is in the aggregation (handled in getBreakoutAggregation)
+          q.query.bool.filter.push(
+            JSON.parse('{"regexp": {"metric_desc.names.' + field + '": ' + JSON.stringify(pattern) + '}}')
+          );
+        } else {
+          // Not a regex pattern, handle as literal value(s)
+          // Check if the value contains multiple comma-separated values
+          var values = value.split(',');
+          if (values.length > 1) {
+            // Multiple values: use "terms" query (note the plural)
+            q.query.bool.filter.push(
+              JSON.parse('{"terms": {"metric_desc.names.' + field + '": ' + JSON.stringify(values) + '}}')
+            );
+          } else {
+            // Single value: use "term" query (singular)
+            q.query.bool.filter.push(JSON.parse('{"term": {"metric_desc.names.' + field + '": "' + value + '"}}'));
+          }
+        }
       }
     });
     q.aggs = aggs;
@@ -2635,10 +2692,33 @@ getMetricGroupsFromBreakouts = async function (instance, sets, yearDotMonth) {
     var metricGroupTerms = getMetricGroupTermsFromAgg(responses[idx].aggregations);
     // Derive the label from each group and organize into a dict, key = label, value = the filter terms
     var metricGroupTermsByLabel = getMetricGroupTermsByLabel(metricGroupTerms);
+
+    // Extract regexp filters that were excluded from aggregation (R/pattern/)
+    // These need to be preserved when querying for metric IDs
+    var regexpFilters = [];
+    var regExp = /([^\=]+)\=([^\=]+)/;
+    sets[idx].breakout.forEach((field) => {
+      var matches = regExp.exec(field);
+      if (matches) {
+        var fieldName = matches[1];
+        var value = matches[2];
+        var regexMatch = /^([rR])(.)(.+)\2$/.exec(value);
+        if (regexMatch) {
+          var isAggregated = regexMatch[1] === 'R';
+          var pattern = regexMatch[3];
+          if (isAggregated) {
+            // This field was excluded from aggregation, need to preserve the regexp filter
+            regexpFilters.push({ field: fieldName, pattern: pattern });
+          }
+        }
+      }
+    });
+
     var thisLabelSet = {
       run: sets[idx].run,
       period: sets[idx].period,
-      termsByLabel: metricGroupTermsByLabel
+      termsByLabel: metricGroupTermsByLabel,
+      regexpFilters: regexpFilters
     };
     termsSets.push(thisLabelSet);
   }
@@ -3189,6 +3269,46 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
     return { 'ret-code': retCode, 'ret-msg': retMsg };
   }
   var metricGroupIdsByLabelSets = resp['metric-id-sets'];
+
+  // Check if any regex filters resulted in zero matches
+  for (var idx = 0; idx < metricGroupIdsByLabelSets.length; idx++) {
+    if (Object.keys(metricGroupIdsByLabelSets[idx]).length === 0) {
+      // This set has no metric groups - check if it was due to a regex filter
+      var regexFilters = [];
+      var regExp = /([^\=]+)\=([^\=]+)/;
+      sets[idx].breakout.forEach((field) => {
+        var matches = regExp.exec(field);
+        if (matches) {
+          var fieldName = matches[1];
+          var value = matches[2];
+          // Check if it's a regex pattern
+          if (/^[rR]./.test(value)) {
+            regexFilters.push({ field: fieldName, pattern: value });
+          }
+        }
+      });
+
+      if (regexFilters.length > 0) {
+        // Build helpful error message
+        retMsg =
+          'No metrics found matching the specified filter(s) for source=' +
+          sets[idx].source +
+          ', type=' +
+          sets[idx].type;
+        regexFilters.forEach((rf) => {
+          retMsg += '\n  Regex filter ' + rf.field + '=' + rf.pattern + ' did not match any values.';
+        });
+        retMsg += '\nPlease verify:';
+        retMsg += '\n  1. The regex pattern is correct';
+        retMsg += '\n  2. Metrics exist for this source/type with the specified field';
+        retMsg += '\n  3. The field values match the pattern';
+        retCode = 1;
+        return { 'ret-code': retCode, 'ret-msg': retMsg };
+      }
+      // If no regex filters, continue with existing error handling
+    }
+  }
+
   var dataSets = await getMetricDataFromIdsSets(instance, sets, metricGroupIdsByLabelSets, yearDotMonth);
 
   if (dataSets.length != sets.length) {
