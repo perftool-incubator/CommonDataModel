@@ -3290,7 +3290,11 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
 
       if (regexFilters.length > 0) {
         // Build helpful error message
-        retMsg = 'No metrics found matching the specified filter(s) for source=' + sets[idx].source + ', type=' + sets[idx].type;
+        retMsg =
+          'No metrics found matching the specified filter(s) for source=' +
+          sets[idx].source +
+          ', type=' +
+          sets[idx].type;
         regexFilters.forEach((rf) => {
           retMsg += '\n  Regex filter ' + rf.field + '=' + rf.pattern + ' did not match any values.';
         });
