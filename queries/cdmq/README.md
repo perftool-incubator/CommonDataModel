@@ -383,6 +383,29 @@ When evaluating these breakouts, we can see that `<1>-<worker>-<physical>-<tx>` 
       },
       "breakouts": []
     }
+
+#### Specifying Multiple Values for a Breakout
+
+In addition to filtering a breakout to a single value (e.g., `csid=1`), you can now specify multiple values for a breakout field using comma-separated values. This will return separate metrics for each specified value.
+
+For example, to get metrics for both worker nodes 1 and 2:
+
+    # node ./get-metric-data.js --period 4F1014D6-AD33-11EC-94E3-ADE96E3275F7 --source sar-net --type L2-Gbps --breakout csid=1,2,cstype=worker,type=physical
+
+This will return two separate metrics: one for `csid=1` and one for `csid=2`, without including metrics for any other csid values that might exist in the data.
+
+**Important**: The comma separator has different meanings depending on context:
+- Between different breakout fields: `csid,cstype` means break out by both csid AND cstype
+- Within a value list: `csid=1,2` means break out by csid, but only include values 1 and 2
+- Mixed usage: `csid=1,2,cstype=worker` means break out by csid (only values 1,2) and cstype (only value worker)
+
+This feature is particularly useful when:
+- You want to compare specific hosts or components without seeing all possible values
+- You need to reduce output by focusing on a subset of values
+- You want to query multiple specific values in a single command instead of running separate queries
+
+**Note**: Each comma-separated value in a breakout filter (e.g., `csid=1,2`) will produce separate metrics in the output, not an aggregated metric. Future enhancements may support aggregation using a different syntax (e.g., `csid=1+2`).
+
 So far all of the metrics have been represented as a single value for a specific time period.  When `--period` is used, the script finds the begin and end times for this period, which in most cases, has a duration equal to the measurement time in the benchmark itself (around 90 seconds in these examples).  One can also specify `--run`, `--begin`,  and `--end` instead of `--period`, should they need to focus on a different period of time.  However, for benchmark metrics (such as uperf), it is important to limit the begin and end to within the actual measurement period for that sample.  Conversely, tool metrics can use a begin and end spanning any time period within the run, as the tool collection tends to run continuously for any particular run.   Whatever time period is used, one can also use `--resolution` to divide this time period into multiple data-samples, in order to generate things like line graphs:
 
     # node ./get-metric-data.js --period 4F1014D6-AD33-11EC-94E3-ADE96E3275F7 --source sar-net --type L2-Gbps --breakout csid=1,cstype=worker,type=physical,direction=tx,dev --filter gt:0.01 --resolution 10

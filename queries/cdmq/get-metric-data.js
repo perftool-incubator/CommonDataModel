@@ -15,7 +15,53 @@ var sprintf = require('sprintf-js').sprintf;
 var instances = []; // opensearch instances
 
 function list(val) {
-  return val.split(',');
+  // Parse breakout string to handle both:
+  // - Simple breakouts: "hostname,cpu" -> ["hostname", "cpu"]
+  // - Breakouts with values: "hostname=a,cpu=x" -> ["hostname=a", "cpu=x"]
+  // - Breakouts with multiple values: "hostname=a,b,cpu=x,y" -> ["hostname=a,b", "cpu=x,y"]
+  //
+  // The key insight: a comma separates breakout fields UNLESS we're currently
+  // parsing a value list (after '=' and before the next field with '=')
+
+  var result = [];
+  var current = '';
+  var inValueList = false;
+  var parts = val.split(',');
+
+  for (var i = 0; i < parts.length; i++) {
+    var part = parts[i];
+    var hasEqual = part.includes('=');
+
+    if (inValueList && !hasEqual) {
+      // We're in a value list and this part doesn't have '=', so it's another value
+      current += ',' + part;
+    } else if (inValueList && hasEqual) {
+      // We were in a value list, but now we hit a new key=value pair
+      result.push(current);
+      current = part;
+      inValueList = true;
+    } else if (!inValueList && hasEqual) {
+      // Starting a new key=value pair
+      if (current !== '') {
+        result.push(current);
+      }
+      current = part;
+      inValueList = true;
+    } else {
+      // !inValueList && !hasEqual - simple breakout field without value filter
+      if (current !== '') {
+        result.push(current);
+      }
+      current = part;
+      inValueList = false;
+    }
+  }
+
+  if (current !== '') {
+    result.push(current);
+  }
+
+  return result;
 }
 
 function save_host(host) {

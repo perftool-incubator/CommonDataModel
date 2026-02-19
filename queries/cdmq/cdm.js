@@ -2609,6 +2609,7 @@ getMetricGroupsFromBreakouts = async function (instance, sets, yearDotMonth) {
       q.query.bool.filter.push(JSON.parse('{"term": {"run.run-uuid": "' + set.run + '"}}'));
     }
     // If the breakout contains a match requirement (something like "host=myhost"), then we must add a term filter for it.
+    // Multiple values can be specified with commas: "host=a,b,c" which will match any of those values.
     // Eventually it would be nice to have something other than a match, like a regex: host=/^client/.
     var regExp = /([^\=]+)\=([^\=]+)/;
     set.breakout.forEach((field) => {
@@ -2616,7 +2617,17 @@ getMetricGroupsFromBreakouts = async function (instance, sets, yearDotMonth) {
       if (matches) {
         field = matches[1];
         value = matches[2];
-        q.query.bool.filter.push(JSON.parse('{"term": {"metric_desc.names.' + field + '": "' + value + '"}}'));
+        // Check if the value contains multiple comma-separated values
+        var values = value.split(',');
+        if (values.length > 1) {
+          // Multiple values: use "terms" query (note the plural)
+          q.query.bool.filter.push(
+            JSON.parse('{"terms": {"metric_desc.names.' + field + '": ' + JSON.stringify(values) + '}}')
+          );
+        } else {
+          // Single value: use "term" query (singular)
+          q.query.bool.filter.push(JSON.parse('{"term": {"metric_desc.names.' + field + '": "' + value + '"}}'));
+        }
       }
     });
     q.aggs = aggs;
