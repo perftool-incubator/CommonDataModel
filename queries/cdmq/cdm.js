@@ -2432,10 +2432,13 @@ getBreakoutAggregation = function (source, type, breakout) {
         var fieldName = matches[1];
         var value = matches[2];
 
-        // Check if this is an aggregated regex pattern (R/pattern/)
-        // If uppercase R, we should NOT add this field to the aggregation
-        // (all matches will be combined into a single metric)
+        // Check if this should be aggregated (combined into a single metric)
+        // Two cases where we should NOT add field to aggregation:
+        // 1. Aggregated regex pattern: R/pattern/
+        // 2. Aggregated literal values: a+b+c
         if (/^R./.test(value)) {
+          shouldAggregate = false;
+        } else if (value.includes('+')) {
           shouldAggregate = false;
         }
 
@@ -2625,7 +2628,9 @@ getMetricGroupsFromBreakouts = async function (instance, sets, yearDotMonth) {
       q.query.bool.filter.push(JSON.parse('{"term": {"run.run-uuid": "' + set.run + '"}}'));
     }
     // If the breakout contains a match requirement (something like "host=myhost"), then we must add a term filter for it.
-    // Multiple values can be specified with commas: "host=a,b,c" which will match any of those values.
+    // Multiple values can be specified with:
+    //   - Commas for separate metrics: "host=a,b,c"
+    //   - Plus signs for aggregated metric: "host=a+b+c"
     // Regex patterns can be specified with r/pattern/ (separate metrics) or R/pattern/ (aggregated metric).
     var regExp = /([^\=]+)\=([^\=]+)/;
     set.breakout.forEach((field) => {
@@ -2655,10 +2660,25 @@ getMetricGroupsFromBreakouts = async function (instance, sets, yearDotMonth) {
           );
         } else {
           // Not a regex pattern, handle as literal value(s)
-          // Check if the value contains multiple comma-separated values
-          var values = value.split(',');
+          var values;
+          var isAggregated = false;
+
+          // Check for aggregated values (plus-separated)
+          if (value.includes('+')) {
+            values = value.split('+');
+            isAggregated = true;
+          } else if (value.includes(',')) {
+            // Multiple separate values (comma-separated)
+            values = value.split(',');
+            isAggregated = false;
+          } else {
+            // Single value
+            values = [value];
+          }
+
           if (values.length > 1) {
-            // Multiple values: use "terms" query (note the plural)
+            // Multiple values (either a+b or a,b): use "terms" query (note the plural)
+            // The aggregation behavior is controlled by getBreakoutAggregation
             q.query.bool.filter.push(
               JSON.parse('{"terms": {"metric_desc.names.' + field + '": ' + JSON.stringify(values) + '}}')
             );
@@ -3240,11 +3260,12 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
   }
   var metricGroupIdsByLabelSets = resp['metric-id-sets'];
 
-  // Check if any regex filters resulted in zero matches
+  // Check if any filters resulted in zero matches
   for (var idx = 0; idx < metricGroupIdsByLabelSets.length; idx++) {
     if (Object.keys(metricGroupIdsByLabelSets[idx]).length === 0) {
-      // This set has no metric groups - check if it was due to a regex filter
+      // This set has no metric groups - check if it was due to filters
       var regexFilters = [];
+      var literalFilters = [];
       var regExp = /([^\=]+)\=([^\=]+)/;
       sets[idx].breakout.forEach((field) => {
         var matches = regExp.exec(field);
@@ -3254,24 +3275,37 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
           // Check if it's a regex pattern
           if (/^[rR]./.test(value)) {
             regexFilters.push({ field: fieldName, pattern: value });
+          } else if (value.includes(',') || value.includes('+')) {
+            // Literal value filter (comma or plus separated)
+            literalFilters.push({ field: fieldName, values: value });
+          } else {
+            // Single literal value filter
+            literalFilters.push({ field: fieldName, values: value });
           }
         }
       });
 
-      if (regexFilters.length > 0) {
+      if (regexFilters.length > 0 || literalFilters.length > 0) {
         // Build helpful error message
-        retMsg = 'No metrics found matching the specified filter(s) for source=' + sets[idx].source + ', type=' + sets[idx].type;
+        retMsg =
+          'No metrics found matching the specified filter(s) for source=' +
+          sets[idx].source +
+          ', type=' +
+          sets[idx].type;
         regexFilters.forEach((rf) => {
           retMsg += '\n  Regex filter ' + rf.field + '=' + rf.pattern + ' did not match any values.';
         });
+        literalFilters.forEach((lf) => {
+          retMsg += '\n  Filter ' + lf.field + '=' + lf.values + ' did not match any values.';
+        });
         retMsg += '\nPlease verify:';
-        retMsg += '\n  1. The regex pattern is correct';
+        retMsg += '\n  1. The filter values/patterns are correct';
         retMsg += '\n  2. Metrics exist for this source/type with the specified field';
-        retMsg += '\n  3. The field values match the pattern';
+        retMsg += '\n  3. The field values match your filter';
         retCode = 1;
         return { 'ret-code': retCode, 'ret-msg': retMsg };
       }
-      // If no regex filters, continue with existing error handling
+      // If no filters with values, continue with existing error handling
     }
   }
 
