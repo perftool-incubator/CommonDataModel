@@ -404,33 +404,7 @@ This feature is particularly useful when:
 - You need to reduce output by focusing on a subset of values
 - You want to query multiple specific values in a single command instead of running separate queries
 
-#### Aggregating Multiple Values into a Single Metric
-
-When you want to combine data from multiple values into a single aggregated metric, use the plus (`+`) separator instead of comma. This is useful when you want to see the combined throughput, utilization, or other metrics across multiple resources.
-
-**Syntax**: Use `field=value1+value2+value3` to aggregate values into a single metric.
-
-**Example - Compare separate vs aggregated**:
-
-```bash
-# Separate metrics for each worker (comma separator)
-node ./get-metric-data.js --period <UUID> --source mpstat --type Busy-CPU --breakout hostname=worker-1,worker-2,worker-3
-# Returns 3 metrics: one for worker-1, one for worker-2, one for worker-3
-
-# Single aggregated metric for all workers (plus separator)
-node ./get-metric-data.js --period <UUID> --source mpstat --type Busy-CPU --breakout hostname=worker-1+worker-2+worker-3
-# Returns 1 metric: combined data from worker-1, worker-2, and worker-3
-```
-
-**Use Cases:**
-- Measure total throughput across multiple servers: `hostname=server-1+server-2+server-3`
-- Combine CPU usage across multiple cores: `cpu=0+1+2+3`
-- Aggregate network traffic from multiple interfaces: `dev=eth0+eth1`
-- Compare aggregate metrics: `--breakout cstype=worker+master` shows combined metric for both types
-
-**Important**: The separator determines the output behavior:
-- **Comma (`,`)**: Separate metrics - `hostname=a,b` returns 2 metrics
-- **Plus (`+`)**: Aggregated metric - `hostname=a+b` returns 1 combined metric
+**Note**: Each comma-separated value in a breakout filter (e.g., `csid=1,2`) will produce separate metrics in the output, not an aggregated metric. Future enhancements may support aggregation using a different syntax (e.g., `csid=1+2`).
 
 #### Using Regular Expressions in Breakouts
 
@@ -475,25 +449,6 @@ node ./get-metric-data.js --period <UUID> --source iostat --type kB-sec --breako
 - Exclude certain patterns: Use regex negative lookahead if needed
 
 **Performance Note**: Regex patterns are evaluated by OpenSearch and may be slower than exact value matches for very large datasets. Use them when the flexibility is needed.
-
-#### Complete Breakout Feature Matrix
-
-The following table summarizes all available breakout filter syntaxes:
-
-| Syntax | Type | Result | Example |
-|--------|------|--------|---------|
-| `hostname=a` | Single literal value | 1 metric for 'a' | `--breakout hostname=worker-1` |
-| `hostname=a,b,c` | Multiple literals (comma) | 3 separate metrics | `--breakout hostname=worker-1,worker-2,worker-3` |
-| `hostname=a+b+c` | Multiple literals (plus) | 1 aggregated metric | `--breakout hostname=worker-1+worker-2+worker-3` |
-| `hostname=r/pattern/` | Regex (lowercase r) | N separate metrics (one per match) | `--breakout hostname=r/^worker-.*/` |
-| `hostname=R/pattern/` | Regex (uppercase R) | 1 aggregated metric (all matches) | `--breakout hostname=R/^worker-.*/` |
-| `hostname` | No value filter | N separate metrics (all values) | `--breakout hostname` |
-
-**Design Philosophy**: The syntax follows a consistent pattern:
-- **Lowercase/comma** = Separate metrics for each value
-- **Uppercase/plus** = Aggregated metric combining all values
-
-This provides an intuitive, powerful interface for both literal and pattern-based metric selection and aggregation.
 
 So far all of the metrics have been represented as a single value for a specific time period.  When `--period` is used, the script finds the begin and end times for this period, which in most cases, has a duration equal to the measurement time in the benchmark itself (around 90 seconds in these examples).  One can also specify `--run`, `--begin`,  and `--end` instead of `--period`, should they need to focus on a different period of time.  However, for benchmark metrics (such as uperf), it is important to limit the begin and end to within the actual measurement period for that sample.  Conversely, tool metrics can use a begin and end spanning any time period within the run, as the tool collection tends to run continuously for any particular run.   Whatever time period is used, one can also use `--resolution` to divide this time period into multiple data-samples, in order to generate things like line graphs:
 
