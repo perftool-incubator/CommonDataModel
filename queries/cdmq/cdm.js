@@ -2425,21 +2425,37 @@ getBreakoutAggregation = function (source, type, breakout) {
     breakout.forEach((field) => {
       //if (/([^\=]+)\=([^\=]+)/.exec(field)) {
       var matches = regExp.exec(field);
+      var shouldAggregate = true; // default: include in aggregation
+
       if (matches) {
         //field = $1;
-        field = matches[1];
+        var fieldName = matches[1];
+        var value = matches[2];
+
+        // Check if this is an aggregated regex pattern (R/pattern/)
+        // If uppercase R, we should NOT add this field to the aggregation
+        // (all matches will be combined into a single metric)
+        if (/^R./.test(value)) {
+          shouldAggregate = false;
+        }
+
+        field = fieldName;
       }
-      agg_str +=
-        ',"aggs": { "metric_desc.names.' +
-        field +
-        '": { "terms": ' +
-        '{ "show_term_doc_count_error": true, "size": ' +
-        bigQuerySize +
-        ',' +
-        '"field": "metric_desc.names.' +
-        field +
-        '" }';
-      field_count++;
+
+      // Only add to aggregation if shouldAggregate is true
+      if (shouldAggregate) {
+        agg_str +=
+          ',"aggs": { "metric_desc.names.' +
+          field +
+          '": { "terms": ' +
+          '{ "show_term_doc_count_error": true, "size": ' +
+          bigQuerySize +
+          ',' +
+          '"field": "metric_desc.names.' +
+          field +
+          '" }';
+        field_count++;
+      }
     });
     while (field_count > 0) {
       agg_str += '}}';
@@ -2610,23 +2626,46 @@ getMetricGroupsFromBreakouts = async function (instance, sets, yearDotMonth) {
     }
     // If the breakout contains a match requirement (something like "host=myhost"), then we must add a term filter for it.
     // Multiple values can be specified with commas: "host=a,b,c" which will match any of those values.
-    // Eventually it would be nice to have something other than a match, like a regex: host=/^client/.
+    // Regex patterns can be specified with r/pattern/ (separate metrics) or R/pattern/ (aggregated metric).
     var regExp = /([^\=]+)\=([^\=]+)/;
     set.breakout.forEach((field) => {
       var matches = regExp.exec(field);
       if (matches) {
         field = matches[1];
         value = matches[2];
-        // Check if the value contains multiple comma-separated values
-        var values = value.split(',');
-        if (values.length > 1) {
-          // Multiple values: use "terms" query (note the plural)
+
+        // Check if it's a regex pattern: r/pattern/ or R/pattern/
+        // Group 1: r or R (lowercase = separate metrics, uppercase = aggregated)
+        // Group 2: delimiter character (usually /, but can be any char)
+        // Group 3: the actual regex pattern
+        // \2: backreference to ensure matching closing delimiter
+        var regexMatch = /^([rR])(.)(.+)\2$/.exec(value);
+
+        if (regexMatch) {
+          // It's a regex pattern
+          var isAggregated = regexMatch[1] === 'R';
+          var delimiter = regexMatch[2];
+          var pattern = regexMatch[3];
+
+          // Add regexp filter to OpenSearch query
+          // Both r/pattern/ and R/pattern/ use the same filter,
+          // the difference is in the aggregation (handled in getBreakoutAggregation)
           q.query.bool.filter.push(
-            JSON.parse('{"terms": {"metric_desc.names.' + field + '": ' + JSON.stringify(values) + '}}')
+            JSON.parse('{"regexp": {"metric_desc.names.' + field + '": ' + JSON.stringify(pattern) + '}}')
           );
         } else {
-          // Single value: use "term" query (singular)
-          q.query.bool.filter.push(JSON.parse('{"term": {"metric_desc.names.' + field + '": "' + value + '"}}'));
+          // Not a regex pattern, handle as literal value(s)
+          // Check if the value contains multiple comma-separated values
+          var values = value.split(',');
+          if (values.length > 1) {
+            // Multiple values: use "terms" query (note the plural)
+            q.query.bool.filter.push(
+              JSON.parse('{"terms": {"metric_desc.names.' + field + '": ' + JSON.stringify(values) + '}}')
+            );
+          } else {
+            // Single value: use "term" query (singular)
+            q.query.bool.filter.push(JSON.parse('{"term": {"metric_desc.names.' + field + '": "' + value + '"}}'));
+          }
         }
       }
     });

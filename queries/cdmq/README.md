@@ -406,6 +406,50 @@ This feature is particularly useful when:
 
 **Note**: Each comma-separated value in a breakout filter (e.g., `csid=1,2`) will produce separate metrics in the output, not an aggregated metric. Future enhancements may support aggregation using a different syntax (e.g., `csid=1+2`).
 
+#### Using Regular Expressions in Breakouts
+
+In addition to specifying exact values or lists of values, you can use regular expressions to match multiple values dynamically. This is particularly useful when you want to match values that follow a pattern without knowing all possible values in advance.
+
+**Syntax**: Use `r/pattern/` for separate metrics (one per match) or `R/pattern/` for aggregated metrics (all matches combined).
+
+- **Lowercase `r`**: Each value matching the pattern gets its own metric (similar to `hostname=a,b,c`)
+- **Uppercase `R`**: All values matching the pattern are aggregated into a single metric (similar to future `hostname=a+b+c`)
+
+**Examples:**
+
+```bash
+# Get separate metrics for all worker nodes matching the pattern
+node ./get-metric-data.js --period <UUID> --source mpstat --type Busy-CPU --breakout hostname=r/^worker-.*/
+
+# Get a single aggregated metric for all client nodes
+node ./get-metric-data.js --period <UUID> --source sar-net --type L2-Gbps --breakout hostname=R/^client-.*/
+
+# Mix regex with other filters
+node ./get-metric-data.js --period <UUID> --source mpstat --type Busy-CPU --breakout hostname=r/worker-[0-9]+/,cstype=physical
+
+# Use different delimiter if pattern contains slashes
+node ./get-metric-data.js --period <UUID> --source iostat --type kB-sec --breakout dev=r|/dev/sd.*|
+```
+
+**Custom Delimiter**: The character immediately after `r` or `R` is used as the delimiter. While `/` is conventional, you can use any character (like `|`, `#`, `@`, `~`) if your pattern contains forward slashes.
+
+**Regular Expression Syntax**: The patterns use OpenSearch regex syntax, which is similar to standard regex but with some differences. Common patterns include:
+- `.*` - Match any characters (zero or more)
+- `.+` - Match any characters (one or more)
+- `^` - Match start of string
+- `$` - Match end of string
+- `[0-9]` - Match any digit
+- `[a-z]` - Match any lowercase letter
+- `(a|b)` - Match 'a' or 'b'
+
+**Use Cases:**
+- Match all nodes of a certain type: `hostname=r/^worker-.*/`
+- Match numbered resources: `cpu=r/[0-9]+/`
+- Match specific patterns: `device=r/^eth[0-9]/`
+- Exclude certain patterns: Use regex negative lookahead if needed
+
+**Performance Note**: Regex patterns are evaluated by OpenSearch and may be slower than exact value matches for very large datasets. Use them when the flexibility is needed.
+
 So far all of the metrics have been represented as a single value for a specific time period.  When `--period` is used, the script finds the begin and end times for this period, which in most cases, has a duration equal to the measurement time in the benchmark itself (around 90 seconds in these examples).  One can also specify `--run`, `--begin`,  and `--end` instead of `--period`, should they need to focus on a different period of time.  However, for benchmark metrics (such as uperf), it is important to limit the begin and end to within the actual measurement period for that sample.  Conversely, tool metrics can use a begin and end spanning any time period within the run, as the tool collection tends to run continuously for any particular run.   Whatever time period is used, one can also use `--resolution` to divide this time period into multiple data-samples, in order to generate things like line graphs:
 
     # node ./get-metric-data.js --period 4F1014D6-AD33-11EC-94E3-ADE96E3275F7 --source sar-net --type L2-Gbps --breakout csid=1,cstype=worker,type=physical,direction=tx,dev --filter gt:0.01 --resolution 10
