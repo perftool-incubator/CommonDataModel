@@ -3239,6 +3239,42 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
     return { 'ret-code': retCode, 'ret-msg': retMsg };
   }
   var metricGroupIdsByLabelSets = resp['metric-id-sets'];
+
+  // Check if any regex filters resulted in zero matches
+  for (var idx = 0; idx < metricGroupIdsByLabelSets.length; idx++) {
+    if (Object.keys(metricGroupIdsByLabelSets[idx]).length === 0) {
+      // This set has no metric groups - check if it was due to a regex filter
+      var regexFilters = [];
+      var regExp = /([^\=]+)\=([^\=]+)/;
+      sets[idx].breakout.forEach((field) => {
+        var matches = regExp.exec(field);
+        if (matches) {
+          var fieldName = matches[1];
+          var value = matches[2];
+          // Check if it's a regex pattern
+          if (/^[rR]./.test(value)) {
+            regexFilters.push({ field: fieldName, pattern: value });
+          }
+        }
+      });
+
+      if (regexFilters.length > 0) {
+        // Build helpful error message
+        retMsg = 'No metrics found matching the specified filter(s) for source=' + sets[idx].source + ', type=' + sets[idx].type;
+        regexFilters.forEach((rf) => {
+          retMsg += '\n  Regex filter ' + rf.field + '=' + rf.pattern + ' did not match any values.';
+        });
+        retMsg += '\nPlease verify:';
+        retMsg += '\n  1. The regex pattern is correct';
+        retMsg += '\n  2. Metrics exist for this source/type with the specified field';
+        retMsg += '\n  3. The field values match the pattern';
+        retCode = 1;
+        return { 'ret-code': retCode, 'ret-msg': retMsg };
+      }
+      // If no regex filters, continue with existing error handling
+    }
+  }
+
   var dataSets = await getMetricDataFromIdsSets(instance, sets, metricGroupIdsByLabelSets, yearDotMonth);
 
   if (dataSets.length != sets.length) {
