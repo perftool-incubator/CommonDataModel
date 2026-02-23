@@ -120,7 +120,46 @@ async function fetchMetricData(serverUrl, params) {
   });
 }
 
+function list_hosts(val) {
+  // Parse comma-separated host values
+  return val.split(',');
+}
+
+function save_host(host) {
+  if (!program.instances) {
+    program.instances = [];
+  }
+  var host_info = { host: host, header: { 'Content-Type': 'application/json' } };
+  program.instances.push(host_info);
+}
+
+function save_userpass(userpass) {
+  if (!program.instances || program.instances.length == 0) {
+    console.log('You must specify a --host before a --userpass');
+    process.exit(1);
+  }
+  program.instances[program.instances.length - 1]['header'] = {
+    'Content-Type': 'application/json',
+    Authorization: 'Basic ' + btoa(userpass)
+  };
+}
+
+function save_ver(ver) {
+  if (!program.instances || program.instances.length == 0) {
+    console.log('You must specify a --host before a --ver');
+    process.exit(1);
+  }
+  if (/^v[7|8|9]dev$/.exec(ver)) {
+    program.instances[program.instances.length - 1]['ver'] = ver;
+  } else {
+    console.log('The version must be v7dev, v8dev, or v9dev, not: ' + ver);
+    process.exit(1);
+  }
+}
+
 async function main() {
+  program.instances = [];
+
   program
     .version('0.1.0')
     .option(
@@ -128,6 +167,9 @@ async function main() {
       'The URL of the metric data API server (e.g., http://localhost:3000/api/metric-data)',
       'http://localhost:3000/api/metric-data'
     )
+    .option('--host <host[:port]>', 'The host and optional port of the OpenSearch instance (passed to server)', save_host)
+    .option('--userpass <user:pass>', 'The user and password for the most recent --host (passed to server)', save_userpass)
+    .option('--ver <v7dev|v8dev|v9dev>', 'The Common Data Model version to use for the most recent --host (passed to server)', save_ver)
     .option('--run <uuid>', 'The UUID from the run')
     .option('--period <uuid>', 'The UUID from the benchmark-iteration-sample-period')
     .option('--source <name>', 'The metric source, like a tool or benchmark name (sar, fio)')
@@ -194,7 +236,8 @@ async function main() {
     end: program.end,
     resolution: program.resolution,
     breakout: program.breakout, // Send as array to preserve complex breakout syntax
-    filter: program.filter
+    filter: program.filter,
+    instances: program.instances.length > 0 ? program.instances : undefined // Pass instances to server if provided
   };
 
   // Fetch metric data from the API

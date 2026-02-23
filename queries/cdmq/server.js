@@ -46,6 +46,11 @@ program
 
 const options = program.opts();
 
+// If the user does not specify any hosts, assume localhost:9200 is used
+if (instances.length == 0) {
+  save_host('localhost:9200');
+}
+
 getInstancesInfo(instances);
 
 app.use(cors());
@@ -54,7 +59,7 @@ app.use(express.json());
 // API endpoint to get metric data
 app.post('/api/metric-data', async (req, res) => {
   try {
-    var { run, period, begin, end, source, type, resolution, breakout, filter } = req.body;
+    var { run, period, begin, end, source, type, resolution, breakout, filter, instances: reqInstances } = req.body;
 
     console.log('[' + Date.now() + '] Fetching metric data with parameters:', {
       run,
@@ -65,30 +70,45 @@ app.post('/api/metric-data', async (req, res) => {
       type,
       resolution,
       breakout,
-      filter
+      filter,
+      instances: reqInstances ? `${reqInstances.length} instance(s) provided` : 'using server instances'
     });
+
+    // Use instances from request if provided, otherwise use server's configured instances
+    var instancesToUse = reqInstances && reqInstances.length > 0 ? reqInstances : instances;
+
+    if (!instancesToUse || instancesToUse.length === 0) {
+      errMsg = 'No OpenSearch instances configured. Either start server with --host options or provide instances in request.';
+      console.error(errMsg);
+      return res.status(500).json({ error: errMsg });
+    }
+
+    // If instances were provided in the request, we need to call getInstancesInfo on them
+    if (reqInstances && reqInstances.length > 0) {
+      getInstancesInfo(instancesToUse);
+    }
 
     var yearDotMonth;
     var instance;
     if (run != null) {
-      instance = await findInstanceFromRun(instances, run);
+      instance = await findInstanceFromRun(instancesToUse, run);
       if (instance == null) {
         errMsg =
           'Could not find run ID ' +
           period +
           ' in any of the Opensearch instances:\n' +
-          JSON.stringify(instances, null, 2);
+          JSON.stringify(instancesToUse, null, 2);
         console.error(errMsg);
         return res.status(500).json({ error: errMsg });
       }
     } else if (period != null) {
-      instance = await findInstanceFromPeriod(instances, period);
+      instance = await findInstanceFromPeriod(instancesToUse, period);
       if (instance == null) {
         errMsg =
           'Could not find period ID ' +
           period +
           ' in any of the Opensearch instances:\n' +
-          JSON.stringify(instances, null, 2);
+          JSON.stringify(instancesToUse, null, 2);
         console.error(errMsg);
         return res.status(500).json({ error: errMsg });
       }
