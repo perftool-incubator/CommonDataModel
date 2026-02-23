@@ -102,10 +102,15 @@ app.post('/api/metric-data', async (req, res) => {
     var yearDotMonth = await findYearDotMonthFromRun(instance, run);
 
     // getMetricDataSets expects breakout to be an array
-    if (typeof breakout != 'string') {
-      breakout = [];
-    } else {
+    // Handle breakout as either an array (from new client) or string (from legacy clients)
+    if (Array.isArray(breakout)) {
+      // Already an array, use as-is
+    } else if (typeof breakout === 'string') {
+      // Legacy string format, do simple split
       breakout = breakout.split(',');
+    } else {
+      // Undefined or null
+      breakout = [];
     }
     if (typeof resolution == 'undefined') {
       resolution = 1;

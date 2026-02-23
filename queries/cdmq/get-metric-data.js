@@ -9,10 +9,10 @@
 //
 //# vim: autoindent tabstop=2 shiftwidth=2 expandtab softtabstop=2 filetype=javascript
 
-var cdm = require('./cdm');
 var program = require('commander');
 var sprintf = require('sprintf-js').sprintf;
-var instances = []; // opensearch instances
+const http = require('http');
+const https = require('https');
 
 function list(val) {
   // Parse breakout string to handle both:
@@ -64,41 +64,70 @@ function list(val) {
   return result;
 }
 
-function save_host(host) {
-  var host_info = { host: host, header: { 'Content-Type': 'application/json' } };
-  instances.push(host_info);
-}
+/**
+ * Make an HTTP POST request to the metric data API
+ */
+async function fetchMetricData(serverUrl, params) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(serverUrl);
+    const isHttps = url.protocol === 'https:';
+    const client = isHttps ? https : http;
 
-function save_userpass(userpass) {
-  if (instances.length == 0) {
-    console.log('You must specify a --host before a --userpass');
-    process.exit(1);
-  }
-  instances[instances.length - 1]['header'] = {
-    'Content-Type': 'application/json',
-    Authorization: 'Basic ' + btoa(userpass)
-  };
-}
+    const postData = JSON.stringify(params);
 
-function save_ver(ver) {
-  if (instances.length == 0) {
-    console.log('You must specify a --host before a --ver');
-    process.exit(1);
-  }
-  if (/^v[7|8|9]dev$/.exec(ver)) {
-    instances[instances.length - 1]['ver'] = ver;
-  } else {
-    console.log('The version must be v7dev, v8dev, or v9dev, not: ' + ver);
-    process.exit(1);
-  }
+    const options = {
+      hostname: url.hostname,
+      port: url.port || (isHttps ? 443 : 80),
+      path: url.pathname,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    };
+
+    const req = client.request(options, (res) => {
+      let data = '';
+
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          try {
+            resolve(JSON.parse(data));
+          } catch (e) {
+            reject(new Error(`Failed to parse response: ${e.message}`));
+          }
+        } else {
+          try {
+            const errorData = JSON.parse(data);
+            reject(new Error(errorData.error || `HTTP ${res.statusCode}: ${data}`));
+          } catch (e) {
+            reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+          }
+        }
+      });
+    });
+
+    req.on('error', (error) => {
+      reject(new Error(`Failed to connect to server at ${serverUrl}: ${error.message}`));
+    });
+
+    req.write(postData);
+    req.end();
+  });
 }
 
 async function main() {
   program
     .version('0.1.0')
-    .option('--host <host[:port]>', 'The host and optional port of the OpenSearch instance', save_host)
-    .option('--userpass <user:pass>', 'The user and password for the most recent --host', save_userpass)
-    .option('--ver <v7dev|v8dev|v9dev>', 'The Common Data Model version to use for the most recent --host', save_ver)
+    .option(
+      '--server-url <url>',
+      'The URL of the metric data API server (e.g., http://localhost:3000/api/metric-data)',
+      'http://localhost:3000/api/metric-data'
+    )
     .option('--run <uuid>', 'The UUID from the run')
     .option('--period <uuid>', 'The UUID from the benchmark-iteration-sample-period')
     .option('--source <name>', 'The metric source, like a tool or benchmark name (sar, fio)')
@@ -150,44 +179,13 @@ async function main() {
     )
     .parse(process.argv);
 
-  // If the user does not specify any hosts, assume localhost:9200 is used
-  if (instances.length == 0) {
-    save_host('localhost:9200');
-  }
-
-  getInstancesInfo(instances);
-  var yearDotMonth;
-  var instance;
-  if (program.run != null) {
-    instance = await findInstanceFromRun(instances, program.run);
-    if (instance == null) {
-      console.log(
-        'Could not find run ID ' +
-          program.period +
-          ' in any of the Opensearch instances:\n' +
-          JSON.stringify(instances, null, 2)
-      );
-      process.exit(1);
-    }
-  } else if (program.period != null) {
-    instance = await findInstanceFromPeriod(instances, program.period);
-    if (instance == null) {
-      console.log(
-        'Could not find period ID ' +
-          program.period +
-          ' in any of the Opensearch instances:\n' +
-          JSON.stringify(instances, null, 2)
-      );
-      process.exit(1);
-    }
-    // We don't yet know the yearDotMonth, so use wildcard to query all period indices
-    program.run = await getRunFromPeriod(instance, program.period, '@*');
-  } else {
+  if (program.run == null && program.period == null) {
     console.log('Exiting because neither a period nor a run ID were provided');
     process.exit(1);
   }
-  var yearDotMonth = await findYearDotMonthFromRun(instance, program.run);
-  var set = {
+
+  // Prepare the request parameters for the API
+  const apiParams = {
     run: program.run,
     period: program.period,
     source: program.source,
@@ -195,22 +193,25 @@ async function main() {
     begin: program.begin,
     end: program.end,
     resolution: program.resolution,
-    breakout: program.breakout,
+    breakout: program.breakout, // Send as array to preserve complex breakout syntax
     filter: program.filter
   };
-  var resp = (metric_data = await cdm.getMetricDataSets(instance, [set], yearDotMonth));
-  if (resp['ret-code'] != 0) {
-    console.log('Exiting: ' + resp['ret-msg']);
+
+  // Fetch metric data from the API
+  let metric_data;
+  try {
+    metric_data = await fetchMetricData(program.serverUrl, apiParams);
+  } catch (error) {
+    console.log('Error fetching metric data: ' + error.message);
     process.exit(1);
   }
-  metric_data = resp['data-sets'][0];
 
   if (Object.keys(metric_data.values).length == 0) {
     console.log('There were no metrics found, exiting');
     process.exit(1);
   }
 
-  console.log('\nFrom Opensearch instance: ' + instance['host'] + ' and cdm: ' + instance['ver'] + '\n');
+  console.log('\nMetric data retrieved from API server: ' + program.serverUrl + '\n');
 
   if (program.outputFormat == 'json') {
     console.log(JSON.stringify(metric_data, null, 2));
