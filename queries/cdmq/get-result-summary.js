@@ -55,8 +55,20 @@ async function apiRequest(serverUrl, method, path, body) {
         try {
           parsed = JSON.parse(data);
         } catch (e) {
-          reject(new Error('Failed to parse response from ' + method + ' ' + path + ': ' + e.message +
-            '\n  Raw response (' + data.length + ' bytes): ' + JSON.stringify(data.substring(0, 200))));
+          reject(
+            new Error(
+              'Failed to parse response from ' +
+                method +
+                ' ' +
+                path +
+                ': ' +
+                e.message +
+                '\n  Raw response (' +
+                data.length +
+                ' bytes): ' +
+                JSON.stringify(data.substring(0, 200))
+            )
+          );
           return;
         }
 

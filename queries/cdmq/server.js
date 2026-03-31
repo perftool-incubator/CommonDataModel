@@ -247,8 +247,13 @@ app.post('/api/v1/run/:id/iterations/params', resolveRun, async (req, res) => {
       params = [];
     }
     console.log(
-      '[' + Date.now() + '] POST /api/v1/run/' + runId + '/iterations/params returned params for ' +
-      iterations.length + ' iteration(s)'
+      '[' +
+        Date.now() +
+        '] POST /api/v1/run/' +
+        runId +
+        '/iterations/params returned params for ' +
+        iterations.length +
+        ' iteration(s)'
     );
     res.json({ params: params });
   } catch (error) {
@@ -281,8 +286,13 @@ app.post('/api/v1/run/:id/iterations/primary-period-name', resolveRun, async (re
       periodNames = [];
     }
     console.log(
-      '[' + Date.now() + '] POST /api/v1/run/' + runId + '/iterations/primary-period-name returned ' +
-      periodNames.length + ' name(s)'
+      '[' +
+        Date.now() +
+        '] POST /api/v1/run/' +
+        runId +
+        '/iterations/primary-period-name returned ' +
+        periodNames.length +
+        ' name(s)'
     );
     res.json({ periodNames: periodNames });
   } catch (error) {
@@ -316,8 +326,13 @@ app.post('/api/v1/run/:id/iterations/samples', resolveRun, async (req, res) => {
       samples = [];
     }
     console.log(
-      '[' + Date.now() + '] POST /api/v1/run/' + runId + '/iterations/samples returned samples for ' +
-      iterations.length + ' iteration(s)'
+      '[' +
+        Date.now() +
+        '] POST /api/v1/run/' +
+        runId +
+        '/iterations/samples returned samples for ' +
+        iterations.length +
+        ' iteration(s)'
     );
     res.json({ samples: samples });
   } catch (error) {
@@ -453,8 +468,13 @@ app.post('/api/v1/run/:id/iterations/primary-metric', resolveRun, async (req, re
       primaryMetrics = [];
     }
     console.log(
-      '[' + Date.now() + '] POST /api/v1/run/' + runId + '/iterations/primary-metric returned ' +
-      primaryMetrics.length + ' metric(s)'
+      '[' +
+        Date.now() +
+        '] POST /api/v1/run/' +
+        runId +
+        '/iterations/primary-metric returned ' +
+        primaryMetrics.length +
+        ' metric(s)'
     );
     res.json({ primaryMetrics: primaryMetrics });
   } catch (error) {
@@ -514,8 +534,13 @@ app.post('/api/v1/run/:id/metric-types', resolveRun, async (req, res) => {
       types = [];
     }
     console.log(
-      '[' + Date.now() + '] POST /api/v1/run/' + runId + '/metric-types returned types for ' +
-      sources.length + ' source(s)'
+      '[' +
+        Date.now() +
+        '] POST /api/v1/run/' +
+        runId +
+        '/metric-types returned types for ' +
+        sources.length +
+        ' source(s)'
     );
     res.json({ types: types });
   } catch (error) {
@@ -553,7 +578,8 @@ app.post('/api/v1/metric-data', async (req, res) => {
     if (!instancesToUse || instancesToUse.length === 0) {
       return res.status(503).json({
         code: 'NO_INSTANCES',
-        error: 'No OpenSearch instances configured. Either start server with --host options or provide instances in request.'
+        error:
+          'No OpenSearch instances configured. Either start server with --host options or provide instances in request.'
       });
     }
 

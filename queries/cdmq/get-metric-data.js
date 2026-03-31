@@ -167,9 +167,21 @@ async function main() {
       'The URL of the metric data API server (e.g., http://localhost:3000/api/v1/metric-data)',
       'http://localhost:3000/api/v1/metric-data'
     )
-    .option('--host <host[:port]>', 'The host and optional port of the OpenSearch instance (passed to server)', save_host)
-    .option('--userpass <user:pass>', 'The user and password for the most recent --host (passed to server)', save_userpass)
-    .option('--ver <v7dev|v8dev|v9dev>', 'The Common Data Model version to use for the most recent --host (passed to server)', save_ver)
+    .option(
+      '--host <host[:port]>',
+      'The host and optional port of the OpenSearch instance (passed to server)',
+      save_host
+    )
+    .option(
+      '--userpass <user:pass>',
+      'The user and password for the most recent --host (passed to server)',
+      save_userpass
+    )
+    .option(
+      '--ver <v7dev|v8dev|v9dev>',
+      'The Common Data Model version to use for the most recent --host (passed to server)',
+      save_ver
+    )
     .option('--run <uuid>', 'The UUID from the run')
     .option('--period <uuid>', 'The UUID from the benchmark-iteration-sample-period')
     .option('--source <name>', 'The metric source, like a tool or benchmark name (sar, fio)')
