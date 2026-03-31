@@ -1,72 +1,112 @@
 //# vim: autoindent tabstop=2 shiftwidth=2 expandtab softtabstop=2 filetype=javascript
-var cdm = require('./cdm');
 var yaml = require('js-yaml');
 var program = require('commander');
-var instances = [];
+const http = require('http');
+const https = require('https');
 var summary = {};
 
 function list(val) {
   return val.split(',');
 }
 
-function save_host(host) {
-  var host_info = { host: host, header: { 'Content-Type': 'application/json' } };
-  instances.push(host_info);
+// --------------------------------------------------------------------------------------------------------------
+// HTTP client for API requests
+// --------------------------------------------------------------------------------------------------------------
+function debuglog(msg) {
+  if (program.debug) {
+    console.error('[DEBUG] ' + msg);
+  }
 }
 
-function save_userpass(userpass) {
-  if (instances.length == 0) {
-    console.log('You must specify a --host before a --userpass');
-    process.exit(1);
-  }
-  instances[instances.length - 1]['header'] = {
-    'Content-Type': 'application/json',
-    Authorization: 'Basic ' + btoa(userpass)
-  };
+async function apiRequest(serverUrl, method, path, body) {
+  debuglog(method + ' ' + path + (body ? ' body=' + JSON.stringify(body) : ''));
+  return new Promise((resolve, reject) => {
+    const url = new URL(serverUrl);
+    const isHttps = url.protocol === 'https:';
+    const client = isHttps ? https : http;
+
+    const postData = body ? JSON.stringify(body) : null;
+
+    const options = {
+      hostname: url.hostname,
+      port: url.port || (isHttps ? 443 : 80),
+      path: path,
+      method: method,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    };
+
+    if (postData) {
+      options.headers['Content-Length'] = Buffer.byteLength(postData);
+    }
+
+    const req = client.request(options, (res) => {
+      let data = '';
+
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      res.on('end', () => {
+        debuglog(method + ' ' + path + ' status=' + res.statusCode + ' response=' + data.substring(0, 500));
+
+        let parsed;
+        try {
+          parsed = JSON.parse(data);
+        } catch (e) {
+          reject(new Error('Failed to parse response from ' + method + ' ' + path + ': ' + e.message +
+            '\n  Raw response (' + data.length + ' bytes): ' + JSON.stringify(data.substring(0, 200))));
+          return;
+        }
+
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          resolve(parsed);
+        } else {
+          const code = parsed.code || 'HTTP_' + res.statusCode;
+          const msg = parsed.error || data;
+          reject(new Error('[' + code + '] ' + msg));
+        }
+      });
+    });
+
+    req.on('error', (error) => {
+      reject(new Error('Failed to connect to server at ' + serverUrl + ': ' + error.message));
+    });
+
+    if (postData) {
+      req.write(postData);
+    }
+    req.end();
+  });
 }
 
-function save_ver(ver) {
-  if (instances.length == 0) {
-    console.log('You must specify a --host before a --ver');
-    process.exit(1);
-  }
-  if (/^v[7|8|9]dev$/.exec(ver)) {
-    instances[instances.length - 1]['ver'] = ver;
-  } else {
-    console.log('The version must be v7dev, v8dev, or v9dev, not: ' + ver);
-    process.exit(1);
-  }
+async function apiGet(baseUrl, path) {
+  return await apiRequest(baseUrl, 'GET', path, null);
+}
+
+async function apiPost(baseUrl, path, body) {
+  return await apiRequest(baseUrl, 'POST', path, body);
 }
 
 program
   .version('0.1.0')
   .option('--run <run-ID>')
-  .option('--host <host[:port]>', 'The host and optional port of the OpenSearch instance', save_host)
-  .option('--userpass <user:pass>', 'The user and password for the most recent --host', save_userpass)
-  .option('--ver <v7dev|v8dev|v9dev>', 'The Common Data Model version to use for the most recent --host', save_ver)
+  .option(
+    '--server-url <url>',
+    'The base URL of the CDM query server (e.g., http://localhost:3000)',
+    'http://localhost:3000'
+  )
+  .option('--host <host[:port]>', 'Ignored (accepted for backward compatibility)')
+  .option('--userpass <user:pass>', 'Ignored (accepted for backward compatibility)')
+  .option('--ver <v7dev|v8dev|v9dev>', 'Ignored (accepted for backward compatibility)')
+  .option('--user <name>', 'Filter by run name')
+  .option('--email <email>', 'Filter by email')
+  .option('--harness <harness>', 'Filter by harness')
+  .option('--debug', 'Enable debug logging of API requests and responses')
   .option('--output-dir <path>, if not used, output is to console only')
   .option('--output-format <fmt>, fmta[,fmtb]', 'one or more output formats: txt, json, yaml', list, [])
   .parse(process.argv);
-
-var termKeys = [];
-var values = [];
-
-if (program.user) {
-  termKeys.push('run.name');
-  values.push([program.user]);
-}
-if (program.email) {
-  termKeys.push('run.email');
-  values.push([program.email]);
-}
-if (program.run) {
-  termKeys.push('run.run-uuid');
-  values.push([program.run]);
-}
-if (program.harness) {
-  termKeys.push('run.harness');
-  values.push([program.harness]);
-}
 
 if (!program.outputDir) {
   program.outputDir = '';
@@ -81,92 +121,142 @@ function logOutput(str, formats) {
 }
 
 async function main() {
-  // If the user does not specify any hosts, assume localhost:9200 is used
-  if (instances.length == 0) {
-    save_host('localhost:9200');
+  var baseUrl = program.serverUrl;
+
+  // Build query params for the runs search
+  var queryParts = [];
+  if (program.run) {
+    queryParts.push('run=' + encodeURIComponent(program.run));
+  }
+  if (program.user) {
+    queryParts.push('name=' + encodeURIComponent(program.user));
+  }
+  if (program.email) {
+    queryParts.push('email=' + encodeURIComponent(program.email));
+  }
+  if (program.harness) {
+    queryParts.push('harness=' + encodeURIComponent(program.harness));
+  }
+  var queryString = queryParts.length > 0 ? '?' + queryParts.join('&') : '';
+
+  // Find matching runs
+  var runsResp;
+  try {
+    runsResp = await apiGet(baseUrl, '/api/v1/runs' + queryString);
+  } catch (error) {
+    console.log('Error searching for runs: ' + error.message);
+    process.exit(1);
   }
 
-  getInstancesInfo(instances);
-  cdm.debuglog(JSON.stringify(instances, null, 2));
-
-  // Since this query is looking for run ids (and may not inlcude run-uuid as a search term), we
-  // need to check all instances.
-  var allInstanceRunIds = [];
-  for (const instance of instances) {
-    if (invalidInstance(instance)) {
-      continue;
-    }
-    cdm.debuglog('main(): calling cdm.mSearch()');
-    var instanceRunIds = await cdm.mSearch(instance, 'run', '@*', termKeys, values, 'run.run-uuid', null, 1000);
-    cdm.debuglog('main(): returned from cdm.mSearch()');
-    cdm.debuglog('instanceRunIds:\n' + JSON.stringify(instanceRunIds, null, 2));
-    if (typeof instanceRunIds[0] != 'undefined') {
-      allInstanceRunIds.push(instanceRunIds[0]);
-    }
-  }
-  cdm.debuglog('allInstanceRunIds:\n' + JSON.stringify(allInstanceRunIds, null, 2));
-
-  var runIds = cdm.consolidateAllArrays(allInstanceRunIds);
-  cdm.debuglog('(consolidated)allInstanceRunIds:\n' + JSON.stringify(runIds, null, 2));
-
+  var runIds = runsResp.runIds;
   if (typeof runIds == 'undefined' || runIds.length == 0) {
     console.log('The run ID could not be found, exiting');
     process.exit(1);
   }
 
-  cdm.debuglog('runIds:\n' + JSON.stringify(runIds, null, 2));
   summary['runs'] = [];
   for (runIdx = 0; runIdx < runIds.length; runIdx++) {
-    cdm.debuglog('runIdx:\n' + runIdx);
     var thisRun = {};
     const runId = runIds[runIdx];
-    var instance = await findInstanceFromRun(instances, runId);
-    console.log('\nFrom Opensearch instance: ' + instance['host'] + ' and cdm: ' + instance['ver']);
-    var yearDotMonth = await findYearDotMonthFromRun(instance, runId);
+    var runPrefix = '/api/v1/run/' + runId;
+
     logOutput('\nrun-id: ' + runId, program.outputFormat);
     thisRun['run-id'] = runId;
     thisRun['iterations'] = [];
-    var tags = await cdm.getTags(instance, runId, yearDotMonth);
+
+    // Fetch tags
+    var tagsResp;
+    try {
+      tagsResp = await apiGet(baseUrl, runPrefix + '/tags');
+    } catch (error) {
+      console.log('Error fetching tags for run ' + runId + ': ' + error.message);
+      process.exit(1);
+    }
+    var tags = tagsResp.tags;
     tags.sort((a, b) => (a.name < b.name ? -1 : 1));
     thisRun['tags'] = tags;
     var tagList = '  tags: ';
-
     tags.forEach((tag) => {
       tagList += tag.name + '=' + tag.val + ' ';
     });
     logOutput(tagList, program.outputFormat);
-    var benchName = await cdm.getBenchmarkName(instance, runId, yearDotMonth);
+
+    // Fetch benchmark name
+    var benchResp;
+    try {
+      benchResp = await apiGet(baseUrl, runPrefix + '/benchmark');
+    } catch (error) {
+      console.log('Error fetching benchmark for run ' + runId + ': ' + error.message);
+      process.exit(1);
+    }
+    var benchName = benchResp.benchmark;
     var benchmarks = list(benchName);
     logOutput('  benchmark: ' + benchName, program.outputFormat);
-    var benchIterations = await cdm.getIterations(instance, runId, yearDotMonth);
+
+    // Fetch iterations
+    var iterResp;
+    try {
+      iterResp = await apiGet(baseUrl, runPrefix + '/iterations');
+    } catch (error) {
+      console.log('Error fetching iterations for run ' + runId + ': ' + error.message);
+      process.exit(1);
+    }
+    var benchIterations = iterResp.iterations;
     if (benchIterations.length == 0) {
-      cdm.debuglog('There were no iterations found, exiting');
+      console.log('There were no iterations found, exiting');
       process.exit(1);
     }
 
-    var iterParams = await cdm.mgetParams(instance, benchIterations, yearDotMonth);
-    //returns 1D array [iter]
-    var iterPrimaryPeriodNames = await cdm.mgetPrimaryPeriodName(instance, benchIterations, yearDotMonth);
-    //input: 1D array
-    //output: 2D array [iter][samp]
-    var iterSampleIds = await cdm.mgetSamples(instance, benchIterations, yearDotMonth);
-    //input: 2D array iterSampleIds: [iter][samp]
-    //output: 2D array [iter][samp]
-    var iterSampleStatuses = await cdm.mgetSampleStatuses(instance, iterSampleIds, yearDotMonth);
-    //needs 2D array iterSampleIds: [iter][samp] and 1D array iterPrimaryPeriodNames [iter]
-    //returns 2D array [iter][samp]
-    var iterPrimaryPeriodIds = await cdm.mgetPrimaryPeriodId(
-      instance,
-      iterSampleIds,
-      iterPrimaryPeriodNames,
-      yearDotMonth
-    );
-    var iterPrimaryPeriodRanges = await cdm.mgetPeriodRange(instance, iterPrimaryPeriodIds, yearDotMonth);
+    // Fetch iteration-level data in parallel: params, primary-period-name, samples, primary-metric
+    var iterBody = { iterations: benchIterations };
+    var paramsResp, periodNamesResp, samplesResp, primaryMetricsResp;
+    try {
+      [paramsResp, periodNamesResp, samplesResp, primaryMetricsResp] = await Promise.all([
+        apiPost(baseUrl, runPrefix + '/iterations/params', iterBody),
+        apiPost(baseUrl, runPrefix + '/iterations/primary-period-name', iterBody),
+        apiPost(baseUrl, runPrefix + '/iterations/samples', iterBody),
+        apiPost(baseUrl, runPrefix + '/iterations/primary-metric', iterBody)
+      ]);
+    } catch (error) {
+      console.log('Error fetching iteration data for run ' + runId + ': ' + error.message);
+      process.exit(1);
+    }
+    var iterParams = paramsResp.params;
+    var iterPrimaryPeriodNames = periodNamesResp.periodNames;
+    var iterSampleIds = samplesResp.samples;
+    var iterPrimaryMetrics = primaryMetricsResp.primaryMetrics;
+
+    // Fetch sample-level data: statuses and primary period IDs
+    var statusesResp, periodIdsResp;
+    try {
+      [statusesResp, periodIdsResp] = await Promise.all([
+        apiPost(baseUrl, runPrefix + '/samples/statuses', { sampleIds: iterSampleIds }),
+        apiPost(baseUrl, runPrefix + '/samples/primary-period-id', {
+          sampleIds: iterSampleIds,
+          periodNames: iterPrimaryPeriodNames
+        })
+      ]);
+    } catch (error) {
+      console.log('Error fetching sample data for run ' + runId + ': ' + error.message);
+      process.exit(1);
+    }
+    var iterSampleStatuses = statusesResp.statuses;
+    var iterPrimaryPeriodIds = periodIdsResp.periodIds;
+
+    // Fetch period ranges
+    var rangesResp;
+    try {
+      rangesResp = await apiPost(baseUrl, runPrefix + '/periods/range', { periodIds: iterPrimaryPeriodIds });
+    } catch (error) {
+      console.log('Error fetching period ranges for run ' + runId + ': ' + error.message);
+      process.exit(1);
+    }
+    var iterPrimaryPeriodRanges = rangesResp.ranges;
 
     // Find the params which are the same in every iteration
-    var iterPrimaryMetrics = await cdm.mgetPrimaryMetric(instance, benchIterations, yearDotMonth);
     var primaryMetrics = list(iterPrimaryMetrics[0]);
     // For now only dump params when 1 primary metric is used
+    var commonParams = [];
     if (primaryMetrics.length == 1) {
       var allParams = [];
       var allParamsCounts = [];
@@ -182,7 +272,6 @@ async function main() {
           }
         });
       });
-      var commonParams = [];
       for (var idx = 0; idx < allParams.length; idx++) {
         if (allParamsCounts[idx] == benchIterations.length) {
           commonParams.push(allParams[idx]);
@@ -197,18 +286,28 @@ async function main() {
       logOutput(commonParamsStr, program.outputFormat);
     }
 
+    // Fetch and display metric sources and types
     logOutput('  metrics:', program.outputFormat);
-    var metricSourcesSets = await cdm.mgetMetricSources(instance, [runId], yearDotMonth);
-    var metricSources = metricSourcesSets[0];
-    var theseRunIds = [];
+    var sourcesResp;
+    try {
+      sourcesResp = await apiGet(baseUrl, runPrefix + '/metric-sources');
+    } catch (error) {
+      console.log('Error fetching metric sources for run ' + runId + ': ' + error.message);
+      process.exit(1);
+    }
+    var metricSources = sourcesResp.sources;
+
+    var typesResp;
+    try {
+      typesResp = await apiPost(baseUrl, runPrefix + '/metric-types', { sources: metricSources });
+    } catch (error) {
+      console.log('Error fetching metric types for run ' + runId + ': ' + error.message);
+      process.exit(1);
+    }
+    var metricTypes = typesResp.types;
+
     thisRun['metrics'] = [];
     for (var i = 0; i < metricSources.length; i++) {
-      theseRunIds[i] = runId;
-    }
-    var metricTypes = await cdm.mgetMetricTypes(instance, theseRunIds, metricSources, yearDotMonth);
-
-    for (var i = 0; i < metricSources.length; i++) {
-      var thisMetricSourceName = metricSources[i];
       logOutput('    source: ' + metricSources[i], program.outputFormat);
       var typeList = '      types: ';
       for (var j = 0; j < metricTypes[i].length; j++) {
@@ -219,12 +318,9 @@ async function main() {
       thisRun['metrics'].push(thisMetric);
     }
 
-    // build the sets for the mega-query
-    var metricDataSetsChunks = [];
-    var batchedQuerySize = 10;
+    // Build the sets for the metric data queries
     var benchmarks = benchName.split(',');
     var sets = [];
-    var chunkNum = 0;
     for (var i = 0; i < benchIterations.length; i++) {
       for (var j = 0; j < iterSampleIds[i].length; j++) {
         var primaryMetrics = list(iterPrimaryMetrics[i]);
@@ -233,18 +329,16 @@ async function main() {
           var type = '';
           var sourceType = primaryMetrics[k].split('::');
           if (sourceType.length == 1) {
-            // Older runs have only 1 benchmark and only have "type" in primaryMetrics
             source = benchmarks[0];
             type = primaryMetrics[k];
           } else if (sourceType.length == 2) {
-            // Newer run data embeds source and type for primaryMetric
             source = sourceType[0];
             type = sourceType[1];
           } else {
             console.log('ERROR: sourceType array is an unexpected length, ' + sourceType.length);
             process.exit(1);
           }
-          var set = {
+          sets.push({
             run: runId,
             period: iterPrimaryPeriodIds[i][j],
             source: source,
@@ -252,36 +346,49 @@ async function main() {
             begin: iterPrimaryPeriodRanges[i][j].begin,
             end: iterPrimaryPeriodRanges[i][j].end,
             resolution: 1,
-            breakout: []
-          };
-          sets.push(set);
-          if (sets.length == batchedQuerySize) {
-            // Submit a chunk of the query and save the result
-            var resp = (metricDataSetsChunks[chunkNum] = await cdm.getMetricDataSets(instance, sets, yearDotMonth));
-            if (resp['ret-code'] != 0) {
-              console.log(resp['ret-msg']);
-              process.exit(1);
-            }
-            metricDataSetsChunks[chunkNum] = resp['data-sets'];
-            chunkNum++;
-            sets = [];
-          }
+            breakout: [],
+            iterIdx: i,
+            sampIdx: j,
+            metricIdx: k
+          });
         }
       }
     }
-    if (sets.length > 0) {
-      // Submit a chunk of the query and save the result
-      var resp = await cdm.getMetricDataSets(instance, sets, yearDotMonth);
-      if (resp['ret-code'] != 0) {
-        console.log(resp['ret-msg']);
+
+    // Fetch metric data in batches
+    var batchedQuerySize = 10;
+    var metricDataResults = new Array(sets.length);
+    for (var batchStart = 0; batchStart < sets.length; batchStart += batchedQuerySize) {
+      var batchEnd = Math.min(batchStart + batchedQuerySize, sets.length);
+      var batchPromises = [];
+      for (var b = batchStart; b < batchEnd; b++) {
+        var s = sets[b];
+        batchPromises.push(
+          apiPost(baseUrl, '/api/v1/metric-data', {
+            run: s.run,
+            period: s.period,
+            source: s.source,
+            type: s.type,
+            begin: s.begin,
+            end: s.end,
+            resolution: s.resolution,
+            breakout: s.breakout
+          })
+        );
+      }
+      var batchResults;
+      try {
+        batchResults = await Promise.all(batchPromises);
+      } catch (error) {
+        console.log('Error fetching metric data for run ' + runId + ': ' + error.message);
         process.exit(1);
       }
-      metricDataSetsChunks[chunkNum] = resp['data-sets'];
-      chunkNum++;
-      sets = [];
+      for (var b = 0; b < batchResults.length; b++) {
+        metricDataResults[batchStart + b] = batchResults[b];
+      }
     }
 
-    // output the results
+    // Output the results
     var data = {};
     var numIter = {};
     var idx = 0;
@@ -358,14 +465,12 @@ async function main() {
               ' seconds'
           );
           thisSample['length'] = iterPrimaryPeriodRanges[i][j].length;
-          //for (var k=0; k<benchmarks.length; k++) {
           var primaryMetrics = list(iterPrimaryMetrics[i]);
           thisSample['values'] = {};
           for (var k = 0; k < primaryMetrics.length; k++) {
             var sourceType = primaryMetrics[k].split('::');
-            var thisChunk = Math.floor(idx / batchedQuerySize);
-            var thisIdx = idx % batchedQuerySize;
-            msampleVal = parseFloat(metricDataSetsChunks[thisChunk][thisIdx].values[''][0].value);
+            var metric_data = metricDataResults[idx];
+            msampleVal = parseFloat(metric_data.values[''][0].value);
             thisSample['values'][primaryMetrics[k]] = msampleVal;
             if (allBenchMsampleVals[k] == null) {
               allBenchMsampleVals[k] = [];
