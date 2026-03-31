@@ -164,8 +164,8 @@ async function main() {
     .version('0.1.0')
     .option(
       '--server-url <url>',
-      'The URL of the metric data API server (e.g., http://localhost:3000/api/metric-data)',
-      'http://localhost:3000/api/metric-data'
+      'The URL of the metric data API server (e.g., http://localhost:3000/api/v1/metric-data)',
+      'http://localhost:3000/api/v1/metric-data'
     )
     .option('--host <host[:port]>', 'The host and optional port of the OpenSearch instance (passed to server)', save_host)
     .option('--userpass <user:pass>', 'The user and password for the most recent --host (passed to server)', save_userpass)
