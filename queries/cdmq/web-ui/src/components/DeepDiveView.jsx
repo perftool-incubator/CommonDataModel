@@ -244,7 +244,7 @@ export default function DeepDiveView({ selected, deepDiveMetrics, metricConfigs:
     });
 
     return function () { abortRef.current = true; };
-  }, [iterations.length, metricList.join(','), resolution, zoomRange]);
+  }, [iterations.length, metricList.join(','), JSON.stringify(metricConfigsProp), resolution, zoomRange]);
 
   if (loadingPeriods) {
     return (

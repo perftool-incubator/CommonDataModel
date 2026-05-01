@@ -8,7 +8,7 @@ import DebugConsole from './components/DebugConsole';
 import './index.css';
 
 // Encode workflow state into a URL hash string
-function encodeState(filters, selectedRunIds, view, groupByList, hiddenFields, supplementalMetrics) {
+function encodeState(filters, selectedIterationIds, view, groupByList, hiddenFields, supplementalMetrics, deepDiveMetrics, deepDiveIterations, columnOrder, columnHidden) {
   var state = {};
   if (filters) {
     if (filters.benchmark) state.benchmark = filters.benchmark;
@@ -21,19 +21,26 @@ function encodeState(filters, selectedRunIds, view, groupByList, hiddenFields, s
     if (filters.tags && filters.tags.length > 0) state.tags = filters.tags;
     if (filters.params && filters.params.length > 0) state.params = filters.params;
   }
-  if (selectedRunIds && selectedRunIds.length > 0) state.selectedRuns = selectedRunIds;
+  if (selectedIterationIds && selectedIterationIds.length > 0) state.selectedIterations = selectedIterationIds;
+  if (columnOrder && columnOrder.length > 0) state.columnOrder = columnOrder;
+  if (columnHidden && columnHidden.length > 0) state.columnHidden = columnHidden;
   if (view && view !== 'search') state.view = view;
-  if (groupByList && groupByList.length > 0) state.groupBy = groupByList;
-  if (hiddenFields && hiddenFields.length > 0) state.hidden = hiddenFields;
-  if (supplementalMetrics && supplementalMetrics.length > 0) {
-    state.metrics = supplementalMetrics.map(function (m) {
-      var entry = { source: m.source, type: m.type, display: m.display };
-      if (m.chartType && m.chartType !== 'bar') entry.chartType = m.chartType;
-      if (m.breakouts && m.breakouts.length > 0) entry.breakouts = m.breakouts;
-      if (m.filter) entry.filter = m.filter;
-      if (m.sampleIndex != null) entry.sampleIndex = m.sampleIndex;
-      return entry;
-    });
+  // Only encode compare/dive state when not on search view
+  if (view && view !== 'search') {
+    if (groupByList && groupByList.length > 0) state.groupBy = groupByList;
+    if (hiddenFields && hiddenFields.length > 0) state.hidden = hiddenFields;
+    if (supplementalMetrics && supplementalMetrics.length > 0) {
+      state.metrics = supplementalMetrics.map(function (m) {
+        var entry = { source: m.source, type: m.type, display: m.display };
+        if (m.chartType && m.chartType !== 'bar') entry.chartType = m.chartType;
+        if (m.breakouts && m.breakouts.length > 0) entry.breakouts = m.breakouts;
+        if (m.filter) entry.filter = m.filter;
+        if (m.sampleIndex != null) entry.sampleIndex = m.sampleIndex;
+        return entry;
+      });
+    }
+    if (deepDiveMetrics && deepDiveMetrics.size > 0) state.deepDiveMetrics = Array.from(deepDiveMetrics);
+    if (deepDiveIterations && deepDiveIterations.size > 0) state.deepDiveIterations = Array.from(deepDiveIterations);
   }
   return '#' + encodeURIComponent(JSON.stringify(state));
 }
@@ -68,9 +75,11 @@ export default function App() {
   const lastFilters = useRef(null);
   const restoredState = useRef(null);
   const [restoredMetrics, setRestoredMetrics] = useState(null);
+  const [supplementalMetrics, setSupplementalMetrics] = useState([]);  // lifted from CompareView
+  const [tableColumnOrder, setTableColumnOrder] = useState(null);  // array of dim strings, null = auto
+  const [tableHiddenDims, setTableHiddenDims] = useState([]);  // array of hidden dim strings
   const [deepDiveMetrics, setDeepDiveMetrics] = useState(new Set());  // Set of "source::type" strings
   const [deepDiveIterations, setDeepDiveIterations] = useState(new Set());  // Set of iterationId strings (max 6)
-  const [deepDiveConfigs, setDeepDiveConfigs] = useState([]);  // snapshot of supplemental metrics for deep dive
 
   // On mount, check for state in URL hash
   // Don't switch view yet — wait until search completes and selections are applied
@@ -111,17 +120,56 @@ export default function App() {
     // Save current filters for Share button (SearchPanel may not be mounted in compare view)
     if (searchRef.current) lastFilters.current = searchRef.current.getFilters();
     var state = restoredState.current;
-    if (state && state.selectedRuns && state.selectedRuns.length > 0) {
-      var runSet = new Set(state.selectedRuns);
+    var hasSelections = (state && state.selectedIterations && state.selectedIterations.length > 0) ||
+                        (state && state.selectedRuns && state.selectedRuns.length > 0);
+    if (hasSelections) {
       var toSelect = new Map();
-      results.forEach(function (it) {
-        if (runSet.has(it.runId)) toSelect.set(it.iterationId, it);
-      });
+      if (state.selectedIterations) {
+        var iterSet = new Set(state.selectedIterations);
+        results.forEach(function (it) {
+          if (iterSet.has(it.iterationId)) toSelect.set(it.iterationId, it);
+        });
+      } else {
+        var runSet = new Set(state.selectedRuns);
+        results.forEach(function (it) {
+          if (runSet.has(it.runId)) toSelect.set(it.iterationId, it);
+        });
+      }
       if (toSelect.size > 0) setSelected(toSelect);
+      // Restore deep dive state from URL
+      if (state.deepDiveMetrics) setDeepDiveMetrics(new Set(state.deepDiveMetrics));
+      if (state.deepDiveIterations) setDeepDiveIterations(new Set(state.deepDiveIterations));
+      // Hydrate supplementalMetrics from restored metrics configs
+      // so deep dive and compare have breakout/filter configs immediately
+      if (state.metrics && state.metrics.length > 0) {
+        setSupplementalMetrics(state.metrics.map(function (m) {
+          return {
+            source: m.source, type: m.type, values: {},
+            display: m.display || 'panel', chartType: m.chartType || 'bar',
+            filter: m.filter || '', sampleIndex: m.sampleIndex || null,
+            breakouts: m.breakouts || [], remainingBreakouts: [],
+            loading: false,
+          };
+        }));
+      }
+      // Restore column ordering
+      if (state.columnOrder) setTableColumnOrder(state.columnOrder);
+      if (state.columnHidden) setTableHiddenDims(state.columnHidden);
       // Switch to the saved view now that selections are ready
       if (state.view) setView(state.view);
       // Clear restored state so it doesn't re-apply on next search
       restoredState.current = null;
+    } else {
+      // New search (not URL restore): reset compare/dive state
+      setSelected(new Map());
+      setGroupByList([]);
+      setHiddenFields([]);
+      setSupplementalMetrics([]);
+      setDeepDiveMetrics(new Set());
+      setDeepDiveIterations(new Set());
+      setRestoredMetrics(null);
+      setTableColumnOrder(null);
+      setTableHiddenDims([]);
     }
   }, []);
 
@@ -160,15 +208,20 @@ export default function App() {
 
   const clearSelected = useCallback(function () {
     setSelected(new Map());
+    setGroupByList([]);
+    setHiddenFields([]);
+    setSupplementalMetrics([]);
+    setDeepDiveMetrics(new Set());
+    setDeepDiveIterations(new Set());
+    setRestoredMetrics(null);
+    setTableColumnOrder(null);
+    setTableHiddenDims([]);
   }, []);
 
   function handleShare() {
     var filters = (searchRef.current ? searchRef.current.getFilters() : null) || lastFilters.current;
-    var runIdSet = new Set();
-    selected.forEach(function (it) { runIdSet.add(it.runId); });
-    var selectedRunIds = Array.from(runIdSet);
-    var suppMetrics = compareRef.current ? compareRef.current.getSupplementalMetrics() : null;
-    var hash = encodeState(filters, selectedRunIds, view, groupByList, hiddenFields, suppMetrics);
+    var selectedIterIds = Array.from(selected.keys());
+    var hash = encodeState(filters, selectedIterIds, view, groupByList, hiddenFields, supplementalMetrics, deepDiveMetrics, deepDiveIterations, tableColumnOrder, tableHiddenDims);
     var url = window.location.origin + window.location.pathname + hash;
     // Update the URL bar so the user can see and copy it directly
     window.history.replaceState(null, '', hash);
@@ -212,9 +265,6 @@ export default function App() {
           <button
             className={view === 'deepdive' ? 'active' : ''}
             onClick={() => {
-              if (compareRef.current) {
-                setDeepDiveConfigs(compareRef.current.getSupplementalMetrics() || []);
-              }
               setView('deepdive');
             }}
             disabled={deepDiveIterations.size === 0 || deepDiveMetrics.size === 0}
@@ -250,16 +300,20 @@ export default function App() {
             loading={loading}
             onAddTagFilter={function (name, val) { if (searchRef.current) searchRef.current.addTagFilter(name, val); }}
             onAddParamFilter={function (arg, val) { if (searchRef.current) searchRef.current.addParamFilter(arg, val); }}
+            columnOrder={tableColumnOrder}
+            onColumnOrderChange={setTableColumnOrder}
+            columnHidden={tableHiddenDims}
+            onColumnHiddenChange={setTableHiddenDims}
           />
         </>
       )}
 
       {view === 'compare' && (
-        <CompareView ref={compareRef} selected={selected} groupByList={groupByList} setGroupByList={setGroupByList} hiddenFields={hiddenFields} setHiddenFields={setHiddenFields} restoredMetrics={restoredMetrics} deepDiveMetrics={deepDiveMetrics} setDeepDiveMetrics={setDeepDiveMetrics} deepDiveIterations={deepDiveIterations} setDeepDiveIterations={setDeepDiveIterations} />
+        <CompareView ref={compareRef} selected={selected} groupByList={groupByList} setGroupByList={setGroupByList} hiddenFields={hiddenFields} setHiddenFields={setHiddenFields} restoredMetrics={restoredMetrics} setRestoredMetrics={setRestoredMetrics} supplementalMetrics={supplementalMetrics} setSupplementalMetrics={setSupplementalMetrics} deepDiveMetrics={deepDiveMetrics} setDeepDiveMetrics={setDeepDiveMetrics} deepDiveIterations={deepDiveIterations} setDeepDiveIterations={setDeepDiveIterations} />
       )}
 
       {view === 'deepdive' && (
-        <DeepDiveView selected={(() => { var m = new Map(); selected.forEach(function (it, id) { if (deepDiveIterations.has(id)) m.set(id, it); }); return m; })()} deepDiveMetrics={deepDiveMetrics} metricConfigs={deepDiveConfigs} hiddenFields={hiddenFields} />
+        <DeepDiveView selected={(() => { var m = new Map(); selected.forEach(function (it, id) { if (deepDiveIterations.has(id)) m.set(id, it); }); return m; })()} deepDiveMetrics={deepDiveMetrics} metricConfigs={supplementalMetrics} hiddenFields={hiddenFields} />
       )}
 
       <DebugConsole />
