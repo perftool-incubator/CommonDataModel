@@ -506,10 +506,9 @@ function buildDimOptions(iterations) {
   return opts;
 }
 
-const CompareView = forwardRef(function CompareView({ selected, groupByList, setGroupByList, hiddenFields, setHiddenFields, restoredMetrics, deepDiveMetrics, setDeepDiveMetrics, deepDiveIterations, setDeepDiveIterations }, ref) {
+const CompareView = forwardRef(function CompareView({ selected, groupByList, setGroupByList, hiddenFields, setHiddenFields, restoredMetrics, setRestoredMetrics, supplementalMetrics, setSupplementalMetrics, deepDiveMetrics, setDeepDiveMetrics, deepDiveIterations, setDeepDiveIterations }, ref) {
   var [metricValues, setMetricValues] = useState({});
   var [loading, setLoading] = useState(false);
-  var [supplementalMetrics, setSupplementalMetrics] = useState([]); // [{ source, type, values: {iterId: {mean,...}} }]
   var [availableSources, setAvailableSources] = useState(null);
   var [availableTypes, setAvailableTypes] = useState(null);
   var [addMetricSource, setAddMetricSource] = useState('');
@@ -541,12 +540,6 @@ const CompareView = forwardRef(function CompareView({ selected, groupByList, set
     return Array.from(selected.values());
   }, [selected]);
 
-  useImperativeHandle(ref, function () {
-    return {
-      getSupplementalMetrics: function () { return supplementalMetrics; },
-    };
-  }, [supplementalMetrics]);
-
   // Helper to get run IDs and date range from iterations
   function getRunContext() {
     var runIdSet = new Set();
@@ -565,7 +558,6 @@ const CompareView = forwardRef(function CompareView({ selected, groupByList, set
     if (iterations.length === 0) return;
     var ctx = getRunContext();
     setLoading(true);
-    setSupplementalMetrics([]);
     timeWork('Fetch metric values for compare (' + iterations.length + ' iterations)', function () {
       return api.getIterationMetricValues(ctx.runIds, ctx.start, ctx.end);
     }).then(function (res) {
@@ -617,43 +609,41 @@ const CompareView = forwardRef(function CompareView({ selected, groupByList, set
     }
   }, [iterations.length > 0 && dimOptions.length > 1]);
 
-  // Restore supplemental metrics from URL state
-  var restoredMetricsApplied = useRef(false);
+  // Fetch values for supplemental metrics that have empty values (e.g., hydrated from URL with configs only)
   useEffect(function () {
-    if (restoredMetricsApplied.current) return;
-    if (!restoredMetrics || restoredMetrics.length === 0) return;
     if (iterations.length === 0) return;
-    restoredMetricsApplied.current = true;
+    if (supplementalMetrics.length === 0) return;
+    var needsFetch = supplementalMetrics.some(function (m) { return !m.values || Object.keys(m.values).length === 0; });
+    if (!needsFetch) return;
     var ctx = getRunContext();
-    restoredMetrics.forEach(function (rm) {
+    supplementalMetrics.forEach(function (sm, si) {
+      if (sm.values && Object.keys(sm.values).length > 0) return;
       var bestIndices = computeBestSampleIndices();
-      var sIdx = rm.sampleIndex != null ? rm.sampleIndex : bestIndices;
-      timeWork('Restore ' + rm.source + '::' + rm.type, function () {
+      var sIdx = sm.sampleIndex != null ? sm.sampleIndex : bestIndices;
+      timeWork('Fetch ' + sm.source + '::' + sm.type, function () {
         return api.getSupplementalMetric({
           iterations: ctx.iterations, start: ctx.start, end: ctx.end,
-          source: rm.source, type: rm.type,
-          breakout: rm.breakouts || [],
-          filter: rm.filter || null,
+          source: sm.source, type: sm.type,
+          breakout: sm.breakouts || [],
+          filter: sm.filter || null,
           sampleIndex: sIdx,
         });
       }).then(function (res) {
         setSupplementalMetrics(function (prev) {
-          return prev.concat([{
-            source: rm.source,
-            type: rm.type,
-            values: res.values || {},
-            display: rm.display || 'panel',
-            chartType: rm.chartType || 'bar',
-            filter: rm.filter || '',
-            sampleIndex: sIdx,
-            breakouts: rm.breakouts || [],
-            remainingBreakouts: res.remainingBreakouts || [],
-            loading: false,
-          }]);
+          var next = prev.slice();
+          var idx = next.findIndex(function (m) { return m.source === sm.source && m.type === sm.type; });
+          if (idx >= 0) {
+            next[idx] = Object.assign({}, next[idx], {
+              values: res.values || {},
+              remainingBreakouts: res.remainingBreakouts || [],
+              loading: false,
+            });
+          }
+          return next;
         });
       });
     });
-  }, [iterations.length > 0]);
+  }, [iterations.length > 0, supplementalMetrics.length]);
 
   var handleShowAddMetric = useCallback(function () {
     setShowAddMetric(true);
@@ -960,8 +950,21 @@ const CompareView = forwardRef(function CompareView({ selected, groupByList, set
   }, []);
 
   var handleRemoveMetric = useCallback(function (idx) {
-    setSupplementalMetrics(function (prev) { return prev.filter(function (_, i) { return i !== idx; }); });
-  }, []);
+    setSupplementalMetrics(function (prev) {
+      var removed = prev[idx];
+      if (removed && deepDiveMetrics) {
+        var metricKey = removed.source + '::' + removed.type;
+        if (deepDiveMetrics.has(metricKey)) {
+          setDeepDiveMetrics(function (prevDD) {
+            var next = new Set(prevDD);
+            next.delete(metricKey);
+            return next;
+          });
+        }
+      }
+      return prev.filter(function (_, i) { return i !== idx; });
+    });
+  }, [deepDiveMetrics]);
 
   // Build chart data: one entry per iteration, sorted/grouped, with gaps between groups
   var charts = useMemo(function () {

@@ -225,7 +225,7 @@ function flattenTree(node, depth, coveredDims, groupDims) {
   return rows;
 }
 
-export default function IterationTable({ iterations, selected, onToggleSelect, onToggleSelectAll, loading, onAddTagFilter, onAddParamFilter }) {
+export default function IterationTable({ iterations, selected, onToggleSelect, onToggleSelectAll, loading, onAddTagFilter, onAddParamFilter, columnOrder, onColumnOrderChange, columnHidden, onColumnHiddenChange }) {
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
   const [paramFilter, setParamFilter] = useState('');
@@ -377,17 +377,51 @@ export default function IterationTable({ iterations, selected, onToggleSelect, o
   }, [iterations]);
 
   // Group-by dimensions as state so user can reorder/hide/sort
-  const [groupDims, setGroupDims] = useState([]);
-  const [hiddenDims, setHiddenDims] = useState([]);
+  const [groupDims, setGroupDimsLocal] = useState([]);
+  const [hiddenDims, setHiddenDimsLocal] = useState([]);
   const [dimSortDir, setDimSortDir] = useState({}); // { dim: 'asc' | 'desc' }, default asc
   const prevIterCount = useRef(0);
 
-  // Auto-compute group dims when iterations change (reset hidden/sort)
+  function setGroupDims(newDims) {
+    setGroupDimsLocal(newDims);
+    if (onColumnOrderChange) onColumnOrderChange(newDims);
+  }
+  function setHiddenDims(val) {
+    if (typeof val === 'function') {
+      setHiddenDimsLocal(function (prev) {
+        var next = val(prev);
+        if (onColumnHiddenChange) onColumnHiddenChange(next);
+        return next;
+      });
+    } else {
+      setHiddenDimsLocal(val);
+      if (onColumnHiddenChange) onColumnHiddenChange(val);
+    }
+  }
+
+  // Auto-compute group dims when iterations change, merging with saved order
   useEffect(function () {
     if (iterations.length !== prevIterCount.current) {
       prevIterCount.current = iterations.length;
-      setGroupDims(computeGroupDims(iterations));
-      setHiddenDims([]);
+      var computed = computeGroupDims(iterations);
+      if (columnOrder && columnOrder.length > 0) {
+        // Merge: keep saved order for dims that still exist, append new ones
+        var computedSet = new Set(computed);
+        var merged = columnOrder.filter(function (d) { return computedSet.has(d); });
+        computed.forEach(function (d) { if (merged.indexOf(d) < 0) merged.push(d); });
+        setGroupDimsLocal(merged);
+        if (onColumnOrderChange) onColumnOrderChange(merged);
+      } else {
+        setGroupDimsLocal(computed);
+        if (onColumnOrderChange) onColumnOrderChange(computed);
+      }
+      if (columnHidden && columnHidden.length > 0) {
+        var validHidden = columnHidden.filter(function (d) { return new Set(computed).has(d); });
+        setHiddenDimsLocal(validHidden);
+        if (onColumnHiddenChange) onColumnHiddenChange(validHidden);
+      } else {
+        setHiddenDimsLocal([]);
+      }
       setDimSortDir({});
     }
   }, [iterations]);
