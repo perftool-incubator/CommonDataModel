@@ -13,11 +13,8 @@
 
 project_dir=$(dirname `readlink -e $0`)
 pushd "$project_dir" >/dev/null
-if [ ! -d node_modules ]; then
-    echo "Error: node_modules not found. Run start-server.sh or 'npm install' in $project_dir first." >&2
-    popd >/dev/null
-    exit 1
-fi
+source ./wait-for-deps.sh
+_cdmq_wait_for_deps || { popd >/dev/null; exit 1; }
 node ./add-run.js "$@"
 rc=$?
 popd >/dev/null
