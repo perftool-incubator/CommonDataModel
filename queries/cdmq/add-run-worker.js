@@ -89,7 +89,9 @@ module.exports = async ({ instance, filePath, docTypes, mode }) => {
       //  "run":{"run-uuid":"c0e04edb-ddbc-4081-8bbc-9b9e84e6538d"}}
       if (Object.keys(action).includes('index') && Object.keys(action['index']).includes('_index')) {
         const indexName = action['index']['_index'];
-        const regExp = /^cdm-*(v7dev|v8dev|v9dev)-([^@]+)(@\d\d\d\d\.\d\d)*$/;
+        const regExp = new RegExp(
+          '^cdm-*(' + cdm.supportedCdmVersions.join('|') + ')-([^@]+)(@\\d\\d\\d\\d\\.\\d\\d)*$'
+        );
         const matches = regExp.exec(indexName);
         if (matches) {
           const cdmVer = matches[1];

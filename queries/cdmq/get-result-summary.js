@@ -1,4 +1,5 @@
 //# vim: autoindent tabstop=2 shiftwidth=2 expandtab softtabstop=2 filetype=javascript
+var cdm = require('./cdm');
 var yaml = require('js-yaml');
 var program = require('commander');
 const http = require('http');
@@ -111,7 +112,7 @@ program
   )
   .option('--host <host[:port]>', 'Ignored (accepted for backward compatibility)')
   .option('--userpass <user:pass>', 'Ignored (accepted for backward compatibility)')
-  .option('--ver <v7dev|v8dev|v9dev>', 'Ignored (accepted for backward compatibility)')
+  .option(cdm.cdmVersionOptionDesc(), 'Ignored (accepted for backward compatibility)')
   .option('--user <name>', 'Filter by run name')
   .option('--email <email>', 'Filter by email')
   .option('--harness <harness>', 'Filter by harness')

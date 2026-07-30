@@ -5,11 +5,19 @@ var bigQuerySize = 262144;
 const docTypes = {
   v7dev: ['run', 'tag', 'iteration', 'param', 'sample', 'period', 'metric_desc', 'metric_data'],
   v8dev: ['run', 'tag', 'iteration', 'param', 'sample', 'period', 'metric_desc', 'metric_data'],
-  v9dev: ['run', 'tag', 'iteration', 'param', 'sample', 'period', 'metric_desc', 'metric_data', 'metric_def']
+  v9dev: ['run', 'tag', 'iteration', 'param', 'sample', 'period', 'metric_desc', 'metric_data', 'metric_def'],
+  v10dev: ['run', 'tag', 'iteration', 'param', 'sample', 'period', 'metric_desc', 'metric_data', 'metric_def']
 };
 exports.docTypes = docTypes;
 const supportedCdmVersions = Object.keys(docTypes);
 exports.supportedCdmVersions = supportedCdmVersions;
+function isValidCdmVersion(ver) {
+  return supportedCdmVersions.includes(ver);
+}
+exports.isValidCdmVersion = isValidCdmVersion;
+exports.cdmVersionOptionDesc = function () {
+  return '--ver <' + supportedCdmVersions.join('|') + '>';
+};
 const debugOut = 0;
 const indexSettings = {
   number_of_shards: 1,
@@ -83,7 +91,7 @@ function createGetFromMget(mgetFunc, wrapParamIndex, unwrap = (r) => r[0]) {
 // INDEX DEFINITIONS
 // --------------------------------------------------------------------------------------------------------------
 
-var indexDefs = { v7dev: {}, v8dev: {}, v9dev: {} };
+var indexDefs = { v7dev: {}, v8dev: {}, v9dev: {}, v10dev: {} };
 
 // Most index mappings inherit mappings from other indices.  Copies of these indices
 // are done with JSON.parse(JSON.stringify(src_index)) to facilitate deep copies.
@@ -361,6 +369,9 @@ indexDefs['v8dev']['metric_desc']['mappings']['properties']['metric_desc'] = {
   }
 };
 indexDefs['v9dev']['metric_desc'] = deepClone(indexDefs['v8dev']['metric_desc']);
+indexDefs['v9dev']['metric_desc']['mappings']['properties']['metric_desc']['properties']['default-aggregation'] = {
+  type: 'keyword'
+};
 
 // TODO: add new names for cdmv9
 
@@ -403,6 +414,18 @@ indexDefs['v8dev']['metric_data']['mappings']['properties']['metric_data'] = {
 };
 indexDefs['v9dev']['metric_data'] = deepClone(indexDefs['v8dev']['metric_data']);
 
+// v10dev inherits default-aggregation from v9dev via deep clone
+indexDefs['v10dev']['run_micro'] = deepClone(indexDefs['v9dev']['run_micro']);
+indexDefs['v10dev']['run'] = deepClone(indexDefs['v9dev']['run']);
+indexDefs['v10dev']['tag'] = deepClone(indexDefs['v9dev']['tag']);
+indexDefs['v10dev']['iteration'] = deepClone(indexDefs['v9dev']['iteration']);
+indexDefs['v10dev']['param'] = deepClone(indexDefs['v9dev']['param']);
+indexDefs['v10dev']['sample'] = deepClone(indexDefs['v9dev']['sample']);
+indexDefs['v10dev']['period'] = deepClone(indexDefs['v9dev']['period']);
+indexDefs['v10dev']['metric_desc'] = deepClone(indexDefs['v9dev']['metric_desc']);
+indexDefs['v10dev']['metric_def'] = deepClone(indexDefs['v9dev']['metric_def']);
+indexDefs['v10dev']['metric_data'] = deepClone(indexDefs['v9dev']['metric_data']);
+
 exports.indexDefs = indexDefs;
 
 // --------------------------------------------------------------------------------------------------------------
@@ -444,10 +467,11 @@ exports.debuglog = debuglog;
 
 // --------------------------------------------------------------------------------------------------------------
 getCdmVerFromIndex = function (index) {
-  var regExp = /^cdm-*v([\d+])dev-(.+)/;
+  var regExp = /^cdm-*v(\d+)dev-(.+)/;
   var matches = regExp.exec(index);
   var retMsg = '';
   var retCode = 0;
+  var cdmVer;
   if (matches) {
     cdmVer = 'v' + matches[1] + 'dev';
   } else {
@@ -606,8 +630,9 @@ function getDocType(index) {
     }
   }
 
-  if (cdmVer == 'v9dev') {
-    var regExp = /^cdm-v9dev-([^@]+)(@\d\d\d\d\.\d\d|\*)/;
+  // v9dev+ uses cdm-{ver}-{doctype}@{year}.{month} format
+  if (isValidCdmVersion(cdmVer)) {
+    var regExp = /^cdm-v\d+dev-([^@]+)(@\d\d\d\d\.\d\d|\*)/;
     var matches = regExp.exec(index);
     if (matches) {
       docType = matches[1];
@@ -619,7 +644,7 @@ function getDocType(index) {
         return createResponse(retCode, retMsg);
       }
     } else {
-      retMsg = 'ERROR: index name [' + index + '] does not match cdmv9 format';
+      retMsg = 'ERROR: index name [' + index + '] does not match cdm ' + cdmVer + ' format';
       retCode = 4;
       return createResponse(retCode, retMsg);
     }
@@ -637,12 +662,12 @@ function getIndexBaseName(instance) {
   //debuglog('cdmver: [' + cdmVer + ']');
   if (cdmVer == 'v7dev' || cdmVer == 'v8dev') {
     return 'cdm' + cdmVer + '-';
-  } else if (cdmVer == 'v9dev') {
-    // v9dev adds a '-' after 'cdm' because of a [lab admin] naming convention
+  } else if (isValidCdmVersion(cdmVer)) {
+    // v9dev+ adds a '-' after 'cdm' because of a [lab admin] naming convention
     // used for shared opensearch.  Therefore, you will find that v7dev
     // and v8dev cannot be used for some [lab managed] opensearch instances with
     // same naming requirement.
-    return 'cdm-v9dev-';
+    return 'cdm-' + cdmVer + '-';
   } else {
     console.log('CDM version [' + instance['ver'] + '] is not supported, exiting');
   }
@@ -660,7 +685,9 @@ function getIndexName(docType, instance, yearDotMonth) {
   // yearDotMonth may be comma-separated suffixes (e.g., "@2025.01,@2025.02").
   // Expand each suffix into a full index name with baseName+docType.
   var suffixes = yearDotMonth.split(',');
-  var names = suffixes.map(function (s) { return baseName + docType + s; });
+  var names = suffixes.map(function (s) {
+    return baseName + docType + s;
+  });
   var fullName = names.join(',');
   checkCreateIndex(instance, fullName);
   return fullName;
@@ -747,13 +774,21 @@ async function fetchBatchedData(instance, reqs, batchSize = 16) {
         //console.log POST ' + req.url + ' (' + bodyLen + ' bytes)');
         if (process.env.CDM_LOG_OS_CURL) {
           var curlBody = req.body.replace(/'/g, "'\\''");
-          console.log('[' + new Date().toISOString() + '] [OS-CURL] curl -s -X POST "' + req.url + '" -H "Content-Type: application/json" -d $\'' + curlBody + '\'');
+          console.log(
+            '[' +
+              new Date().toISOString() +
+              '] [OS-CURL] curl -s -X POST "' +
+              req.url +
+              '" -H "Content-Type: application/json" -d $\'' +
+              curlBody +
+              "'"
+          );
         }
         // Use native fetch instead of then-request (which spawns child processes via sync-rpc)
         const response = await fetch(req.url, {
           method: 'POST',
           body: req.body,
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json' }
         });
         var osElapsed = Date.now() - osReqStart;
         //console.log POST ' + req.url + ' status=' + response.status + ' in ' + osElapsed + 'ms');
@@ -1164,7 +1199,12 @@ mgetBreakoutValues = async function (instance, runIds, source, type, breakoutNam
   var result = {};
   for (var i = 0; i < breakoutNames.length; i++) {
     var values = [];
-    if (responses[i] && responses[i].aggregations && responses[i].aggregations.source && Array.isArray(responses[i].aggregations.source.buckets)) {
+    if (
+      responses[i] &&
+      responses[i].aggregations &&
+      responses[i].aggregations.source &&
+      Array.isArray(responses[i].aggregations.source.buckets)
+    ) {
       responses[i].aggregations.source.buckets.forEach(function (bucket) {
         values.push(String(bucket.key));
       });
@@ -1453,7 +1493,7 @@ getInstancesInfo = function (instances) {
         var name = index['index'];
         if (/^cdm/.exec(name)) {
           debuglog('index:\n' + JSON.stringify(index, null, 2));
-          const match = name.match(/^cdm[-]{0,1}(v[\d+]dev)/);
+          const match = name.match(/^cdm-?(v\d+dev)/);
           const cdmver = match[1];
           if (!Object.keys(instances[inst_idx]['indices']).includes(cdmver)) {
             instances[inst_idx]['indices'][cdmver] = [];
@@ -1468,7 +1508,7 @@ getInstancesInfo = function (instances) {
     }
     if (Object.keys(instances[inst_idx]['indices']).length != 0) {
       // If mulitple versions of indices exist, default to the latest version
-      // (this can be overridden with --ver <v7dev|v8dev|v9dev> after --host)
+      // (this can be overridden with --ver after --host)
       // Note: if you index a new data into a newer CDM version, that will
       // create those indices, and a subsequent query (without --ver) will now
       // default to the newer cdm version.
@@ -1579,7 +1619,11 @@ buildYearDotMonthRange = function (instance, docType, start, end) {
 
   // For multiple months, return comma-separated suffixes.
   // getIndexName will expand each one with baseName+docType.
-  return filtered.map(function (m) { return '@' + m; }).join(',');
+  return filtered
+    .map(function (m) {
+      return '@' + m;
+    })
+    .join(',');
 };
 exports.buildYearDotMonthRange = buildYearDotMonthRange;
 
@@ -1589,31 +1633,76 @@ exports.buildYearDotMonthRange = buildYearDotMonthRange;
 // --------------------------------------------------------------------------------------------------------------
 
 getDistinctNames = async function (instance, yearDotMonth) {
-  return await mSearch(instance, 'run', yearDotMonth, [], [], null, { source: { terms: { field: 'run.name', size: 10000 } } }, 0);
+  return await mSearch(
+    instance,
+    'run',
+    yearDotMonth,
+    [],
+    [],
+    null,
+    { source: { terms: { field: 'run.name', size: 10000 } } },
+    0
+  );
 };
 exports.getDistinctNames = getDistinctNames;
 
 // --------------------------------------------------------------------------------------------------------------
 getDistinctEmails = async function (instance, yearDotMonth) {
-  return await mSearch(instance, 'run', yearDotMonth, [], [], null, { source: { terms: { field: 'run.email', size: 10000 } } }, 0);
+  return await mSearch(
+    instance,
+    'run',
+    yearDotMonth,
+    [],
+    [],
+    null,
+    { source: { terms: { field: 'run.email', size: 10000 } } },
+    0
+  );
 };
 exports.getDistinctEmails = getDistinctEmails;
 
 // --------------------------------------------------------------------------------------------------------------
 getDistinctRunIds = async function (instance, yearDotMonth) {
-  return await mSearch(instance, 'run', yearDotMonth, [], [], null, { source: { terms: { field: 'run.run-uuid', size: 10000 } } }, 0);
+  return await mSearch(
+    instance,
+    'run',
+    yearDotMonth,
+    [],
+    [],
+    null,
+    { source: { terms: { field: 'run.run-uuid', size: 10000 } } },
+    0
+  );
 };
 exports.getDistinctRunIds = getDistinctRunIds;
 
 // --------------------------------------------------------------------------------------------------------------
 getDistinctBenchmarks = async function (instance, yearDotMonth) {
-  return await mSearch(instance, 'run', yearDotMonth, [], [], null, { source: { terms: { field: 'run.benchmark', size: 10000 } } }, 0);
+  return await mSearch(
+    instance,
+    'run',
+    yearDotMonth,
+    [],
+    [],
+    null,
+    { source: { terms: { field: 'run.benchmark', size: 10000 } } },
+    0
+  );
 };
 exports.getDistinctBenchmarks = getDistinctBenchmarks;
 
 // --------------------------------------------------------------------------------------------------------------
 getDistinctTagNames = async function (instance, yearDotMonth) {
-  return await mSearch(instance, 'tag', yearDotMonth, [], [], null, { source: { terms: { field: 'tag.name', size: 10000 } } }, 0);
+  return await mSearch(
+    instance,
+    'tag',
+    yearDotMonth,
+    [],
+    [],
+    null,
+    { source: { terms: { field: 'tag.name', size: 10000 } } },
+    0
+  );
 };
 exports.getDistinctTagNames = getDistinctTagNames;
 
@@ -1621,13 +1710,31 @@ exports.getDistinctTagNames = getDistinctTagNames;
 getDistinctTagValues = async function (instance, yearDotMonth, tagName) {
   var termKeys = tagName ? ['tag.name'] : [];
   var values = tagName ? [[tagName]] : [];
-  return await mSearch(instance, 'tag', yearDotMonth, termKeys, values, null, { source: { terms: { field: 'tag.val', size: 10000 } } }, 0);
+  return await mSearch(
+    instance,
+    'tag',
+    yearDotMonth,
+    termKeys,
+    values,
+    null,
+    { source: { terms: { field: 'tag.val', size: 10000 } } },
+    0
+  );
 };
 exports.getDistinctTagValues = getDistinctTagValues;
 
 // --------------------------------------------------------------------------------------------------------------
 getDistinctParamArgs = async function (instance, yearDotMonth) {
-  return await mSearch(instance, 'param', yearDotMonth, [], [], null, { source: { terms: { field: 'param.arg', size: 10000 } } }, 0);
+  return await mSearch(
+    instance,
+    'param',
+    yearDotMonth,
+    [],
+    [],
+    null,
+    { source: { terms: { field: 'param.arg', size: 10000 } } },
+    0
+  );
 };
 exports.getDistinctParamArgs = getDistinctParamArgs;
 
@@ -1635,13 +1742,31 @@ exports.getDistinctParamArgs = getDistinctParamArgs;
 getDistinctParamValues = async function (instance, yearDotMonth, paramArg) {
   var termKeys = paramArg ? ['param.arg'] : [];
   var values = paramArg ? [[paramArg]] : [];
-  return await mSearch(instance, 'param', yearDotMonth, termKeys, values, null, { source: { terms: { field: 'param.val', size: 10000 } } }, 0);
+  return await mSearch(
+    instance,
+    'param',
+    yearDotMonth,
+    termKeys,
+    values,
+    null,
+    { source: { terms: { field: 'param.val', size: 10000 } } },
+    0
+  );
 };
 exports.getDistinctParamValues = getDistinctParamValues;
 
 // --------------------------------------------------------------------------------------------------------------
 getDistinctPrimaryMetrics = async function (instance, yearDotMonth) {
-  return await mSearch(instance, 'iteration', yearDotMonth, [], [], null, { source: { terms: { field: 'iteration.primary-metric', size: 10000 } } }, 0);
+  return await mSearch(
+    instance,
+    'iteration',
+    yearDotMonth,
+    [],
+    [],
+    null,
+    { source: { terms: { field: 'iteration.primary-metric', size: 10000 } } },
+    0
+  );
 };
 exports.getDistinctPrimaryMetrics = getDistinctPrimaryMetrics;
 
@@ -1651,7 +1776,16 @@ exports.getDistinctPrimaryMetrics = getDistinctPrimaryMetrics;
 // --------------------------------------------------------------------------------------------------------------
 
 getRunIdsByParam = async function (instance, yearDotMonth, paramArg, paramVal) {
-  return await mSearch(instance, 'param', yearDotMonth, ['param.arg', 'param.val'], [[paramArg], [paramVal]], null, { source: { terms: { field: 'run.run-uuid', size: 10000 } } }, 0);
+  return await mSearch(
+    instance,
+    'param',
+    yearDotMonth,
+    ['param.arg', 'param.val'],
+    [[paramArg], [paramVal]],
+    null,
+    { source: { terms: { field: 'run.run-uuid', size: 10000 } } },
+    0
+  );
 };
 exports.getRunIdsByParam = getRunIdsByParam;
 
@@ -1667,13 +1801,31 @@ getRunIdsByTag = async function (instance, yearDotMonth, tagName, tagVal) {
     termKeys.push('tag.val');
     values.push([tagVal]);
   }
-  return await mSearch(instance, 'tag', yearDotMonth, termKeys, values, null, { source: { terms: { field: 'run.run-uuid', size: 10000 } } }, 0);
+  return await mSearch(
+    instance,
+    'tag',
+    yearDotMonth,
+    termKeys,
+    values,
+    null,
+    { source: { terms: { field: 'run.run-uuid', size: 10000 } } },
+    0
+  );
 };
 exports.getRunIdsByTag = getRunIdsByTag;
 
 // --------------------------------------------------------------------------------------------------------------
 getRunIdsByPrimaryMetric = async function (instance, yearDotMonth, primaryMetric) {
-  return await mSearch(instance, 'iteration', yearDotMonth, ['iteration.primary-metric'], [[primaryMetric]], null, { source: { terms: { field: 'run.run-uuid', size: 10000 } } }, 0);
+  return await mSearch(
+    instance,
+    'iteration',
+    yearDotMonth,
+    ['iteration.primary-metric'],
+    [[primaryMetric]],
+    null,
+    { source: { terms: { field: 'run.run-uuid', size: 10000 } } },
+    0
+  );
 };
 exports.getRunIdsByPrimaryMetric = getRunIdsByPrimaryMetric;
 
@@ -2749,15 +2901,19 @@ function buildAggregateLabel(bp, maxLen) {
   maxLen = maxLen || 30;
   if (bp.values && bp.values.length > 0) {
     var vals = bp.values.slice().sort(function (a, b) {
-      var na = Number(a), nb = Number(b);
+      var na = Number(a),
+        nb = Number(b);
       if (!isNaN(na) && !isNaN(nb)) return na - nb;
       return a < b ? -1 : a > b ? 1 : 0;
     });
-    var allNumeric = vals.every(function (v) { return !isNaN(Number(v)); });
+    var allNumeric = vals.every(function (v) {
+      return !isNaN(Number(v));
+    });
     if (allNumeric) {
       var nums = vals.map(Number);
       var ranges = [];
-      var start = nums[0], end = nums[0];
+      var start = nums[0],
+        end = nums[0];
       for (var i = 1; i < nums.length; i++) {
         if (nums[i] === end + 1) {
           end = nums[i];
@@ -3007,7 +3163,15 @@ getMetricGroupsFromBreakouts = async function (instance, sets, yearDotMonth) {
   });
   var mdStart = Date.now();
   var responses = await esJsonArrRequest(instance, 'metric_desc', '/_msearch', jsonArr, yearDotMonth);
-  console.log('[' + new Date().toISOString() + '] [OS-METRIC-DESC] ' + (jsonArr.length / 2) + ' query(ies) completed in ' + (Date.now() - mdStart) + 'ms');
+  console.log(
+    '[' +
+      new Date().toISOString() +
+      '] [OS-METRIC-DESC] ' +
+      jsonArr.length / 2 +
+      ' query(ies) completed in ' +
+      (Date.now() - mdStart) +
+      'ms'
+  );
 
   var metricGroupIdsByLabelSets = [];
   var metricGroupTermsSets = [];
@@ -3034,7 +3198,11 @@ getMetricGroupsFromBreakouts = async function (instance, sets, yearDotMonth) {
     if (aggregatedPositions.length > 0) {
       var oldLabels = Object.keys(metricGroupTermsByLabel);
       if (oldLabels.length === 0) {
-        var synLabel = aggregatedPositions.map(function (ap) { return ap.segment; }).join('-');
+        var synLabel = aggregatedPositions
+          .map(function (ap) {
+            return ap.segment;
+          })
+          .join('-');
         metricGroupTermsByLabel[synLabel] = '';
       } else {
         var updated = {};
@@ -3121,10 +3289,16 @@ sendMetricReq = async function (
   const indexjson = '{"index": "' + indexName + '" }';
   const q1Prefix = '{"size":0,"query":{"bool":{"filter":[{"range":{"metric_data.end":{"lte":"';
   const q1Mid = '"}}},{"range":{"metric_data.begin":{"gte":"';
-  const q1Suffix = '"}}},{"terms":{"metric_desc.metric_desc-uuid":' + metricIdsArrayStr + '}}]}},"aggs":{"metric_avg":{"weighted_avg":{"value":{"field":"metric_data.value"},"weight":{"field":"metric_data.duration"}}}}}';
+  const q1Suffix =
+    '"}}},{"terms":{"metric_desc.metric_desc-uuid":' +
+    metricIdsArrayStr +
+    '}}]}},"aggs":{"metric_avg":{"weighted_avg":{"value":{"field":"metric_data.value"},"weight":{"field":"metric_data.duration"}}}}}';
   const q2Prefix = '{"size":0,"query":{"bool":{"filter":[{"range":{"metric_data.end":{"lte":"';
   const q2Mid = '"}}},{"range":{"metric_data.begin":{"gte":"';
-  const q2Suffix = '"}}},{"terms":{"metric_desc.metric_desc-uuid":' + metricIdsArrayStr + '}}]}},"aggs":{"total_weight":{"sum":{"field":"metric_data.duration"}}}}';
+  const q2Suffix =
+    '"}}},{"terms":{"metric_desc.metric_desc-uuid":' +
+    metricIdsArrayStr +
+    '}}]}},"aggs":{"total_weight":{"sum":{"field":"metric_data.duration"}}}}';
 
   // Pre-build boundary query templates per chunk of metricIds
   const chunkSize = 10000;
@@ -3132,12 +3306,18 @@ sendMetricReq = async function (
   for (let i = 0; i < metricIds.length; i += chunkSize) {
     const slicedMetricIdsStr = buildMetricIdsArray(metricIds.slice(i, i + chunkSize));
     boundaryTemplates.push({
-      q3Prefix: '{"size":' + bigQuerySize + ',"_source":["metric_data.begin","metric_data.end","metric_data.value"],"query":{"bool":{"filter":[{"range":{"metric_data.end":{"gt":"',
+      q3Prefix:
+        '{"size":' +
+        bigQuerySize +
+        ',"_source":["metric_data.begin","metric_data.end","metric_data.value"],"query":{"bool":{"filter":[{"range":{"metric_data.end":{"gt":"',
       q3Mid: '"}}},{"range":{"metric_data.begin":{"lte":"',
       q3Suffix: '"}}},{"terms":{"metric_desc.metric_desc-uuid":' + slicedMetricIdsStr + '}}]}}}',
-      q4Prefix: '{"size":' + bigQuerySize + ',"_source":["metric_data.begin","metric_data.end","metric_data.value"],"query":{"bool":{"filter":[{"range":{"metric_data.end":{"gte":',
+      q4Prefix:
+        '{"size":' +
+        bigQuerySize +
+        ',"_source":["metric_data.begin","metric_data.end","metric_data.value"],"query":{"bool":{"filter":[{"range":{"metric_data.end":{"gte":',
       q4Mid: '}}},{"range":{"metric_data.begin":{"lt":',
-      q4Suffix: '}}},{"terms":{"metric_desc.metric_desc-uuid":' + slicedMetricIdsStr + '}}]}}}',
+      q4Suffix: '}}},{"terms":{"metric_desc.metric_desc-uuid":' + slicedMetricIdsStr + '}}]}}}'
     });
   }
 
@@ -3147,14 +3327,20 @@ sendMetricReq = async function (
 
     // Request 1: Weighted average for documents fully within range
     let reqjson = q1Prefix + thisEnd + q1Mid + thisBegin + q1Suffix;
-    jsonArr[wi] = indexjson; jsonArr[wi + 1] = reqjson; wi += 2;
-    jsonArrTracker[ti] = { label, set, begin: thisBegin, end: thisEnd, numMetricIds: metricIds.length }; ti++;
+    jsonArr[wi] = indexjson;
+    jsonArr[wi + 1] = reqjson;
+    wi += 2;
+    jsonArrTracker[ti] = { label, set, begin: thisBegin, end: thisEnd, numMetricIds: metricIds.length };
+    ti++;
     jsonArrEstimatedBytes += (indexjson.length + reqjson.length) * 2;
 
     // Request 2: Total weight
     reqjson = q2Prefix + thisEnd + q2Mid + thisBegin + q2Suffix;
-    jsonArr[wi] = indexjson; jsonArr[wi + 1] = reqjson; wi += 2;
-    jsonArrTracker[ti] = {}; ti++;
+    jsonArr[wi] = indexjson;
+    jsonArr[wi + 1] = reqjson;
+    wi += 2;
+    jsonArrTracker[ti] = {};
+    ti++;
     jsonArrEstimatedBytes += (indexjson.length + reqjson.length) * 2;
 
     // Requests 3 & 4: Documents partially outside range
@@ -3162,14 +3348,20 @@ sendMetricReq = async function (
       const t = boundaryTemplates[bt];
       // Request 3: End after range
       reqjson = t.q3Prefix + thisEnd + t.q3Mid + thisEnd + t.q3Suffix;
-      jsonArr[wi] = indexjson; jsonArr[wi + 1] = reqjson; wi += 2;
-      jsonArrTracker[ti] = {}; ti++;
+      jsonArr[wi] = indexjson;
+      jsonArr[wi + 1] = reqjson;
+      wi += 2;
+      jsonArrTracker[ti] = {};
+      ti++;
       jsonArrEstimatedBytes += (indexjson.length + reqjson.length) * 2;
 
       // Request 4: Begin before range
       reqjson = t.q4Prefix + thisBegin + t.q4Mid + thisBegin + t.q4Suffix;
-      jsonArr[wi] = indexjson; jsonArr[wi + 1] = reqjson; wi += 2;
-      jsonArrTracker[ti] = {}; ti++;
+      jsonArr[wi] = indexjson;
+      jsonArr[wi + 1] = reqjson;
+      wi += 2;
+      jsonArrTracker[ti] = {};
+      ti++;
       jsonArrEstimatedBytes += (indexjson.length + reqjson.length) * 2;
     }
 
@@ -3232,6 +3424,7 @@ sendMetricReq = async function (
           jsonArrIdx,
           jsonArrTracker,
           tracker.numMetricIds,
+          'sum',
           valueSets[setIdx][trackerLabel]
         );
       }
@@ -3248,7 +3441,56 @@ sendMetricReq = async function (
 };
 
 // --------------------------------------------------------------------------------------------------------------
-calcAvg = function (thisBegin, thisEnd, responses, jsonArrIdx, jsonArrTracker, numMetricIds, values) {
+getDefaultAggregation = function (instance, run, source, type, yearDotMonth) {
+  var q = {
+    size: 1,
+    _source: ['metric_desc.default-aggregation'],
+    query: {
+      bool: {
+        filter: [
+          { term: { 'run.run-uuid': run } },
+          { term: { 'metric_desc.source': source } },
+          { term: { 'metric_desc.type': type } }
+        ]
+      }
+    }
+  };
+  var validAggregations = ['sum', 'avg', 'max', 'min'];
+  var resp = esRequest(instance, 'metric_desc', '/_search', q, yearDotMonth);
+  var data = JSON.parse(resp.getBody());
+  if (data.hits && data.hits.hits && data.hits.hits.length > 0) {
+    var md = data.hits.hits[0]._source.metric_desc;
+    if (md && md['default-aggregation']) {
+      var agg = md['default-aggregation'];
+      if (!validAggregations.includes(agg)) {
+        console.log(
+          'WARNING: metric_desc for ' +
+            source +
+            '::' +
+            type +
+            ' has unrecognized default-aggregation "' +
+            agg +
+            '", falling back to sum'
+        );
+        return 'sum';
+      }
+      return agg;
+    }
+  }
+  return 'sum';
+};
+
+// --------------------------------------------------------------------------------------------------------------
+calcAvg = function (
+  thisBegin,
+  thisEnd,
+  responses,
+  jsonArrIdx,
+  jsonArrTracker,
+  numMetricIds,
+  defaultAggregation,
+  values
+) {
   debuglog('calcAvg start');
   debuglog(
     'calcAvg jsonArrIdx: [' +
@@ -3269,52 +3511,37 @@ calcAvg = function (thisBegin, thisEnd, responses, jsonArrIdx, jsonArrTracker, n
   var aggAvgTimesWeight;
   var newWeight;
   debuglog('calcAvg responses[' + jsonArrIdx / 2 + ']:' + JSON.stringify(responses[jsonArrIdx / 2], null, 2));
-  aggAvg = responses[jsonArrIdx / 2].aggregations.metric_avg.value;
-  if (isDefined(aggAvg)) {
-    // We have the weighted average for documents that don't overlap the time range,
-    // but we need to combine that with the documents that are partially outside
-    // the time range.  We need to know the total weight from the documents we
-    // just finished in order to add the new documents and recompute the new weighted
-    // average.
-    aggWeight = responses[jsonArrIdx / 2 + 1].aggregations.total_weight.value;
-    aggAvgTimesWeight = aggAvg * aggWeight;
-  } else {
-    // It is possible that the aggregation returned no results because all of the documents
-    // were partially outside the time domain.  This can happen when
-    //  1) A  metric does not change during the entire test, and therefore only 1 document
-    //  is created with a huge duration with begin before the time range and after after the
-    //  time range.
-    //  2) The time domain we have is really small because the resolution we are using is
-    //  very big.
-    //
-    //  In eithr case, we have to set the average and total_weight to 0, and then the
-    //  recompuation of the weighted average [with the last two requests in this set, finding
-    //  all of th docs that are partially in the time domain] will work.
-    aggAvg = 0;
-    aggWeight = 0;
+
+  var useMaxMin = defaultAggregation === 'max' || defaultAggregation === 'min';
+  var aggExtreme;
+
+  if (useMaxMin) {
+    var aggKey = defaultAggregation === 'max' ? 'metric_max' : 'metric_min';
+    aggExtreme = responses[jsonArrIdx / 2].aggregations[aggKey].value;
     aggAvgTimesWeight = 0;
+  } else {
+    aggAvg = responses[jsonArrIdx / 2].aggregations.metric_avg.value;
+    if (isDefined(aggAvg)) {
+      aggWeight = responses[jsonArrIdx / 2 + 1].aggregations.total_weight.value;
+      aggAvgTimesWeight = aggAvg * aggWeight;
+    } else {
+      aggAvg = 0;
+      aggWeight = 0;
+      aggAvgTimesWeight = 0;
+    }
   }
 
-  // Process the remaining responses in the 'set'.  These are typically 2 or more documents.
-  // Since these docs have a time range partially outside the time range we want,
-  // we have to get a new, reduced duration and use that to agment our weighted average.
+  // Collect partial documents (time range overlaps window boundaries).
+  // Consolidate by _id to avoid double-counting docs that span both boundaries.
   var sumValueTimesWeight = 0;
   var sumWeight = 0;
-  // It is possible to have the same document returned from these remaining queries.
-  // This can happen when the document's begin is before $this_begin *and* the document's end
-  // if after $this_end.
-  // You must not process the document twice.  Perform a consolidation by organizing by the
-  //  returned document's '_id'
   var partialDocs = {};
   var k;
   delete responses[jsonArrIdx / 2];
   delete responses[jsonArrIdx / 2 + 1];
   delete jsonArrTracker[jsonArrIdx / 2];
   delete jsonArrTracker[jsonArrIdx / 2 + 1];
-  jsonArrIdx += 4; //advance to the non-aggreation responses
-  // There can be 1 to many multiples of 2 of these types of responses here.
-  // We know these type of responses have ended when the next response does
-  // have an aggregation in it.
+  jsonArrIdx += 4;
   while (jsonArrIdx / 2 < responses.length && !Object.keys(responses[jsonArrIdx / 2]).includes('aggregations')) {
     if (responses[jsonArrIdx / 2].hits.total.value !== responses[jsonArrIdx / 2].hits.hits.length) {
       console.log(
@@ -3339,22 +3566,38 @@ calcAvg = function (thisBegin, thisEnd, responses, jsonArrIdx, jsonArrTracker, n
     delete jsonArrTracker[jsonArrIdx / 2];
     jsonArrIdx += 2;
   }
-  // Now we can process the partialDocs
-  Object.keys(partialDocs).forEach((id) => {
-    //var docDuration = partialDocs[id].duration;
-    var docDuration = partialDocs[id].end - partialDocs[id].begin;
-    if (partialDocs[id].begin < thisBegin) {
-      docDuration -= thisBegin - partialDocs[id].begin;
+
+  var result;
+  if (useMaxMin) {
+    var partialValues = Object.keys(partialDocs).map((id) => partialDocs[id].value);
+    if (defaultAggregation === 'max') {
+      var candidates = partialValues;
+      if (isDefined(aggExtreme) && aggExtreme !== null) candidates.push(aggExtreme);
+      result = candidates.length > 0 ? Math.max.apply(null, candidates) : 0;
+    } else {
+      var candidates = partialValues;
+      if (isDefined(aggExtreme) && aggExtreme !== null) candidates.push(aggExtreme);
+      result = candidates.length > 0 ? Math.min.apply(null, candidates) : 0;
     }
-    if (partialDocs[id].end > thisEnd) {
-      docDuration -= partialDocs[id].end - thisEnd;
+  } else {
+    Object.keys(partialDocs).forEach((id) => {
+      var docDuration = partialDocs[id].end - partialDocs[id].begin;
+      if (partialDocs[id].begin < thisBegin) {
+        docDuration -= thisBegin - partialDocs[id].begin;
+      }
+      if (partialDocs[id].end > thisEnd) {
+        docDuration -= partialDocs[id].end - thisEnd;
+      }
+      var valueTimesWeight = partialDocs[id].value * docDuration;
+      sumValueTimesWeight += valueTimesWeight;
+      sumWeight += docDuration;
+    });
+    result = (aggAvgTimesWeight + sumValueTimesWeight) / totalWeightTimesMetrics;
+    if (defaultAggregation !== 'avg') {
+      result *= numMetricIds;
     }
-    var valueTimesWeight = partialDocs[id].value * docDuration;
-    sumValueTimesWeight += valueTimesWeight;
-    sumWeight += docDuration;
-  });
-  var result = (aggAvgTimesWeight + sumValueTimesWeight) / totalWeightTimesMetrics;
-  result *= numMetricIds;
+  }
+
   var dataSample = {};
   dataSample.begin = thisBegin;
   dataSample.end = thisEnd;
@@ -3386,7 +3629,16 @@ getMetricDataFromIdsSets = async function (instance, sets, metricGroupIdsByLabel
     totalLabels += Object.keys(metricGroupIdsByLabelSets[idx]).length;
   }
   var resolution = sets[0] ? Number(sets[0].resolution) : 1;
-  console.log('[' + new Date().toISOString() + '] [PERF] getMetricDataFromIdsSets: ' + metricGroupIdsByLabelSets.length + ' set(s), ' + totalLabels + ' label(s), resolution=' + resolution);
+  console.log(
+    '[' +
+      new Date().toISOString() +
+      '] [PERF] getMetricDataFromIdsSets: ' +
+      metricGroupIdsByLabelSets.length +
+      ' set(s), ' +
+      totalLabels +
+      ' label(s), resolution=' +
+      resolution
+  );
 
   for (var idx = 0; idx < metricGroupIdsByLabelSets.length; idx++) {
     var begin = Number(sets[idx].begin);
@@ -3399,17 +3651,50 @@ getMetricDataFromIdsSets = async function (instance, sets, metricGroupIdsByLabel
     // Build time-range templates ONCE for all labels in this set.
     // Each template has prefix/suffix pairs for the 4 query types,
     // with __IDS__ as placeholder for the metric UUID list.
+    var defaultAggregation = sets[idx].defaultAggregation || 'sum';
     var timeRangeTemplates = [];
     var thisBegin = begin;
     var thisEnd = begin + duration;
     while (true) {
+      var filter =
+        '[{"range":{"metric_data.end":{"lte":"' +
+        thisEnd +
+        '"}}},{"range":{"metric_data.begin":{"gte":"' +
+        thisBegin +
+        '"}}},{"terms":{"metric_desc.metric_desc-uuid":__IDS__}}]';
+      var q1Agg;
+      if (defaultAggregation === 'max') {
+        q1Agg = '"aggs":{"metric_max":{"max":{"field":"metric_data.value"}}}';
+      } else if (defaultAggregation === 'min') {
+        q1Agg = '"aggs":{"metric_min":{"min":{"field":"metric_data.value"}}}';
+      } else {
+        q1Agg =
+          '"aggs":{"metric_avg":{"weighted_avg":{"value":{"field":"metric_data.value"},"weight":{"field":"metric_data.duration"}}}}';
+      }
       timeRangeTemplates.push({
         thisBegin: thisBegin,
         thisEnd: thisEnd,
-        q1: '{"size":0,"query":{"bool":{"filter":[{"range":{"metric_data.end":{"lte":"' + thisEnd + '"}}},{"range":{"metric_data.begin":{"gte":"' + thisBegin + '"}}},{"terms":{"metric_desc.metric_desc-uuid":__IDS__}}]}},"aggs":{"metric_avg":{"weighted_avg":{"value":{"field":"metric_data.value"},"weight":{"field":"metric_data.duration"}}}}}',
-        q2: '{"size":0,"query":{"bool":{"filter":[{"range":{"metric_data.end":{"lte":"' + thisEnd + '"}}},{"range":{"metric_data.begin":{"gte":"' + thisBegin + '"}}},{"terms":{"metric_desc.metric_desc-uuid":__IDS__}}]}},"aggs":{"total_weight":{"sum":{"field":"metric_data.duration"}}}}',
-        q3: '{"size":' + bigQuerySize + ',"_source":["metric_data.begin","metric_data.end","metric_data.value"],"query":{"bool":{"filter":[{"range":{"metric_data.end":{"gt":"' + thisEnd + '"}}},{"range":{"metric_data.begin":{"lte":"' + thisEnd + '"}}},{"terms":{"metric_desc.metric_desc-uuid":__IDS__}}]}}}',
-        q4: '{"size":' + bigQuerySize + ',"_source":["metric_data.begin","metric_data.end","metric_data.value"],"query":{"bool":{"filter":[{"range":{"metric_data.end":{"gte":' + thisBegin + '}}},{"range":{"metric_data.begin":{"lt":' + thisBegin + '}}},{"terms":{"metric_desc.metric_desc-uuid":__IDS__}}]}}}',
+        q1: '{"size":0,"query":{"bool":{"filter":' + filter + '}},' + q1Agg + '}',
+        q2:
+          '{"size":0,"query":{"bool":{"filter":' +
+          filter +
+          '}},"aggs":{"total_weight":{"sum":{"field":"metric_data.duration"}}}}',
+        q3:
+          '{"size":' +
+          bigQuerySize +
+          ',"_source":["metric_data.begin","metric_data.end","metric_data.value"],"query":{"bool":{"filter":[{"range":{"metric_data.end":{"gt":"' +
+          thisEnd +
+          '"}}},{"range":{"metric_data.begin":{"lte":"' +
+          thisEnd +
+          '"}}},{"terms":{"metric_desc.metric_desc-uuid":__IDS__}}]}}}',
+        q4:
+          '{"size":' +
+          bigQuerySize +
+          ',"_source":["metric_data.begin","metric_data.end","metric_data.value"],"query":{"bool":{"filter":[{"range":{"metric_data.end":{"gte":' +
+          thisBegin +
+          '}}},{"range":{"metric_data.begin":{"lt":' +
+          thisBegin +
+          '}}},{"terms":{"metric_desc.metric_desc-uuid":__IDS__}}]}}}'
       });
       thisBegin = thisEnd + 1;
       thisEnd += duration + 1;
@@ -3433,14 +3718,23 @@ getMetricDataFromIdsSets = async function (instance, sets, metricGroupIdsByLabel
       for (var t = 0; t < timeRangeTemplates.length; t++) {
         var tmpl = timeRangeTemplates[t];
         jsonArr.push(indexjson, tmpl.q1.replace('__IDS__', metricIdsStr));
-        jsonArrTracker.push({ label: label, set: idx, begin: tmpl.thisBegin, end: tmpl.thisEnd, numMetricIds: metricIds.length });
+        jsonArrTracker.push({
+          label: label,
+          set: idx,
+          begin: tmpl.thisBegin,
+          end: tmpl.thisEnd,
+          numMetricIds: metricIds.length
+        });
         jsonArr.push(indexjson, tmpl.q2.replace('__IDS__', metricIdsStr));
         jsonArrTracker.push({});
 
         // Boundary queries — chunk metricIds if > 10000
         var chunkSize = 10000;
         for (var ci = 0; ci < metricIds.length; ci += chunkSize) {
-          var slicedIdsStr = ci === 0 && metricIds.length <= chunkSize ? metricIdsStr : ('["' + metricIds.slice(ci, ci + chunkSize).join('","') + '"]');
+          var slicedIdsStr =
+            ci === 0 && metricIds.length <= chunkSize
+              ? metricIdsStr
+              : '["' + metricIds.slice(ci, ci + chunkSize).join('","') + '"]';
           jsonArr.push(indexjson, tmpl.q3.replace('__IDS__', slicedIdsStr));
           jsonArrTracker.push({});
           jsonArr.push(indexjson, tmpl.q4.replace('__IDS__', slicedIdsStr));
@@ -3450,7 +3744,7 @@ getMetricDataFromIdsSets = async function (instance, sets, metricGroupIdsByLabel
 
       const lastLabelInSet = k + 1 >= sortedKeys.length;
       const lastPass = idx + 1 >= metricGroupIdsByLabelSets.length && lastLabelInSet;
-      var shouldFlush = lastLabelInSet || ((k + 1) % flushLabelsEvery === 0);
+      var shouldFlush = lastLabelInSet || (k + 1) % flushLabelsEvery === 0;
 
       if (shouldFlush && jsonArr.length > 0) {
         var esStart = Date.now();
@@ -3465,14 +3759,39 @@ getMetricDataFromIdsSets = async function (instance, sets, metricGroupIdsByLabel
         while (jsonArrIdx < responses.length * 2) {
           var trackerIdx = jsonArrIdx / 2;
           var tracker = jsonArrTracker[trackerIdx];
-          if (!tracker || tracker.label === undefined) { jsonArrIdx += 2; continue; }
+          if (!tracker || tracker.label === undefined) {
+            jsonArrIdx += 2;
+            continue;
+          }
           var setIdx = tracker.set;
           var trackerLabel = tracker.label;
           if (!valueSets[setIdx]) valueSets[setIdx] = {};
           if (!valueSets[setIdx][trackerLabel]) valueSets[setIdx][trackerLabel] = [];
           var prevIdx = jsonArrIdx;
-          jsonArrIdx = calcAvg(tracker.begin, tracker.end, responses, jsonArrIdx, jsonArrTracker, tracker.numMetricIds, valueSets[setIdx][trackerLabel]);
-          console.log('[' + new Date().toISOString() + '] [DEBUG] calcAvg: label="' + trackerLabel + '", set=' + setIdx + ', jsonArrIdx ' + prevIdx + '->' + jsonArrIdx + ', values=' + valueSets[setIdx][trackerLabel].length);
+          jsonArrIdx = calcAvg(
+            tracker.begin,
+            tracker.end,
+            responses,
+            jsonArrIdx,
+            jsonArrTracker,
+            tracker.numMetricIds,
+            defaultAggregation,
+            valueSets[setIdx][trackerLabel]
+          );
+          console.log(
+            '[' +
+              new Date().toISOString() +
+              '] [DEBUG] calcAvg: label="' +
+              trackerLabel +
+              '", set=' +
+              setIdx +
+              ', jsonArrIdx ' +
+              prevIdx +
+              '->' +
+              jsonArrIdx +
+              ', values=' +
+              valueSets[setIdx][trackerLabel].length
+          );
         }
         //console.log in ' + (Date.now()-calcStart) + 'ms');
 
@@ -3487,7 +3806,9 @@ getMetricDataFromIdsSets = async function (instance, sets, metricGroupIdsByLabel
       //}
     }
   }
-  console.log('[' + new Date().toISOString() + '] [PERF] getMetricDataFromIdsSets total: ' + (Date.now()-funcStart) + 'ms');
+  console.log(
+    '[' + new Date().toISOString() + '] [PERF] getMetricDataFromIdsSets total: ' + (Date.now() - funcStart) + 'ms'
+  );
   return valueSets;
 };
 
@@ -3673,6 +3994,20 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
         return { 'ret-code': retCode, 'ret-msg': retMsg };
       }
       // If no regex filters, continue with existing error handling
+    }
+  }
+
+  for (var idx = 0; idx < sets.length; idx++) {
+    if (sets[idx].aggregation) {
+      sets[idx].defaultAggregation = sets[idx].aggregation;
+    } else {
+      sets[idx].defaultAggregation = getDefaultAggregation(
+        instance,
+        sets[idx].run,
+        sets[idx].source,
+        sets[idx].type,
+        yearDotMonth
+      );
     }
   }
 
