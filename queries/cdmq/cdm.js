@@ -3991,13 +3991,17 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
   }
 
   for (var idx = 0; idx < sets.length; idx++) {
-    sets[idx].defaultAggregation = getDefaultAggregation(
-      instance,
-      sets[idx].run,
-      sets[idx].source,
-      sets[idx].type,
-      yearDotMonth
-    );
+    if (sets[idx].aggregation) {
+      sets[idx].defaultAggregation = sets[idx].aggregation;
+    } else {
+      sets[idx].defaultAggregation = getDefaultAggregation(
+        instance,
+        sets[idx].run,
+        sets[idx].source,
+        sets[idx].type,
+        yearDotMonth
+      );
+    }
   }
 
   var dataSets = await getMetricDataFromIdsSets(instance, sets, metricGroupIdsByLabelSets, yearDotMonth);

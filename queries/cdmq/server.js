@@ -1637,13 +1637,34 @@ app.post('/api/v1/metric-data', async (req, res) => {
       'resolution',
       'breakout',
       'filter',
+      'aggregation',
       'instances'
     ];
     var fieldErr = validateBodyFields(req.body, knownFields);
     if (fieldErr) {
       return res.status(400).json({ code: 'UNKNOWN_FIELDS', error: fieldErr });
     }
-    var { run, period, begin, end, source, type, resolution, breakout, filter, instances: reqInstances } = req.body;
+    var {
+      run,
+      period,
+      begin,
+      end,
+      source,
+      type,
+      resolution,
+      breakout,
+      filter,
+      aggregation,
+      instances: reqInstances
+    } = req.body;
+
+    var validAggregations = ['sum', 'avg', 'max', 'min'];
+    if (aggregation && !validAggregations.includes(aggregation)) {
+      return res.status(400).json({
+        code: 'INVALID_AGGREGATION',
+        error: "Invalid aggregation '" + aggregation + "'. Must be one of: " + validAggregations.join(', ')
+      });
+    }
 
     var reqStart = Date.now();
     var breakoutStr = Array.isArray(breakout)
@@ -1738,7 +1759,8 @@ app.post('/api/v1/metric-data', async (req, res) => {
       end: end,
       resolution: resolution,
       breakout: breakout,
-      filter: filter
+      filter: filter,
+      aggregation: aggregation
     };
     var resp = await cdm.getMetricDataSets(instance, [set], yearDotMonth);
     if (resp['ret-code'] != 0) {

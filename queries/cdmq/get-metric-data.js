@@ -9,6 +9,7 @@
 //
 //# vim: autoindent tabstop=2 shiftwidth=2 expandtab softtabstop=2 filetype=javascript
 
+var cdm = require('./cdm');
 var program = require('commander');
 var sprintf = require('sprintf-js').sprintf;
 const http = require('http');
@@ -161,6 +162,7 @@ async function main() {
       '--filter <gt|ge|lt|le:value>',
       '[optional] Filter out (do not output) metrics which do not pass the conditional.  gt=greater-than, ge=greater-than-or-equal, lt=less-than, le=less-than-or-equal'
     )
+    .option('--aggregation <sum|avg|max|min>', '[optional] Override the default aggregation method for this query')
     .option('--output-format <json|table|csv>', 'table')
     .option(
       '--date-format <default|epoch_ms>',
@@ -205,7 +207,8 @@ async function main() {
     resolution: program.resolution,
     breakout: program.breakout, // Send as array to preserve complex breakout syntax
     filter: program.filter,
-    instances: program.instances.length > 0 ? program.instances : undefined // Pass instances to server if provided
+    aggregation: program.aggregation,
+    instances: program.instances.length > 0 ? program.instances : undefined
   };
 
   // Fetch metric data from the API
