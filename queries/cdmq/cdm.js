@@ -3426,6 +3426,7 @@ sendMetricReq = async function (
           jsonArrIdx,
           jsonArrTracker,
           tracker.numMetricIds,
+          'sum',
           valueSets[setIdx][trackerLabel]
         );
       }
@@ -3642,12 +3643,6 @@ getMetricDataFromIdsSets = async function (instance, sets, metricGroupIdsByLabel
     var timeRangeTemplates = [];
     var thisBegin = begin;
     var thisEnd = begin + duration;
-    var baseFilter =
-      '[{"range":{"metric_data.end":{"lte":"' +
-      thisEnd +
-      '"}}},{"range":{"metric_data.begin":{"gte":"' +
-      thisBegin +
-      '"}}},{"terms":{"metric_desc.metric_desc-uuid":__IDS__}}]';
     while (true) {
       var filter =
         '[{"range":{"metric_data.end":{"lte":"' +
