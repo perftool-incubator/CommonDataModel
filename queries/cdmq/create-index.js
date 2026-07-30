@@ -24,10 +24,10 @@ function save_ver(ver) {
     console.log('You must specify a --host before a --ver');
     process.exit(1);
   }
-  if (/^v[789]dev$/.exec(ver)) {
+  if (/^v([789]|10)dev$/.exec(ver)) {
     instances[instances.length - 1]['ver'] = ver;
   } else {
-    console.log('The version must be v7dev, v8dev, or v9dev, not: ' + ver);
+    console.log('The version must be v7dev, v8dev, v9dev, or v10dev, not: ' + ver);
     process.exit(1);
   }
 }
@@ -37,7 +37,7 @@ async function main() {
     .version('0.1.0')
     .option('--host <host[:port]>', 'The host and optional port of the OpenSearch instance', save_host)
     .option('--userpass <user:pass>', 'The user and password for the most recent --host', save_userpass)
-    .option('--ver <v7dev|v8dev|v9dev>', 'The Common Data Model version to use for the most recent --host', save_ver)
+    .option('--ver <v7dev|v8dev|v9dev|v10dev>', 'The Common Data Model version to use for the most recent --host', save_ver)
     .option('--index <index>', 'An index name matching cdm naming format, for example, cdm-v9dev-run@202505>')
     .parse(process.argv);
 

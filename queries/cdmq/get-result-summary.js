@@ -111,7 +111,7 @@ program
   )
   .option('--host <host[:port]>', 'Ignored (accepted for backward compatibility)')
   .option('--userpass <user:pass>', 'Ignored (accepted for backward compatibility)')
-  .option('--ver <v7dev|v8dev|v9dev>', 'Ignored (accepted for backward compatibility)')
+  .option('--ver <v7dev|v8dev|v9dev|v10dev>', 'Ignored (accepted for backward compatibility)')
   .option('--user <name>', 'Filter by run name')
   .option('--email <email>', 'Filter by email')
   .option('--harness <harness>', 'Filter by harness')

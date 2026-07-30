@@ -1,6 +1,7 @@
           "metric_desc": {
             "properties": {
               "metric_desc-uuid": { "type": "keyword" },
+              "default-aggregation": { "type": "keyword" },
               "class": { "type": "keyword" },
               "type": { "type": "keyword" },
               "source": { "type": "keyword" },
