@@ -105,10 +105,10 @@ function save_ver(ver) {
     console.log('You must specify a --host before a --ver');
     process.exit(1);
   }
-  if (/^v([789]|10)dev$/.exec(ver)) {
+  if (cdm.isValidCdmVersion(ver)) {
     program.instances[program.instances.length - 1]['ver'] = ver;
   } else {
-    console.log('The version must be v7dev, v8dev, v9dev, or v10dev, not: ' + ver);
+    console.log('The version must be one of: ' + cdm.supportedCdmVersions.join(', ') + ', not: ' + ver);
     process.exit(1);
   }
 }
@@ -134,7 +134,7 @@ async function main() {
       save_userpass
     )
     .option(
-      '--ver <v7dev|v8dev|v9dev|v10dev>',
+      cdm.cdmVersionOptionDesc(),
       'The Common Data Model version to use for the most recent --host (passed to server)',
       save_ver
     )

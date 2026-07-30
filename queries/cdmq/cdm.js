@@ -11,6 +11,13 @@ const docTypes = {
 exports.docTypes = docTypes;
 const supportedCdmVersions = Object.keys(docTypes);
 exports.supportedCdmVersions = supportedCdmVersions;
+function isValidCdmVersion(ver) {
+  return supportedCdmVersions.includes(ver);
+}
+exports.isValidCdmVersion = isValidCdmVersion;
+exports.cdmVersionOptionDesc = function () {
+  return '--ver <' + supportedCdmVersions.join('|') + '>';
+};
 const debugOut = 0;
 const indexSettings = {
   number_of_shards: 1,
@@ -1503,7 +1510,7 @@ getInstancesInfo = function (instances) {
     }
     if (Object.keys(instances[inst_idx]['indices']).length != 0) {
       // If mulitple versions of indices exist, default to the latest version
-      // (this can be overridden with --ver <v7dev|v8dev|v9dev> after --host)
+      // (this can be overridden with --ver after --host)
       // Note: if you index a new data into a newer CDM version, that will
       // create those indices, and a subsequent query (without --ver) will now
       // default to the newer cdm version.

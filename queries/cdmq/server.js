@@ -40,7 +40,9 @@ function serverError(msg, reqId) {
 // Returns null if valid, or an error message string if unknown fields are found.
 function validateBodyFields(body, knownFields) {
   if (!body || typeof body !== 'object') return null;
-  var unknown = Object.keys(body).filter(function (k) { return !knownFields.includes(k); });
+  var unknown = Object.keys(body).filter(function (k) {
+    return !knownFields.includes(k);
+  });
   if (unknown.length === 0) return null;
   var hints = unknown.map(function (u) {
     // suggest a known field if it differs only by a trailing 's' or missing trailing 's'
@@ -48,8 +50,7 @@ function validateBodyFields(body, knownFields) {
     if (knownFields.includes(candidate)) return u + ' (did you mean: ' + candidate + '?)';
     return u;
   });
-  return 'Unknown field(s) in request body: ' + hints.join(', ') +
-    '. Known fields: ' + knownFields.join(', ');
+  return 'Unknown field(s) in request body: ' + hints.join(', ') + '. Known fields: ' + knownFields.join(', ');
 }
 
 // Per-client request counter for generating short session-like IDs
@@ -83,10 +84,10 @@ function save_ver(ver) {
     console.log('You must specify a --host before a --ver');
     process.exit(1);
   }
-  if (/^v([789]|10)dev$/.exec(ver)) {
+  if (cdm.isValidCdmVersion(ver)) {
     instances[instances.length - 1]['ver'] = ver;
   } else {
-    console.log('The version must be v7dev, v8dev, v9dev, or v10dev, not: ' + ver);
+    console.log('The version must be one of: ' + cdm.supportedCdmVersions.join(', ') + ', not: ' + ver);
     process.exit(1);
   }
 }
@@ -95,7 +96,7 @@ program
   .version('1.0.0')
   .option('--host <host[:port]>', 'The host and optional port of the OpenSearch instance', save_host)
   .option('--userpass <user:pass>', 'The user and password for the most recent --host', save_userpass)
-  .option('--ver <v7dev|v8dev|v9dev|v10dev>', 'The Common Data Model version to use for the most recent --host', save_ver)
+  .option(cdm.cdmVersionOptionDesc(), 'The Common Data Model version to use for the most recent --host', save_ver)
   .parse(process.argv);
 
 const options = program.opts();
@@ -235,7 +236,9 @@ app.get('/api/v1/runs', async (req, res) => {
 
     // Apply multi-run-ID filter if specified
     if (runIdFilter) {
-      runIds = runIds.filter(function (id) { return runIdFilter.has(id); });
+      runIds = runIds.filter(function (id) {
+        return runIdFilter.has(id);
+      });
     }
 
     // Helper: get run IDs from a cross-index aggregation and intersect with current set
@@ -859,10 +862,14 @@ app.post('/api/v1/iterations/details', async (req, res) => {
       // Step 5: Assemble iteration objects
       for (var i = 0; i < allIterIds.length; i++) {
         var meta = iterToRunMap[i];
-        var iterSamples = (samplesByIter[i]) || [];
+        var iterSamples = samplesByIter[i] || [];
         var iterStatuses = (statuses && statuses[i]) || [];
-        var passCount = iterStatuses.filter(function (s) { return s === 'pass'; }).length;
-        var failCount = iterStatuses.filter(function (s) { return s === 'fail'; }).length;
+        var passCount = iterStatuses.filter(function (s) {
+          return s === 'pass';
+        }).length;
+        var failCount = iterStatuses.filter(function (s) {
+          return s === 'fail';
+        }).length;
 
         allIterations.push({
           runId: meta.runId,
@@ -885,11 +892,7 @@ app.post('/api/v1/iterations/details', async (req, res) => {
     }
 
     serverLog(
-      'POST /api/v1/iterations/details: ' +
-        runIds.length +
-        ' run(s) -> ' +
-        allIterations.length +
-        ' iteration(s)'
+      'POST /api/v1/iterations/details: ' + runIds.length + ' run(s) -> ' + allIterations.length + ' iteration(s)'
     );
     res.json({ iterations: allIterations });
   } catch (error) {
@@ -962,7 +965,9 @@ app.post('/api/v1/iterations/metric-values', async (req, res) => {
 
       // Get primary period IDs
       var primaryPeriodIds = [];
-      var hasPassing = passingSamplesByIter.some(function (s) { return s.length > 0; });
+      var hasPassing = passingSamplesByIter.some(function (s) {
+        return s.length > 0;
+      });
       if (hasPassing) {
         primaryPeriodIds = await cdm.mgetPrimaryPeriodId(inst, passingSamplesByIter, passingPeriodNamesByIter, ydm);
         if (typeof primaryPeriodIds === 'undefined') primaryPeriodIds = [];
@@ -985,8 +990,8 @@ app.post('/api/v1/iterations/metric-values', async (req, res) => {
         if (pmParts.length < 2) continue;
         var pmSource = pmParts[0];
         var pmType = pmParts[1];
-        var iterPeriodIds = (primaryPeriodIds[i]) || [];
-        var iterRanges = (periodRanges[i]) || [];
+        var iterPeriodIds = primaryPeriodIds[i] || [];
+        var iterRanges = periodRanges[i] || [];
         for (var s = 0; s < iterPeriodIds.length; s++) {
           if (!iterPeriodIds[s]) continue;
           var range = iterRanges[s];
@@ -1070,7 +1075,10 @@ app.post('/api/v1/iterations/metric-sources', async (req, res) => {
       var sourcesPerRun = await cdm.mgetMetricSources(inst, runIds, ydm);
       if (sourcesPerRun) {
         sourcesPerRun.forEach(function (s) {
-          if (Array.isArray(s)) s.forEach(function (v) { allSources.add(v); });
+          if (Array.isArray(s))
+            s.forEach(function (v) {
+              allSources.add(v);
+            });
         });
       }
     }
@@ -1100,11 +1108,16 @@ app.post('/api/v1/iterations/metric-types', async (req, res) => {
       if (invalidInstance(inst)) continue;
       var ydm = cdm.buildYearDotMonthRange(inst, 'run', start || null, end || null);
       // mgetMetricTypes needs parallel arrays of runIds and sources
-      var sources = runIds.map(function () { return source; });
+      var sources = runIds.map(function () {
+        return source;
+      });
       var typesPerRun = await cdm.mgetMetricTypes(inst, runIds, sources, ydm);
       if (typesPerRun) {
         typesPerRun.forEach(function (t) {
-          if (Array.isArray(t)) t.forEach(function (v) { allTypes.add(v); });
+          if (Array.isArray(t))
+            t.forEach(function (v) {
+              allTypes.add(v);
+            });
         });
       }
     }
@@ -1131,7 +1144,9 @@ app.post('/api/v1/iterations/breakout-values', async (req, res) => {
     }
     const { runIds, start, end, source, type, breakouts } = req.body;
     if (!Array.isArray(runIds) || runIds.length === 0 || !source || !type || !Array.isArray(breakouts)) {
-      return res.status(400).json({ code: 'MISSING_PARAMS', error: 'runIds, source, type, and breakouts are required' });
+      return res
+        .status(400)
+        .json({ code: 'MISSING_PARAMS', error: 'runIds, source, type, and breakouts are required' });
     }
     getInstancesInfo(instances);
     var merged = {};
@@ -1142,7 +1157,9 @@ app.post('/api/v1/iterations/breakout-values', async (req, res) => {
       // Merge values across instances
       Object.keys(result).forEach(function (dim) {
         if (!merged[dim]) merged[dim] = new Set();
-        result[dim].forEach(function (v) { merged[dim].add(v); });
+        result[dim].forEach(function (v) {
+          merged[dim].add(v);
+        });
       });
     }
     // Convert Sets to sorted arrays
@@ -1150,7 +1167,18 @@ app.post('/api/v1/iterations/breakout-values', async (req, res) => {
     Object.keys(merged).forEach(function (dim) {
       response[dim] = Array.from(merged[dim]).sort();
     });
-    serverLog('POST /api/v1/iterations/breakout-values: ' + source + '::' + type + ' -> ' + Object.keys(response).map(function (k) { return k + ':' + response[k].length; }).join(', '));
+    serverLog(
+      'POST /api/v1/iterations/breakout-values: ' +
+        source +
+        '::' +
+        type +
+        ' -> ' +
+        Object.keys(response)
+          .map(function (k) {
+            return k + ':' + response[k].length;
+          })
+          .join(', ')
+    );
     res.json({ breakouts: response });
   } catch (error) {
     serverError('Error in POST /api/v1/iterations/breakout-values: ' + error);
@@ -1174,8 +1202,9 @@ app.post('/api/v1/iterations/period-info', async (req, res) => {
     if (!Array.isArray(reqIterations) || reqIterations.length === 0) {
       return res.status(400).json({ code: 'MISSING_PARAMS', error: 'iterations array is required' });
     }
-    var requestedSampleIdx = (typeof sampleIndex === 'number') ? sampleIndex : null;
-    var perIterSampleIdx = (typeof sampleIndex === 'object' && sampleIndex !== null && !Array.isArray(sampleIndex)) ? sampleIndex : null;
+    var requestedSampleIdx = typeof sampleIndex === 'number' ? sampleIndex : null;
+    var perIterSampleIdx =
+      typeof sampleIndex === 'object' && sampleIndex !== null && !Array.isArray(sampleIndex) ? sampleIndex : null;
 
     getInstancesInfo(instances);
     var result = {};
@@ -1184,8 +1213,12 @@ app.post('/api/v1/iterations/period-info', async (req, res) => {
       if (invalidInstance(inst)) continue;
       var ydm = cdm.buildYearDotMonthRange(inst, 'run', start || null, end || null);
 
-      var allIterIds = reqIterations.map(function (it) { return it.iterationId; });
-      var iterRunIds = reqIterations.map(function (it) { return it.runId; });
+      var allIterIds = reqIterations.map(function (it) {
+        return it.iterationId;
+      });
+      var iterRunIds = reqIterations.map(function (it) {
+        return it.runId;
+      });
 
       var samples = await cdm.mgetSamples(inst, allIterIds, ydm);
       var statuses = await cdm.mgetSampleStatuses(inst, samples || [], ydm);
@@ -1207,7 +1240,9 @@ app.post('/api/v1/iterations/period-info', async (req, res) => {
       }
 
       var primaryPeriodIds = [];
-      var hasPassing = passingSamplesByIter.some(function (s) { return s.length > 0; });
+      var hasPassing = passingSamplesByIter.some(function (s) {
+        return s.length > 0;
+      });
       if (hasPassing) {
         primaryPeriodIds = await cdm.mgetPrimaryPeriodId(inst, passingSamplesByIter, passingPeriodNamesByIter, ydm);
         if (typeof primaryPeriodIds === 'undefined') primaryPeriodIds = [];
@@ -1220,8 +1255,8 @@ app.post('/api/v1/iterations/period-info', async (req, res) => {
       }
 
       for (var i = 0; i < allIterIds.length; i++) {
-        var iterPeriodIds = (primaryPeriodIds[i]) || [];
-        var iterRanges = (periodRanges[i]) || [];
+        var iterPeriodIds = primaryPeriodIds[i] || [];
+        var iterRanges = periodRanges[i] || [];
         if (iterPeriodIds.length === 0) continue;
 
         var selIdx = 0;
@@ -1240,7 +1275,7 @@ app.post('/api/v1/iterations/period-info', async (req, res) => {
           periodId: iterPeriodIds[selIdx],
           begin: range.begin,
           end: range.end,
-          runId: iterRunIds[i],
+          runId: iterRunIds[i]
         };
       }
     }
@@ -1265,13 +1300,17 @@ app.post('/api/v1/iterations/supplemental-metric', async (req, res) => {
     var breakoutArr = Array.isArray(breakout) ? breakout : [];
     var filterVal = filter || null;
     // sampleIndex can be a number (same for all iterations) or an object { iterationId: index }
-    var requestedSampleIdx = (typeof sampleIndex === 'number') ? sampleIndex : null;
-    var perIterSampleIdx = (typeof sampleIndex === 'object' && sampleIndex !== null && !Array.isArray(sampleIndex)) ? sampleIndex : null;
+    var requestedSampleIdx = typeof sampleIndex === 'number' ? sampleIndex : null;
+    var perIterSampleIdx =
+      typeof sampleIndex === 'object' && sampleIndex !== null && !Array.isArray(sampleIndex) ? sampleIndex : null;
     if (!source || !type) {
       return res.status(400).json({ code: 'MISSING_PARAMS', error: 'source and type are required' });
     }
     // Accept either iterations (array of {iterationId, runId}) or runIds (discover iterations)
-    if ((!Array.isArray(reqIterations) || reqIterations.length === 0) && (!Array.isArray(runIds) || runIds.length === 0)) {
+    if (
+      (!Array.isArray(reqIterations) || reqIterations.length === 0) &&
+      (!Array.isArray(runIds) || runIds.length === 0)
+    ) {
       return res.status(400).json({ code: 'MISSING_PARAMS', error: 'iterations or runIds are required' });
     }
     getInstancesInfo(instances);
@@ -1325,7 +1364,9 @@ app.post('/api/v1/iterations/supplemental-metric', async (req, res) => {
       }
 
       var primaryPeriodIds = [];
-      var hasPassing = passingSamplesByIter.some(function (s) { return s.length > 0; });
+      var hasPassing = passingSamplesByIter.some(function (s) {
+        return s.length > 0;
+      });
       if (hasPassing) {
         primaryPeriodIds = await cdm.mgetPrimaryPeriodId(inst, passingSamplesByIter, passingPeriodNamesByIter, ydm);
         if (typeof primaryPeriodIds === 'undefined') primaryPeriodIds = [];
@@ -1342,8 +1383,8 @@ app.post('/api/v1/iterations/supplemental-metric', async (req, res) => {
       var metricSets = [];
       var metricSetMap = [];
       for (var i = 0; i < allIterIds.length; i++) {
-        var iterPeriodIds = (primaryPeriodIds[i]) || [];
-        var iterRanges = (periodRanges[i]) || [];
+        var iterPeriodIds = primaryPeriodIds[i] || [];
+        var iterRanges = periodRanges[i] || [];
         if (iterPeriodIds.length === 0) continue;
 
         // Use per-iteration sample index if available, otherwise global, otherwise 0
@@ -1407,7 +1448,19 @@ app.post('/api/v1/iterations/supplemental-metric', async (req, res) => {
       }
     }
 
-    serverLog('POST /api/v1/iterations/supplemental-metric: ' + source + '::' + type + ' breakout=' + JSON.stringify(breakoutArr) + ' sampleIndex=' + requestedSampleIdx + ' -> ' + Object.keys(result).length + ' iteration(s)');
+    serverLog(
+      'POST /api/v1/iterations/supplemental-metric: ' +
+        source +
+        '::' +
+        type +
+        ' breakout=' +
+        JSON.stringify(breakoutArr) +
+        ' sampleIndex=' +
+        requestedSampleIdx +
+        ' -> ' +
+        Object.keys(result).length +
+        ' iteration(s)'
+    );
     res.json({ values: result, remainingBreakouts: remainingBreakouts, sampleInfo: sampleInfo });
   } catch (error) {
     serverError('Error in POST /api/v1/iterations/supplemental-metric: ' + error);
@@ -1460,9 +1513,7 @@ app.get('/api/v1/fields/months', async (req, res) => {
 
 app.get('/api/v1/fields/run-ids', async (req, res) => {
   try {
-    var values = await getDistinctValues(instances, (inst) =>
-      cdm.getDistinctRunIds(inst, getYdm(inst, 'run', req))
-    );
+    var values = await getDistinctValues(instances, (inst) => cdm.getDistinctRunIds(inst, getYdm(inst, 'run', req)));
     serverLog('GET /api/v1/fields/run-ids returned ' + values.length + ' value(s)');
     res.json({ values: values });
   } catch (error) {
@@ -1473,9 +1524,7 @@ app.get('/api/v1/fields/run-ids', async (req, res) => {
 
 app.get('/api/v1/fields/names', async (req, res) => {
   try {
-    var values = await getDistinctValues(instances, (inst) =>
-      cdm.getDistinctNames(inst, getYdm(inst, 'run', req))
-    );
+    var values = await getDistinctValues(instances, (inst) => cdm.getDistinctNames(inst, getYdm(inst, 'run', req)));
     serverLog('GET /api/v1/fields/names returned ' + values.length + ' value(s)');
     res.json({ values: values });
   } catch (error) {
@@ -1486,9 +1535,7 @@ app.get('/api/v1/fields/names', async (req, res) => {
 
 app.get('/api/v1/fields/emails', async (req, res) => {
   try {
-    var values = await getDistinctValues(instances, (inst) =>
-      cdm.getDistinctEmails(inst, getYdm(inst, 'run', req))
-    );
+    var values = await getDistinctValues(instances, (inst) => cdm.getDistinctEmails(inst, getYdm(inst, 'run', req)));
     serverLog('GET /api/v1/fields/emails returned ' + values.length + ' value(s)');
     res.json({ values: values });
   } catch (error) {
@@ -1512,9 +1559,7 @@ app.get('/api/v1/fields/benchmarks', async (req, res) => {
 
 app.get('/api/v1/fields/tag-names', async (req, res) => {
   try {
-    var values = await getDistinctValues(instances, (inst) =>
-      cdm.getDistinctTagNames(inst, getYdm(inst, 'tag', req))
-    );
+    var values = await getDistinctValues(instances, (inst) => cdm.getDistinctTagNames(inst, getYdm(inst, 'tag', req)));
     serverLog('GET /api/v1/fields/tag-names returned ' + values.length + ' value(s)');
     res.json({ values: values });
   } catch (error) {
@@ -1582,7 +1627,18 @@ app.get('/api/v1/fields/primary-metrics', async (req, res) => {
 // --------------------------------------------------------------------------------------------------------------
 app.post('/api/v1/metric-data', async (req, res) => {
   try {
-    var knownFields = ['run', 'period', 'begin', 'end', 'source', 'type', 'resolution', 'breakout', 'filter', 'instances'];
+    var knownFields = [
+      'run',
+      'period',
+      'begin',
+      'end',
+      'source',
+      'type',
+      'resolution',
+      'breakout',
+      'filter',
+      'instances'
+    ];
     var fieldErr = validateBodyFields(req.body, knownFields);
     if (fieldErr) {
       return res.status(400).json({ code: 'UNKNOWN_FIELDS', error: fieldErr });
@@ -1590,8 +1646,31 @@ app.post('/api/v1/metric-data', async (req, res) => {
     var { run, period, begin, end, source, type, resolution, breakout, filter, instances: reqInstances } = req.body;
 
     var reqStart = Date.now();
-    var breakoutStr = Array.isArray(breakout) ? breakout.map(function (b) { return typeof b === 'object' && b.name ? b.name : b; }).join(',') : (breakout || 'none');
-    serverLog('POST /api/v1/metric-data: ' + source + '::' + type + ' resolution=' + resolution + ' breakout=[' + breakoutStr + ']' + (filter ? ' filter=' + filter : '') + ' run=' + (run || 'none').toString().substring(0, 8) + '... period=' + (period || 'none').toString().substring(0, 8) + '...', req.reqId);
+    var breakoutStr = Array.isArray(breakout)
+      ? breakout
+          .map(function (b) {
+            return typeof b === 'object' && b.name ? b.name : b;
+          })
+          .join(',')
+      : breakout || 'none';
+    serverLog(
+      'POST /api/v1/metric-data: ' +
+        source +
+        '::' +
+        type +
+        ' resolution=' +
+        resolution +
+        ' breakout=[' +
+        breakoutStr +
+        ']' +
+        (filter ? ' filter=' + filter : '') +
+        ' run=' +
+        (run || 'none').toString().substring(0, 8) +
+        '... period=' +
+        (period || 'none').toString().substring(0, 8) +
+        '...',
+      req.reqId
+    );
     //serverLog('  curl: curl -s -X POST http://localhost:3000/api/v1/metric-data -H "Content-Type: application/json" -d \'' + JSON.stringify({ run: run, period: period, begin: begin, end: end, source: source, type: type, resolution: resolution, breakout: breakout, filter: filter }) + '\'', req.reqId);
 
     // Use instances from request if provided, otherwise use server's configured instances
@@ -1672,7 +1751,10 @@ app.post('/api/v1/metric-data', async (req, res) => {
 
     var labelCount = metric_data && metric_data.values ? Object.keys(metric_data.values).length : 0;
     var elapsed = Date.now() - reqStart;
-    serverLog('POST /api/v1/metric-data: ' + source + '::' + type + ' -> ' + labelCount + ' label(s) in ' + elapsed + 'ms', req.reqId);
+    serverLog(
+      'POST /api/v1/metric-data: ' + source + '::' + type + ' -> ' + labelCount + ' label(s) in ' + elapsed + 'ms',
+      req.reqId
+    );
 
     // Return the data
     res.json(metric_data);
