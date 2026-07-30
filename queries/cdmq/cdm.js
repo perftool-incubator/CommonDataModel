@@ -414,7 +414,7 @@ indexDefs['v8dev']['metric_data']['mappings']['properties']['metric_data'] = {
 };
 indexDefs['v9dev']['metric_data'] = deepClone(indexDefs['v8dev']['metric_data']);
 
-// v10dev: adds default-aggregation field to metric_desc for per-metric aggregation control
+// v10dev inherits default-aggregation from v9dev via deep clone
 indexDefs['v10dev']['run_micro'] = deepClone(indexDefs['v9dev']['run_micro']);
 indexDefs['v10dev']['run'] = deepClone(indexDefs['v9dev']['run']);
 indexDefs['v10dev']['tag'] = deepClone(indexDefs['v9dev']['tag']);
@@ -423,9 +423,6 @@ indexDefs['v10dev']['param'] = deepClone(indexDefs['v9dev']['param']);
 indexDefs['v10dev']['sample'] = deepClone(indexDefs['v9dev']['sample']);
 indexDefs['v10dev']['period'] = deepClone(indexDefs['v9dev']['period']);
 indexDefs['v10dev']['metric_desc'] = deepClone(indexDefs['v9dev']['metric_desc']);
-indexDefs['v10dev']['metric_desc']['mappings']['properties']['metric_desc']['properties']['default-aggregation'] = {
-  type: 'keyword'
-};
 indexDefs['v10dev']['metric_def'] = deepClone(indexDefs['v9dev']['metric_def']);
 indexDefs['v10dev']['metric_data'] = deepClone(indexDefs['v9dev']['metric_data']);
 
@@ -633,7 +630,8 @@ function getDocType(index) {
     }
   }
 
-  if (cdmVer == 'v9dev' || cdmVer == 'v10dev') {
+  // v9dev+ uses cdm-{ver}-{doctype}@{year}.{month} format
+  if (isValidCdmVersion(cdmVer)) {
     var regExp = /^cdm-v\d+dev-([^@]+)(@\d\d\d\d\.\d\d|\*)/;
     var matches = regExp.exec(index);
     if (matches) {
@@ -664,7 +662,7 @@ function getIndexBaseName(instance) {
   //debuglog('cdmver: [' + cdmVer + ']');
   if (cdmVer == 'v7dev' || cdmVer == 'v8dev') {
     return 'cdm' + cdmVer + '-';
-  } else if (cdmVer == 'v9dev' || cdmVer == 'v10dev') {
+  } else if (isValidCdmVersion(cdmVer)) {
     // v9dev+ adds a '-' after 'cdm' because of a [lab admin] naming convention
     // used for shared opensearch.  Therefore, you will find that v7dev
     // and v8dev cannot be used for some [lab managed] opensearch instances with
@@ -3457,12 +3455,26 @@ getDefaultAggregation = function (instance, run, source, type, yearDotMonth) {
       }
     }
   };
+  var validAggregations = ['sum', 'avg', 'max', 'min'];
   var resp = esRequest(instance, 'metric_desc', '/_search', q, yearDotMonth);
   var data = JSON.parse(resp.getBody());
   if (data.hits && data.hits.hits && data.hits.hits.length > 0) {
     var md = data.hits.hits[0]._source.metric_desc;
     if (md && md['default-aggregation']) {
-      return md['default-aggregation'];
+      var agg = md['default-aggregation'];
+      if (!validAggregations.includes(agg)) {
+        console.log(
+          'WARNING: metric_desc for ' +
+            source +
+            '::' +
+            type +
+            ' has unrecognized default-aggregation "' +
+            agg +
+            '", falling back to sum'
+        );
+        return 'sum';
+      }
+      return agg;
     }
   }
   return 'sum';
