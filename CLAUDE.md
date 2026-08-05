@@ -32,9 +32,10 @@ Defines a unified data model for storing and querying performance test data in O
 Supporting document types: `param`, `tag`, `config_*`
 
 ## Versioning
-- Versions tracked as git branches and in `VERSION` file (currently `v8dev`)
-- `cdm.js` exports `supportedCdmVersions` array: `['v7dev', 'v8dev', 'v9dev']`
-- Index naming pattern: `cdm{VERSION}-{DOCTYPE}*` (e.g., `cdmv8dev-metric_data*`)
+- Versions tracked as git branches and in `VERSION` file (currently `v10dev`)
+- `cdm.js` exports `supportedCdmVersions` array: `['v7dev', 'v8dev', 'v9dev', 'v10dev']`
+- Index naming pattern: `cdm{VERSION}-{DOCTYPE}*` (e.g., `cdmv10dev-metric_data*`)
+- v10dev's key addition is `default-aggregation` — a per-metric field on `metric_desc` (`sum`/`avg`/`max`/`min`) telling query-time aggregation how to combine values across breakout dimensions, instead of always duration-weighted summing
 
 ## Templates (`templates/`)
 - `.base` files define index mappings for each document type
