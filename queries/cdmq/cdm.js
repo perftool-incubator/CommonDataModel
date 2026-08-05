@@ -157,6 +157,12 @@ indexDefs['v8dev']['run'] = {
   }
 };
 indexDefs['v9dev']['run'] = deepClone(indexDefs['v8dev']['run']);
+indexDefs['v9dev']['run']['mappings']['properties']['run']['properties']['partial'] = {
+  type: 'boolean'
+};
+indexDefs['v9dev']['run']['mappings']['properties']['run']['properties']['dropped-engines'] = {
+  type: 'keyword'
+};
 
 // both tag and iteration start with the run mapping
 indexDefs['v8dev']['tag'] = deepClone(indexDefs['v8dev']['run']);
