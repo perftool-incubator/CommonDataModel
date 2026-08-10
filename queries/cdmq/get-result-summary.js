@@ -202,6 +202,23 @@ async function main() {
     thisRun['run-id'] = runId;
     thisRun['iterations'] = [];
 
+    // Fetch partial-run status
+    var partialResp;
+    try {
+      partialResp = await apiGet(baseUrl, runPrefix + '/partial-status');
+    } catch (error) {
+      console.error('Error fetching partial-run status for run ' + runId + ': ' + error.message);
+      process.exit(1);
+    }
+    thisRun['partial'] = partialResp.partial;
+    thisRun['dropped-engines'] = partialResp['dropped-engines'];
+    if (partialResp.partial) {
+      logOutput(
+        '  partial: yes (' + partialResp['dropped-engines'].length + ' engine(s) dropped)',
+        program.outputFormat
+      );
+    }
+
     // Fetch tags
     var tagsResp;
     try {

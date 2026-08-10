@@ -380,6 +380,27 @@ app.get('/api/v1/run/:id/benchmark', resolveRun, async (req, res) => {
 });
 
 // --------------------------------------------------------------------------------------------------------------
+// GET /api/v1/run/:id/partial-status — get partial-run/dropped-engines status for a run
+// --------------------------------------------------------------------------------------------------------------
+app.get('/api/v1/run/:id/partial-status', resolveRun, async (req, res) => {
+  try {
+    const { instance, yearDotMonth, runId } = req.cdm;
+    var runDataArr = await cdm.getRunData(instance, runId, yearDotMonth);
+    var runData = (runDataArr && runDataArr[0]) || {};
+    var partial = (runData.run && runData.run.partial) || false;
+    var droppedEngines = (runData.run && runData.run['dropped-engines']) || [];
+    serverLog('[' + Date.now() + '] GET /api/v1/run/' + runId + '/partial-status returned partial=' + partial);
+    res.json({ partial: partial, 'dropped-engines': droppedEngines });
+  } catch (error) {
+    serverError('Error in GET /api/v1/run/:id/partial-status:', error);
+    res.status(500).json({
+      code: 'INTERNAL_ERROR',
+      error: 'Failed to get partial-run status: ' + error.message
+    });
+  }
+});
+
+// --------------------------------------------------------------------------------------------------------------
 // GET /api/v1/run/:id/iterations — get iteration UUIDs for a run
 // --------------------------------------------------------------------------------------------------------------
 app.get('/api/v1/run/:id/iterations', resolveRun, async (req, res) => {
