@@ -41,6 +41,7 @@ Supporting document types: `param`, `tag`, `config_*`
 - `.base` files define index mappings for each document type
 - `build.sh` / `Makefile` generate actual template commands
 - `init.sh` initializes the OpenSearch indices
+- All indices are `"dynamic": "strict"` — every `metric_desc.names` breakout dimension a tool/benchmark might emit must be pre-registered as an explicit `keyword`/`double` field in `metric_desc.base`, or indexing rejects it. `dynamic_templates` do NOT provide an exception to this (verified empirically) — a field matching a `dynamic_templates` glob is rejected exactly like any other unregistered field under `"dynamic": "strict"`. A dimension family with an unbounded/platform-dependent set of names (e.g. one field per CPU cache level) still needs each concrete name registered explicitly (e.g. `shared-l1-domain` .. `shared-l4-domain`) rather than a wildcard shortcut.
 
 ## Code Style
 - JavaScript: Prettier formatting enforced (2-space indent, checked in CI via `cdm-ci.yaml`)
