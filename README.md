@@ -7,14 +7,15 @@ Our Data is the problem.  When it comes to performance benchmarking, or just mon
 We can define a common way to store information about our environment, our performance tests (if any), and metrics and events we collect.  Having a common way to process this information allows us to query, summarize, and visualize performance data across many situations, from comparing compiler performance to identifying bottlenecks in large cloud deployments.
 ### What This Project Includes
 We provide enough information so that anyone can start storing and querying this data in a common way:
-* OpenSearch index templates
+* OpenSearch index mapping definitions (`queries/cdmq/cdm.js`)
 * A Node.js query library and HTTP query server (`queries/cdmq/`)
 ### What This Project Does Not Include
 * data conversion scripts: conversion of data is expected to be in the other projects, for example: [uperf-post-process](https://github.com/perftool-incubator/bench-uperf/blob/master/uperf-post-process)
 * data indexing scripts: indexing of data is also expected to be in other projects, for example: [rickshaw-index](https://github.com/perftool-incubator/rickshaw/blob/master/rickshaw-index)
 ## Directory/Layout
 [./templates](./templates)
-OpenSearch index templates and management scripts (init, build, delete).
+`delete.sh`, a destructive OpenSearch index cleanup script. Index mapping
+definitions themselves live in `queries/cdmq/cdm.js`, not here.
 
 [./queries](./queries)
 The `cdmq` query implementation, built on Node.js.  Includes a core query library (`cdm.js`), command-line query scripts, and an HTTP server (`server.js`) that exposes CDM queries as REST endpoints.

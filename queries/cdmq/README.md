@@ -5,12 +5,12 @@
 [Node.js](https://nodejs.org) and npm must be installed. Dependencies are installed automatically when you run any of the shell wrapper scripts (e.g., `get-result-summary.sh`). You can also install them manually:
 
 ```bash
-./setup.sh
+npm install
 ```
 
 ## Introduction
 
-The contents of this directory contain a collection of scripts in Javascript intended to be executed with [node.js](https://nodejs.org). These scripts get data from an OpenSearch instance. The data must be in Common Data Format. which is documented in this project under [templates](../templates). The scripts here are meant to help inspect, compare, and export data from benchmarks and performance & resource-utilization tools, in order to report and investigate performance.
+The contents of this directory contain a collection of scripts in Javascript intended to be executed with [node.js](https://nodejs.org). These scripts get data from an OpenSearch instance. The data must be in Common Data Format, whose index mapping definitions are documented in [cdm.js](./cdm.js)'s `indexDefs` object. The scripts here are meant to help inspect, compare, and export data from benchmarks and performance & resource-utilization tools, in order to report and investigate performance.
 
 In order to generate this data, you must run a benchmark via automation framework which uses the Common Data Format and index that data into OpenSearch. One of those automation frameworks is the [crucible](https://github.com/perftool-incubator/crucible) project. A subproject of crucible, [crucible-examples](https://github.com/perftool-incubator/crucible-examples), includes scenarios to run some of these benchmarks.
 
