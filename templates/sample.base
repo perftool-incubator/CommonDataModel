@@ -1,8 +1,0 @@
-          "sample": {
-            "properties": {
-              "sample-uuid": { "type": "keyword" },
-              "num": { "type": "unsigned_long" },
-              "status": { "type": "keyword" },
-              "path": { "type": "keyword" }
-            }
-          },

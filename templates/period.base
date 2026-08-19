@@ -1,9 +1,0 @@
-          "period": {
-            "properties": {
-              "period-uuid" : { "type": "keyword" },
-              "begin" : { "type" : "date" },
-              "end" : { "type" : "date" },
-              "name" : { "type": "keyword" },
-              "prev_id" : { "type": "keyword" }
-            }
-          },
