@@ -1,7 +1,0 @@
-        "tag": {
-          "properties": {
-            "tag-uuid": { "type": "keyword" },
-            "name": { "type": "keyword" },
-            "val": { "type": "keyword" }
-          }
-        },

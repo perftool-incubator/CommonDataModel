@@ -1,5 +1,0 @@
-        "run": {
-          "properties": {
-            "run-uuid": { "type": "keyword" }
-          }
-        }
