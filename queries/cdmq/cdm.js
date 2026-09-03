@@ -4036,8 +4036,7 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
           sets[idx].type +
           ']';
         if (classes) retMsg += ' (metric class: ' + classes + ')';
-        retMsg +=
-          '. Use allow-incompatible-aggregation to run this query when the combination is intentional.';
+        retMsg += '. Use allow-incompatible-aggregation to run this query when the combination is intentional.';
         return { 'ret-code': 4, 'ret-msg': retMsg, code: 'INCOMPATIBLE_AGGREGATION' };
       }
     }
