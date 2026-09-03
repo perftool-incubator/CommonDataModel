@@ -1659,6 +1659,7 @@ app.post('/api/v1/metric-data', async (req, res) => {
       'breakout',
       'filter',
       'aggregation',
+      'allow-incompatible-aggregation',
       'instances'
     ];
     var fieldErr = validateBodyFields(req.body, knownFields);
@@ -1676,6 +1677,7 @@ app.post('/api/v1/metric-data', async (req, res) => {
       breakout,
       filter,
       aggregation,
+      'allow-incompatible-aggregation': allowIncompatibleAggregation,
       instances: reqInstances
     } = req.body;
 
@@ -1781,12 +1783,13 @@ app.post('/api/v1/metric-data', async (req, res) => {
       resolution: resolution,
       breakout: breakout,
       filter: filter,
-      aggregation: aggregation
+      aggregation: aggregation,
+      allowIncompatibleAggregation: allowIncompatibleAggregation === true
     };
     var resp = await cdm.getMetricDataSets(instance, [set], yearDotMonth);
     if (resp['ret-code'] != 0) {
-      return res.status(500).json({
-        code: 'METRIC_QUERY_FAILED',
+      return res.status(resp.code === 'INCOMPATIBLE_AGGREGATION' ? 400 : 500).json({
+        code: resp.code || 'METRIC_QUERY_FAILED',
         error: resp['ret-msg']
       });
     }

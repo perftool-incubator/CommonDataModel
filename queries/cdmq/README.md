@@ -30,6 +30,14 @@ Many of the scripts refer to different terms we associate with either running a 
 
 ## Scripts
 
+### Aggregation overrides
+
+`--aggregation` overrides a metric's `default-aggregation`. Metric definitions
+may declare combinations that are not meaningful for that metric using
+`metric_desc.disallowed-aggregations`. Such a query returns an error by
+default. Use `--allow-incompatible-aggregation` when the combination is
+intentional and should still be evaluated.
+
 Below are documented most common scripts used for this project. All of these scripts can be run via `node ./script-name.js`, and some have wrapper scripts `script-name.sh` which provide the casual user a more convenient invocation. If you are using [crucible](https://github.com/perftool-incubator/crucible), it may provide an alternative way to use this script (documented in each script subsection below).
 
 ### get-result-summary.js
