@@ -3878,6 +3878,11 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
   var retCode = 0;
   var retMsg = '';
   for (var i = 0; i < sets.length; i++) {
+    // Keep the public request spelling hyphenated while accepting the internal
+    // camelCase form used by the query library during validation.
+    if (isDefined(sets[i]['allow-incompatible-aggregation'])) {
+      sets[i].allowIncompatibleAggregation = sets[i]['allow-incompatible-aggregation'];
+    }
     // If a begin and end are not defined, get it from the period.begin & period.end.
     // If a begin and/or end are not defined, and the period is not defined, error out.
     // If a run is not defined, get it from the period.
