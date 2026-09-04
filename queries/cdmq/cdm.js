@@ -382,6 +382,9 @@ indexDefs['v9dev']['metric_desc'] = deepClone(indexDefs['v8dev']['metric_desc'])
 indexDefs['v9dev']['metric_desc']['mappings']['properties']['metric_desc']['properties']['default-aggregation'] = {
   type: 'keyword'
 };
+indexDefs['v9dev']['metric_desc']['mappings']['properties']['metric_desc']['properties']['disallowed-aggregations'] = {
+  type: 'keyword'
+};
 
 // TODO: add new names for cdmv9
 
@@ -3490,6 +3493,40 @@ getDefaultAggregation = function (instance, run, source, type, yearDotMonth) {
   return 'sum';
 };
 
+// A metric class alone is not sufficient to determine whether an aggregation is
+// meaningful: for example, averaging boolean values can represent the true
+// fraction. Metric producers can explicitly declare only combinations that are
+// invalid for their metric, leaving unusual but intentional overrides to the
+// caller's discretion.
+getDisallowedAggregations = function (instance, run, source, type, yearDotMonth) {
+  var q = {
+    size: 10000,
+    _source: ['metric_desc.class', 'metric_desc.disallowed-aggregations'],
+    query: {
+      bool: {
+        filter: [
+          { term: { 'run.run-uuid': run } },
+          { term: { 'metric_desc.source': source } },
+          { term: { 'metric_desc.type': type } }
+        ]
+      }
+    }
+  };
+  var resp = esRequest(instance, 'metric_desc', '/_search', q, yearDotMonth);
+  var data = JSON.parse(resp.getBody());
+  var result = [];
+  if (data.hits && data.hits.hits) {
+    data.hits.hits.forEach((hit) => {
+      var desc = hit._source && hit._source.metric_desc;
+      if (desc && Array.isArray(desc['disallowed-aggregations'])) {
+        result.push({ class: desc.class, aggregations: desc['disallowed-aggregations'] });
+      }
+    });
+  }
+  return result;
+};
+exports.getDisallowedAggregations = getDisallowedAggregations;
+
 // --------------------------------------------------------------------------------------------------------------
 calcAvg = function (
   thisBegin,
@@ -3841,6 +3878,11 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
   var retCode = 0;
   var retMsg = '';
   for (var i = 0; i < sets.length; i++) {
+    // Keep the public request spelling hyphenated while accepting the internal
+    // camelCase form used by the query library during validation.
+    if (isDefined(sets[i]['allow-incompatible-aggregation'])) {
+      sets[i].allowIncompatibleAggregation = sets[i]['allow-incompatible-aggregation'];
+    }
     // If a begin and end are not defined, get it from the period.begin & period.end.
     // If a begin and/or end are not defined, and the period is not defined, error out.
     // If a run is not defined, get it from the period.
@@ -3971,6 +4013,39 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
     return { 'ret-code': retCode, 'ret-msg': retMsg };
   }
   var metricGroupIdsByLabelSets = resp['metric-id-sets'];
+
+  // Reject only combinations explicitly declared invalid by the metric
+  // definition. A caller can bypass this check when the unusual aggregation
+  // is intentional.
+  for (var idx = 0; idx < sets.length; idx++) {
+    if (sets[idx].aggregation && !sets[idx].allowIncompatibleAggregation) {
+      var disallowed = getDisallowedAggregations(
+        instance,
+        sets[idx].run,
+        sets[idx].source,
+        sets[idx].type,
+        yearDotMonth
+      );
+      var invalid = disallowed.filter((entry) => entry.aggregations.includes(sets[idx].aggregation));
+      if (invalid.length > 0) {
+        var classes = invalid
+          .map((entry) => entry.class)
+          .filter((value, position, values) => value && values.indexOf(value) === position)
+          .join(', ');
+        retMsg =
+          'ERROR: aggregation [' +
+          sets[idx].aggregation +
+          '] is disallowed for [' +
+          sets[idx].source +
+          '::' +
+          sets[idx].type +
+          ']';
+        if (classes) retMsg += ' (metric class: ' + classes + ')';
+        retMsg += '. Use allow-incompatible-aggregation to run this query when the combination is intentional.';
+        return { 'ret-code': 4, 'ret-msg': retMsg, code: 'INCOMPATIBLE_AGGREGATION' };
+      }
+    }
+  }
 
   // Check if any regex filters resulted in zero matches
   for (var idx = 0; idx < metricGroupIdsByLabelSets.length; idx++) {

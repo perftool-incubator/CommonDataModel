@@ -32,6 +32,14 @@ Many of the scripts refer to different terms we associate with either running a 
 
 Below are documented most common scripts used for this project. All of these scripts can be run via `node ./script-name.js`, and some have wrapper scripts `script-name.sh` which provide the casual user a more convenient invocation. If you are using [crucible](https://github.com/perftool-incubator/crucible), it may provide an alternative way to use this script (documented in each script subsection below).
 
+### Aggregation overrides
+
+`--aggregation` overrides a metric's `default-aggregation`. Metric definitions
+may declare combinations that are not meaningful for that metric using
+`metric_desc.disallowed-aggregations`. Such a query returns an error by
+default. Use `--allow-incompatible-aggregation` when the combination is
+intentional and should still be evaluated.
+
 ### get-result-summary.js
 
 This script produces a summary of a single run., including tags, metrics present, as well as all the iterations and their samples. To run this script, you must specify a run-id: `node ./get-result-summary.js --run 0bda53c3-f0b2-416a-be54-cee738b75010`. If you are using the crucible project, you will likely be using the crucible command-line `crucible get result --run 0bda53c3-f0b2-416a-be54-cee738b75010`. In this example, the following output is produced:

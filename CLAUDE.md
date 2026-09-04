@@ -35,7 +35,7 @@ Supporting document types: `param`, `tag`, `config_*`
 - Versions tracked as git branches and in `VERSION` file (currently `v10dev`)
 - `cdm.js` exports `supportedCdmVersions` array: `['v7dev', 'v8dev', 'v9dev', 'v10dev']`
 - Index naming pattern: `cdm{VERSION}-{DOCTYPE}*` (e.g., `cdmv10dev-metric_data*`)
-- v10dev's key addition is `default-aggregation` — a per-metric field on `metric_desc` (`sum`/`avg`/`max`/`min`) telling query-time aggregation how to combine values across breakout dimensions, instead of always duration-weighted summing
+- v10dev's key addition is `default-aggregation` — a per-metric field on `metric_desc` (`sum`/`avg`/`max`/`min`) telling query-time aggregation how to combine values across breakout dimensions, instead of always duration-weighted summing. Metric definitions may also provide `disallowed-aggregations` for combinations that are not meaningful for that specific metric.
 
 ## Templates (`templates/`)
 - Index mappings for every document type are defined in `queries/cdmq/cdm.js`'s `indexDefs` object (`v8dev` hand-written, `v9dev`/`v10dev` built forward via `deepClone`). This is the only live schema — `add-run.js`'s `checkCreateIndex()`/`updateIndexMappings()` use it to create/update OpenSearch indices, and also use it as a client-side validation gate, rejecting any document field not present in it before the document is ever sent to OpenSearch.

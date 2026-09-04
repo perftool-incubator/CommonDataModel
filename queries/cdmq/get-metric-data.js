@@ -163,6 +163,10 @@ async function main() {
       '[optional] Filter out (do not output) metrics which do not pass the conditional.  gt=greater-than, ge=greater-than-or-equal, lt=less-than, le=less-than-or-equal'
     )
     .option('--aggregation <sum|avg|max|min>', '[optional] Override the default aggregation method for this query')
+    .option(
+      '--allow-incompatible-aggregation',
+      '[optional] Allow an aggregation explicitly disallowed by the metric definition'
+    )
     .option('--output-format <json|table|csv>', 'table')
     .option(
       '--date-format <default|epoch_ms>',
@@ -208,6 +212,7 @@ async function main() {
     breakout: program.breakout, // Send as array to preserve complex breakout syntax
     filter: program.filter,
     aggregation: program.aggregation,
+    'allow-incompatible-aggregation': program.allowIncompatibleAggregation,
     instances: program.instances.length > 0 ? program.instances : undefined
   };
 
