@@ -78,7 +78,7 @@ test('rejects gaps and overlaps', () => {
         0,
         4
       ),
-    /has a gap/
+    (error) => error.code === 'NATIVE_STATS_DATA_QUALITY' && /has a gap/.test(error.message)
   );
   assert.throws(
     () =>
@@ -92,7 +92,7 @@ test('rejects gaps and overlaps', () => {
         0,
         4
       ),
-    /overlapping intervals/
+    (error) => error.code === 'NATIVE_STATS_DATA_QUALITY' && /overlapping intervals/.test(error.message)
   );
 });
 

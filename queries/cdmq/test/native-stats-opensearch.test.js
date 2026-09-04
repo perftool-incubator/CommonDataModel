@@ -64,6 +64,46 @@ test('streams PIT pages and closes the PIT', async () => {
   assert.equal(requests.at(-1).method, 'DELETE');
 });
 
+test('stops pagination after a short final page', async () => {
+  const requests = [];
+  const bodies = [
+    { pit_id: 'pit-short' },
+    {
+      hits: {
+        total: { value: 1, relation: 'eq' },
+        hits: [
+          {
+            sort: [0, 4, 'a'],
+            fields: {
+              'metric_desc.metric_desc-uuid': ['a'],
+              'metric_data.begin': [0],
+              'metric_data.end': [4],
+              'metric_data.value': [10]
+            }
+          }
+        ]
+      }
+    },
+    { succeeded: true }
+  ];
+  const fetchImpl = async (url, request) => {
+    requests.push({ method: request.method, url, request: JSON.parse(request.body || '{}') });
+    return response(bodies.shift());
+  };
+
+  const stats = await getNativeMetricStats({ host: 'opensearch.example' }, ['a'], 0, 4, 'sum', ['mean'], '@2026.09', {
+    fetch: fetchImpl,
+    indexName: 'metric_data',
+    pageSize: 2
+  });
+
+  assert.deepEqual(stats, { mean: 10 });
+  assert.deepEqual(
+    requests.map((request) => request.method),
+    ['POST', 'POST', 'DELETE']
+  );
+});
+
 test('closes the PIT when the document limit is exceeded', async () => {
   const methods = [];
   const fetchImpl = async (url, request) => {

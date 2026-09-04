@@ -4034,7 +4034,7 @@ async function getNativeMetricStats(
         });
       });
 
-      if (hits.length === 0) break;
+      if (hits.length < pageSize) break;
       searchAfter = hits[hits.length - 1].sort;
       if (!searchAfter) throw new Error('OpenSearch response did not include sort values for search_after');
       firstPage = false;

@@ -2,7 +2,7 @@
 
 const VALID_AGGREGATIONS = new Set(['sum', 'avg', 'min', 'max']);
 
-function fail(message, code) {
+function fail(message, code = 'NATIVE_STATS_DATA_QUALITY') {
   const error = new Error('Invalid metric timeline: ' + message);
   if (code) error.code = code;
   throw error;

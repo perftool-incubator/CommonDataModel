@@ -1847,7 +1847,12 @@ app.post('/api/v1/metric-data', async (req, res) => {
     res.status(status).json({
       code: error.code || 'INTERNAL_ERROR',
       error:
-        ['NATIVE_STATS_CONFIG', 'NATIVE_STATS_LIMIT', 'NATIVE_STATS_PIT_UNSUPPORTED'].includes(error.code)
+        [
+          'NATIVE_STATS_CONFIG',
+          'NATIVE_STATS_DATA_QUALITY',
+          'NATIVE_STATS_LIMIT',
+          'NATIVE_STATS_PIT_UNSUPPORTED'
+        ].includes(error.code)
           ? error.message
           : 'Internal server error while fetching metric data',
       details: error.message
