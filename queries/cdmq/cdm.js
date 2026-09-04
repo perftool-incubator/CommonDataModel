@@ -1,7 +1,20 @@
 //# vim: autoindent tabstop=2 shiftwidth=2 expandtab softtabstop=2 filetype=javascript
 var request = require('sync-request');
 var thenRequest = require('then-request');
+const { calculateDistributionStats, reconstructTimeline, resampleTimeline, validateRequestedStats } = require('./native-stats');
 var bigQuerySize = 262144;
+
+function nativeStatsLimit(name, fallback) {
+  const value = process.env[name];
+  if (typeof value === 'undefined') return fallback;
+  const limit = Number(value);
+  if (!Number.isSafeInteger(limit) || limit <= 0) {
+    const error = new Error(name + ' must be a positive integer');
+    error.code = 'NATIVE_STATS_CONFIG';
+    throw error;
+  }
+  return limit;
+}
 const docTypes = {
   v7dev: ['run', 'tag', 'iteration', 'param', 'sample', 'period', 'metric_desc', 'metric_data'],
   v8dev: ['run', 'tag', 'iteration', 'param', 'sample', 'period', 'metric_desc', 'metric_data'],
@@ -3699,6 +3712,44 @@ getMetricDataFromIdsSets = async function (instance, sets, metricGroupIdsByLabel
     // Each template has prefix/suffix pairs for the 4 query types,
     // with __IDS__ as placeholder for the metric UUID list.
     var defaultAggregation = sets[idx].defaultAggregation || 'sum';
+
+    // When native statistics are requested, use the reconstructed timeline for
+    // both the output series and the statistics. This avoids running the legacy
+    // resolution query and then fetching the same documents again for stats.
+    if (sets[idx].distributionStats) {
+      valueSets[idx] = { distributionStats: {} };
+      const nativeIndexName = getIndexName('metric_data', instance, yearDotMonth);
+      const sortedNativeLabels = Object.keys(metricGroupIdsByLabelSets[idx]).sort();
+      const nativeStatsConcurrency = 4;
+      for (let nativeStart = 0; nativeStart < sortedNativeLabels.length; nativeStart += nativeStatsConcurrency) {
+        const nativeLabels = sortedNativeLabels.slice(nativeStart, nativeStart + nativeStatsConcurrency);
+        const nativeResults = await Promise.all(
+          nativeLabels.map(async (label) => {
+            const native = await getNativeMetricStats(
+              instance,
+              metricGroupIdsByLabelSets[idx][label],
+              begin,
+              end,
+              defaultAggregation,
+              sets[idx].distributionStats,
+              yearDotMonth,
+              { includeTimeline: true, indexName: nativeIndexName }
+            );
+            return {
+              label: label,
+              values: resampleTimeline(native.timeline, begin, end, resolution, defaultAggregation),
+              stats: native.stats
+            };
+          })
+        );
+        nativeResults.forEach((result) => {
+          valueSets[idx][result.label] = result.values;
+          valueSets[idx].distributionStats[result.label] = result.stats;
+        });
+      }
+      continue;
+    }
+
     var timeRangeTemplates = [];
     var thisBegin = begin;
     var thisEnd = begin + duration;
@@ -3860,6 +3911,157 @@ getMetricDataFromIdsSets = async function (instance, sets, metricGroupIdsByLabel
 };
 
 exports.getMetricDataFromIdsSets = getMetricDataFromIdsSets;
+
+// Stream the documents needed to reconstruct one native aggregate timeline.
+// This is deliberately separate from getMetricDataFromIdsSets(): resolution
+// bucketing can use aggregations, while native statistics must see every
+// boundary where any selected metric ID changes value.
+async function getNativeMetricStats(
+  instance,
+  metricIds,
+  begin,
+  end,
+  aggregation,
+  requestedStats,
+  yearDotMonth,
+  options = {}
+) {
+  validateRequestedStats(requestedStats);
+  const maxDocuments = options.maxDocuments || nativeStatsLimit('CDM_NATIVE_STATS_MAX_DOCUMENTS', 250000);
+  const maxIntervals = options.maxIntervals || nativeStatsLimit('CDM_NATIVE_STATS_MAX_INTERVALS', 500000);
+  const maxRuntimeMs = options.maxRuntimeMs || nativeStatsLimit('CDM_NATIVE_STATS_MAX_RUNTIME_MS', 300000);
+  const pageSize = options.pageSize || nativeStatsLimit('CDM_NATIVE_STATS_PAGE_SIZE', 1000);
+  const indexName = options.indexName || getIndexName('metric_data', instance, yearDotMonth);
+  const baseUrl = 'http://' + instance.host;
+  const headers = instance.header || { 'Content-Type': 'application/json' };
+  const fetchImpl = options.fetch || fetch;
+  let pitId;
+  const deadline = Date.now() + maxRuntimeMs;
+
+  async function send(method, url, body) {
+    const response = await fetchImpl(url, {
+      method: method,
+      headers: headers,
+      body: body === undefined ? undefined : JSON.stringify(body)
+    });
+    if (!response.ok) {
+      throw new Error('OpenSearch request failed with HTTP status ' + response.status);
+    }
+    return response.json();
+  }
+
+  try {
+    let pit;
+    try {
+      pit = await send('POST', baseUrl + '/' + indexName + '/_search/point_in_time?keep_alive=1m', {});
+    } catch (error) {
+      error.code = 'NATIVE_STATS_PIT_UNSUPPORTED';
+      error.message = 'native distribution statistics require OpenSearch Point-in-Time search support: ' + error.message;
+      throw error;
+    }
+    pitId = pit.pit_id || pit.id;
+    if (!pitId) {
+      const error = new Error('OpenSearch did not return a point-in-time ID');
+      error.code = 'NATIVE_STATS_PIT_UNSUPPORTED';
+      throw error;
+    }
+
+    const documentsById = {};
+    let searchAfter;
+    let documentCount = 0;
+    let firstPage = true;
+    while (true) {
+      if (Date.now() > deadline) {
+        const error = new Error('native distribution statistics processing time limit exceeded');
+        error.code = 'NATIVE_STATS_LIMIT';
+        throw error;
+      }
+      const query = {
+        size: pageSize,
+        track_total_hits: firstPage ? maxDocuments + 1 : false,
+        pit: { id: pitId, keep_alive: '1m' },
+        sort: [
+          { 'metric_data.begin': 'asc' },
+          { 'metric_data.end': 'asc' },
+          { 'metric_desc.metric_desc-uuid': 'asc' }
+        ],
+        docvalue_fields: [
+          { field: 'metric_desc.metric_desc-uuid' },
+          { field: 'metric_data.begin', format: 'epoch_millis' },
+          { field: 'metric_data.end', format: 'epoch_millis' },
+          { field: 'metric_data.value' }
+        ],
+        _source: false,
+        query: {
+          bool: {
+            filter: [
+              { range: { 'metric_data.end': { gte: begin } } },
+              { range: { 'metric_data.begin': { lte: end } } },
+              { terms: { 'metric_desc.metric_desc-uuid': metricIds } }
+            ]
+          }
+        }
+      };
+      if (searchAfter) query.search_after = searchAfter;
+
+      const response = await send('POST', baseUrl + '/_search', query);
+      const total = response.hits && response.hits.total;
+      if (firstPage && total && total.value > maxDocuments) {
+        const error = new Error('native distribution statistics document limit exceeded');
+        error.code = 'NATIVE_STATS_LIMIT';
+        throw error;
+      }
+
+      const hits = (response.hits && response.hits.hits) || [];
+      documentCount += hits.length;
+      if (documentCount > maxDocuments) {
+        const error = new Error('native distribution statistics document limit exceeded');
+        error.code = 'NATIVE_STATS_LIMIT';
+        throw error;
+      }
+      hits.forEach((hit) => {
+        const fields = hit.fields || {};
+        const valueOf = (name) => {
+          const values = fields[name];
+          return Array.isArray(values) ? values[0] : values;
+        };
+        const metricId = valueOf('metric_desc.metric_desc-uuid');
+        if (!documentsById[metricId]) documentsById[metricId] = [];
+        documentsById[metricId].push({
+          begin: Number(valueOf('metric_data.begin')),
+          end: Number(valueOf('metric_data.end')),
+          value: Number(valueOf('metric_data.value'))
+        });
+      });
+
+      if (hits.length === 0) break;
+      searchAfter = hits[hits.length - 1].sort;
+      if (!searchAfter) throw new Error('OpenSearch response did not include sort values for search_after');
+      firstPage = false;
+    }
+
+    metricIds.forEach((metricId) => {
+      if (!documentsById[metricId]) {
+        const error = new Error('native distribution statistics missing metric ID ' + metricId);
+        error.code = 'NATIVE_STATS_DATA_QUALITY';
+        throw error;
+      }
+    });
+    const timeline = reconstructTimeline(documentsById, Number(begin), Number(end), aggregation, { maxIntervals });
+    const stats = calculateDistributionStats(timeline, requestedStats);
+    return options.includeTimeline ? { timeline: timeline, stats: stats } : stats;
+  } finally {
+    if (pitId) {
+      try {
+        await send('DELETE', baseUrl + '/_search/point_in_time', { pit_id: pitId });
+      } catch (error) {
+        console.error('Failed to close OpenSearch point-in-time: ' + error.message);
+      }
+    }
+  }
+}
+
+exports.getNativeMetricStats = getNativeMetricStats;
 
 // --------------------------------------------------------------------------------------------------------------
 // Generates 1 or more values for 1 or more groups for a metric of a particular source
@@ -4111,13 +4313,15 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
 
   for (var i = 0; i < sets.length; i++) {
     // Rearrange the actual data into 'values' section
-    Object.keys(dataSets[i]).forEach((label) => {
+    Object.keys(dataSets[i])
+      .filter((label) => label !== 'distributionStats')
+      .forEach((label) => {
       if (isUndefined(dataSets[i].values)) {
         dataSets[i].values = {};
       }
       dataSets[i].values[label] = dataSets[i][label];
       delete dataSets[i][label];
-    });
+      });
     // Build the label-decoder and the remaining breakouts
     dataSets[i].usedBreakouts = sets[i].breakout;
     dataSets[i].valueSeriesLabelDecoder = '';
@@ -4148,6 +4352,7 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
           )
         ) {
           delete dataSets[i].values[metric];
+          if (dataSets[i].distributionStats) delete dataSets[i].distributionStats[metric];
         }
       });
     }

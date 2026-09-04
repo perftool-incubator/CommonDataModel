@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const app = express();
 const cdm = require('./cdm');
+const { validateRequestedStats } = require('./native-stats');
 const PORT = process.env.PORT || 3000;
 const { Command } = require('commander');
 const program = new Command();
@@ -1659,6 +1660,7 @@ app.post('/api/v1/metric-data', async (req, res) => {
       'breakout',
       'filter',
       'aggregation',
+      'distribution-stats',
       'allow-incompatible-aggregation',
       'instances'
     ];
@@ -1677,6 +1679,7 @@ app.post('/api/v1/metric-data', async (req, res) => {
       breakout,
       filter,
       aggregation,
+      'distribution-stats': distributionStats,
       'allow-incompatible-aggregation': allowIncompatibleAggregation,
       instances: reqInstances
     } = req.body;
@@ -1687,6 +1690,32 @@ app.post('/api/v1/metric-data', async (req, res) => {
         code: 'INVALID_AGGREGATION',
         error: "Invalid aggregation '" + aggregation + "'. Must be one of: " + validAggregations.join(', ')
       });
+    }
+
+    if (typeof distributionStats === 'string') {
+      distributionStats = distributionStats
+        .split(',')
+        .map((stat) => stat.trim())
+        .filter(Boolean);
+    }
+    if (typeof distributionStats !== 'undefined' && !Array.isArray(distributionStats)) {
+      return res.status(400).json({
+        code: 'INVALID_DISTRIBUTION_STATS',
+        error: 'distribution-stats must be an array or comma-separated string'
+      });
+    }
+    if (Array.isArray(distributionStats) && distributionStats.length === 0) {
+      return res.status(400).json({
+        code: 'INVALID_DISTRIBUTION_STATS',
+        error: 'distribution-stats must contain at least one statistic'
+      });
+    }
+    if (Array.isArray(distributionStats)) {
+      try {
+        validateRequestedStats(distributionStats);
+      } catch (error) {
+        return res.status(400).json({ code: 'INVALID_DISTRIBUTION_STATS', error: error.message });
+      }
     }
 
     var reqStart = Date.now();
@@ -1784,6 +1813,7 @@ app.post('/api/v1/metric-data', async (req, res) => {
       breakout: breakout,
       filter: filter,
       aggregation: aggregation,
+      distributionStats: distributionStats,
       allowIncompatibleAggregation: allowIncompatibleAggregation === true
     };
     var resp = await cdm.getMetricDataSets(instance, [set], yearDotMonth);
@@ -1806,9 +1836,20 @@ app.post('/api/v1/metric-data', async (req, res) => {
     res.json(metric_data);
   } catch (error) {
     serverError('Error in /api/v1/metric-data:', error);
-    res.status(500).json({
-      code: 'INTERNAL_ERROR',
-      error: 'Internal server error while fetching metric data',
+    const status =
+      error.code === 'NATIVE_STATS_LIMIT'
+        ? 413
+        : error.code === 'NATIVE_STATS_DATA_QUALITY'
+          ? 422
+          : error.code === 'NATIVE_STATS_PIT_UNSUPPORTED'
+            ? 501
+            : 500;
+    res.status(status).json({
+      code: error.code || 'INTERNAL_ERROR',
+      error:
+        ['NATIVE_STATS_CONFIG', 'NATIVE_STATS_LIMIT', 'NATIVE_STATS_PIT_UNSUPPORTED'].includes(error.code)
+          ? error.message
+          : 'Internal server error while fetching metric data',
       details: error.message
     });
   }

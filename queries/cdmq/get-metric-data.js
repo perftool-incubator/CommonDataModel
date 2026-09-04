@@ -164,6 +164,11 @@ async function main() {
     )
     .option('--aggregation <sum|avg|max|min>', '[optional] Override the default aggregation method for this query')
     .option(
+      '--distribution-stats <stat1,stat2,...>',
+      '[optional] Return duration-weighted native-timeline statistics (min,max,mean,median,stddev,pNN)',
+      (value) => value.split(',').map((stat) => stat.trim()).filter(Boolean)
+    )
+    .option(
       '--allow-incompatible-aggregation',
       '[optional] Allow an aggregation explicitly disallowed by the metric definition'
     )
@@ -212,6 +217,7 @@ async function main() {
     breakout: program.breakout, // Send as array to preserve complex breakout syntax
     filter: program.filter,
     aggregation: program.aggregation,
+    'distribution-stats': program.distributionStats,
     'allow-incompatible-aggregation': program.allowIncompatibleAggregation,
     instances: program.instances.length > 0 ? program.instances : undefined
   };
@@ -423,6 +429,19 @@ async function main() {
       }
     }
     console.log(line);
+  }
+
+  if (metric_data.distributionStats && program.outputContent != 'headers') {
+    console.log('\nDistribution statistics (native timeline):');
+    Object.keys(metric_data.distributionStats)
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
+      .forEach((label) => {
+        const stats = metric_data.distributionStats[label];
+        const formatted = Object.keys(stats)
+          .map((stat) => stat + '=' + Number(stats[stat]).toFixed(program.decimalPlaces))
+          .join(' ');
+        console.log('  ' + (label || '<all>') + ': ' + formatted);
+      });
   }
 }
 

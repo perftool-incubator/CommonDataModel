@@ -643,7 +643,7 @@ These endpoints use a `resolveRun` middleware that finds the OpenSearch instance
 - POST `/api/v1/run/:id/iterations/params`, `/primary-metric`, `/samples`, `/primary-period-name`
 - POST `/api/v1/run/:id/samples/statuses`, `/primary-period-id`
 - POST `/api/v1/run/:id/periods/range`, `/metric-types`
-- POST `/api/v1/metric-data`
+- POST `/api/v1/metric-data` (optionally include `distribution-stats` to obtain duration-weighted native-timeline statistics alongside the resolution series)
 
 ---
 

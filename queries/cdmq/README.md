@@ -12,6 +12,10 @@ npm install
 
 The contents of this directory contain a collection of scripts in Javascript intended to be executed with [node.js](https://nodejs.org). These scripts get data from an OpenSearch instance. The data must be in Common Data Format, whose index mapping definitions are documented in [cdm.js](./cdm.js)'s `indexDefs` object. The scripts here are meant to help inspect, compare, and export data from benchmarks and performance & resource-utilization tools, in order to report and investigate performance.
 
+Native distribution statistics use OpenSearch Point-in-Time search with `search_after` for stable deep pagination. The Crucible controller currently ships OpenSearch 3.6.0, which is the tested compatibility target for this feature. Deployments without PIT support receive an explicit `NATIVE_STATS_PIT_UNSUPPORTED` error.
+
+Resource limits are configurable on the CDM server with positive-integer environment variables. Defaults are `CDM_NATIVE_STATS_MAX_DOCUMENTS=250000`, `CDM_NATIVE_STATS_MAX_INTERVALS=500000`, `CDM_NATIVE_STATS_MAX_RUNTIME_MS=300000`, and `CDM_NATIVE_STATS_PAGE_SIZE=1000`. Exceeding a limit returns an error; the server never silently falls back to statistics over resolution buckets.
+
 In order to generate this data, you must run a benchmark via automation framework which uses the Common Data Format and index that data into OpenSearch. One of those automation frameworks is the [crucible](https://github.com/perftool-incubator/crucible) project. A subproject of crucible, [crucible-examples](https://github.com/perftool-incubator/crucible-examples), includes scenarios to run some of these benchmarks.
 
 ## Terms
@@ -486,6 +490,15 @@ node ./get-metric-data.js --period <UUID> --source iostat --type kB-sec --breako
 **Performance Note**: Regex patterns are evaluated by OpenSearch and may be slower than exact value matches for very large datasets. Use them when the flexibility is needed.
 
 So far all of the metrics have been represented as a single value for a specific time period. When `--period` is used, the script finds the begin and end times for this period, which in most cases, has a duration equal to the measurement time in the benchmark itself (around 90 seconds in these examples). One can also specify `--run`, `--begin`, and `--end` instead of `--period`, should they need to focus on a different period of time. However, for benchmark metrics (such as uperf), it is important to limit the begin and end to within the actual measurement period for that sample. Conversely, tool metrics can use a begin and end spanning any time period within the run, as the tool collection tends to run continuously for any particular run. Whatever time period is used, one can also use `--resolution` to divide this time period into multiple data-samples, in order to generate things like line graphs:
+
+The optional `--distribution-stats` option returns duration-weighted statistics over the native reconstructed timeline, independently of `--resolution`. For example:
+
+```bash
+node ./get-metric-data.js --period <UUID> --source uperf --type Gbps \
+  --distribution-stats min,max,mean,median,stddev,p95
+```
+
+This describes variation in the underlying metric over time rather than variation in caller-selected display buckets. The JSON response includes these statistics in `distributionStats`, keyed by breakout label, while the existing `values` response remains unchanged. Native statistics are opt-in because they stream all matching metric documents and are subject to resource limits. Statistics use population standard deviation, duration-weighted nearest-rank percentiles, and `median` is equivalent to `p50`; a single native interval has `stddev=0`.
 
     # node ./get-metric-data.js --period 4F1014D6-AD33-11EC-94E3-ADE96E3275F7 --source sar-net --type L2-Gbps --breakout csid=1,cstype=worker,type=physical,direction=tx,dev --filter gt:0.01 --resolution 10
     Checking for httpd...appears to be running
