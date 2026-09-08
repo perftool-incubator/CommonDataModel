@@ -60,7 +60,8 @@ The UI communicates exclusively with the CDM API server. No direct OpenSearch ac
   "end": 1770958601744,
   "resolution": 1,
   "breakout": ["hostname", "num", "type"],
-  "filter": "gt:0.01"
+  "filter": "gt:0.01",
+  "distribution-stats": ["min", "max", "mean", "median", "stddev", "p95"]
 }
 ```
 
@@ -73,12 +74,25 @@ The UI communicates exclusively with the CDM API server. No direct OpenSearch ac
   },
   "usedBreakouts": ["hostname", "num"],
   "remainingBreakouts": ["type", "core", "package"],
-  "valueSeriesLabelDecoder": "-<hostname>-<num>"
+  "valueSeriesLabelDecoder": "-<hostname>-<num>",
+  "distributionStats": {
+    "<label1>": {
+      "min": 0.42,
+      "max": 0.91,
+      "mean": 0.68,
+      "median": 0.67,
+      "stddev": 0.12,
+      "p95": 0.89
+    }
+  }
 }
 ```
 
 - `resolution=1` returns a single averaged value per label
 - `resolution=N` returns N time-series datapoints per label
+- `distribution-stats` is optional and returns duration-weighted statistics over the native reconstructed timeline, independent of `resolution`
+- Supported statistics are `min`, `max`, `mean`, `median`, `stddev`, and exact duration-weighted `pNN` percentiles such as `p95`
+- `stddev` is population standard deviation, percentiles use duration-weighted nearest rank, `median` is `p50`, and a single native interval has `stddev=0`
 - `breakout` controls grouping dimensions; `remainingBreakouts` shows what's still available
 - Labels encode the breakout values: `<host-1>-<cpu-0>` for breakouts `hostname,num`
 - Values are numeric (e.g., mpstat values are 0.0–1.0 where 1.0 = 100% busy)

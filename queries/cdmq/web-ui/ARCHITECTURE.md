@@ -187,7 +187,7 @@ enabling autocomplete dropdowns in the search UI. All accept optional
 
 | Method | Endpoint | Body | Returns |
 |--------|----------|------|---------|
-| POST | `/api/v1/metric-data` | `{ run, period, source, type, resolution, breakout, filter }` | `{ values, usedBreakouts, remainingBreakouts }` |
+| POST | `/api/v1/metric-data` | `{ run, period, source, type, resolution, breakout, filter, distribution-stats }` | `{ values, usedBreakouts, remainingBreakouts, distributionStats? }` |
 
 ### CDM Library Functions Added (`cdm.js`)
 

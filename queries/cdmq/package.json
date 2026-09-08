@@ -4,7 +4,10 @@
   "description": "Query Utils for Common Data Model",
   "main": "index.js",
   "scripts": {
-    "test": "cdmq"
+    "test": "cdmq",
+    "test:native-stats": "node --test test/native-stats.test.js",
+    "test:native-stats:integration": "node --test test/native-stats-opensearch.test.js",
+    "test:rest": "node --test test/rest-api.test.js"
   },
   "author": "Andrew Theurer",
   "license": "ISC",
