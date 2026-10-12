@@ -2,6 +2,7 @@
 var request = require('sync-request');
 var thenRequest = require('then-request');
 const { calculateDistributionStats, reconstructTimeline, resampleTimeline, validateRequestedStats } = require('./native-stats');
+const { periodScopedMetricDescriptorFilter } = require('./metric-desc-selection');
 var bigQuerySize = 262144;
 
 function nativeStatsLimit(name, fallback) {
@@ -994,7 +995,18 @@ function esRequest(instance, docType, action, q, yearDotMonth) {
 // of http requests.
 // Note: termKeys is a 1D array, while values is a 2D array.
 // termKeys[x] uses list of values from values[x]
-mSearch = async function (instance, index, yearDotMonth, termKeys, values, source, aggs, size, sort) {
+mSearch = async function (
+  instance,
+  index,
+  yearDotMonth,
+  termKeys,
+  values,
+  source,
+  aggs,
+  size,
+  sort,
+  extraFiltersByQuery
+) {
   if (typeof termKeys !== typeof []) return;
   if (typeof values !== typeof []) return;
   var jsonArr = [];
@@ -1017,6 +1029,9 @@ mSearch = async function (instance, index, yearDotMonth, termKeys, values, sourc
       }
 
       if (isDefined(sort)) req.sort = sort;
+    }
+    if (Array.isArray(extraFiltersByQuery) && extraFiltersByQuery[i]) {
+      req.query.bool.filter.push(extraFiltersByQuery[i]);
     }
     // When no term filters were added, set size/sort outside the loop
     if (termKeys.length === 0) {
@@ -1191,7 +1206,10 @@ exports.getSamples = getSamples;
 // find all the metadata names shared among all
 // found metric docs.  These names are what can be
 // used for "breakouts".
-mgetMetricNames = async function (instance, runIds, sources, types, yearDotMonth) {
+mgetMetricNames = async function (instance, runIds, sources, types, yearDotMonth, periodIds) {
+  var periodFilters = Array.isArray(periodIds)
+    ? periodIds.map(periodScopedMetricDescriptorFilter)
+    : undefined;
   return await mSearch(
     instance,
     'metric_desc',
@@ -1199,7 +1217,10 @@ mgetMetricNames = async function (instance, runIds, sources, types, yearDotMonth
     ['run.run-uuid', 'metric_desc.source', 'metric_desc.type'],
     [runIds, sources, types],
     '',
-    { source: { terms: { field: 'metric_desc.names-list', size: bigQuerySize } } }
+    { source: { terms: { field: 'metric_desc.names-list', size: bigQuerySize } } },
+    undefined,
+    undefined,
+    periodFilters
   );
 };
 exports.mgetMetricNames = mgetMetricNames;
@@ -3055,9 +3076,8 @@ mgetMetricIdsFromTerms = async function (instance, termsSets, yearDotMonth) {
           retCode = 1;
           return createResponse(retCode, retMsg, { 'metric-id-sets': metricIdsSets });
         }
-        if (periId != null) {
-          q.query.bool.filter.push(JSON.parse('{"term": {"period.period-uuid": "' + periId + '"}}'));
-        }
+        var periodFilter = periodScopedMetricDescriptorFilter(periId);
+        if (periodFilter) q.query.bool.filter.push(periodFilter);
         if (runId != null) {
           q.query.bool.filter.push(JSON.parse('{"term": {"run.run-uuid": "' + runId + '"}}'));
         }
@@ -3155,9 +3175,8 @@ getMetricGroupsFromBreakouts = async function (instance, sets, yearDotMonth) {
       size: 0
     };
 
-    if (set.period != null) {
-      q.query.bool.filter.push(JSON.parse('{"term": {"period.period-uuid": "' + set.period + '"}}'));
-    }
+    var periodFilter = periodScopedMetricDescriptorFilter(set.period);
+    if (periodFilter) q.query.bool.filter.push(periodFilter);
     if (set.run != null) {
       q.query.bool.filter.push(JSON.parse('{"term": {"run.run-uuid": "' + set.run + '"}}'));
     }
@@ -3467,7 +3486,7 @@ sendMetricReq = async function (
 };
 
 // --------------------------------------------------------------------------------------------------------------
-getDefaultAggregation = function (instance, run, source, type, yearDotMonth) {
+getDefaultAggregation = function (instance, run, source, type, yearDotMonth, periodId) {
   var q = {
     size: 1,
     _source: ['metric_desc.default-aggregation'],
@@ -3481,6 +3500,8 @@ getDefaultAggregation = function (instance, run, source, type, yearDotMonth) {
       }
     }
   };
+  var periodFilter = periodScopedMetricDescriptorFilter(periodId);
+  if (periodFilter) q.query.bool.filter.push(periodFilter);
   var validAggregations = ['sum', 'avg', 'max', 'min'];
   var resp = esRequest(instance, 'metric_desc', '/_search', q, yearDotMonth);
   var data = JSON.parse(resp.getBody());
@@ -3511,7 +3532,7 @@ getDefaultAggregation = function (instance, run, source, type, yearDotMonth) {
 // fraction. Metric producers can explicitly declare only combinations that are
 // invalid for their metric, leaving unusual but intentional overrides to the
 // caller's discretion.
-getDisallowedAggregations = function (instance, run, source, type, yearDotMonth) {
+getDisallowedAggregations = function (instance, run, source, type, yearDotMonth, periodId) {
   var q = {
     size: 10000,
     _source: ['metric_desc.class', 'metric_desc.disallowed-aggregations'],
@@ -3525,6 +3546,8 @@ getDisallowedAggregations = function (instance, run, source, type, yearDotMonth)
       }
     }
   };
+  var periodFilter = periodScopedMetricDescriptorFilter(periodId);
+  if (periodFilter) q.query.bool.filter.push(periodFilter);
   var resp = esRequest(instance, 'metric_desc', '/_search', q, yearDotMonth);
   var data = JSON.parse(resp.getBody());
   var result = [];
@@ -4121,22 +4144,9 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
         return { 'data-sets': [], 'ret-code': retCode, 'ret-msg': retMsg };
       }
     }
-    // In order for all metric queries to work, we must remove the period ID.
-    // Not all metrics have a period associated with them.  Benchmark metrics do,
-    // because they have mulitple periods (one of them being the primaryPeriod) in
-    // which the data is collected.  Since tools run across all benchmark samples,
-    // their data is not attributed to a specific period.
-    //
-    // Note that users often include a period when querying for a tool metric.
-    // This is not because the metric has this period attributed to it.  It is simply
-    // a convenience to limit the metric data to a specific time period.  So, we
-    // will get calls to this function where a period is provided, but the metric desired
-    // will *not* be found if the period ID is used on the query.  Therefore we must
-    // always remove the period ID from each element in the input set.
-    //
-    // Perhaps eventually we can detect if the metric source & type are for a benchmark,
-    // and if so, allow the period ID to remain in the query.
-    delete sets[i].period;
+    // Keep the period for descriptor selection. Period-scoped queries include
+    // descriptors attached to this period and periodless continuous tool metrics,
+    // while excluding descriptors attached to other benchmark periods.
   }
 
   // Rearrange data to call getMetricNames
@@ -4178,7 +4188,15 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
     }
   }
 
-  var setBreakouts = await mgetMetricNames(instance, runIds, sources, types, yearDotMonth);
+  var periodIds = sets.map((set) => set.period);
+  var setBreakouts = await mgetMetricNames(
+    instance,
+    runIds,
+    sources,
+    types,
+    yearDotMonth,
+    periodIds
+  );
 
   // Ensure that any breakouts are available for each set
   for (var i = 0; i < sets.length; i++) {
@@ -4226,7 +4244,8 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
         sets[idx].run,
         sets[idx].source,
         sets[idx].type,
-        yearDotMonth
+        yearDotMonth,
+        sets[idx].period
       );
       var invalid = disallowed.filter((entry) => entry.aggregations.includes(sets[idx].aggregation));
       if (invalid.length > 0) {
@@ -4293,7 +4312,8 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
         sets[idx].run,
         sets[idx].source,
         sets[idx].type,
-        yearDotMonth
+        yearDotMonth,
+        sets[idx].period
       );
     }
   }
