@@ -385,13 +385,15 @@ async function main() {
   console.log('Available breakouts:  ' + metric_data.remainingBreakouts + '\n');
   var dataColumnLengths = [];
   var labelColumnLengths = [];
-  var dataStartRow;
+  var timestampRows;
   if (program.dateFormat == 'epoch_ms') {
-    dataStartRow = 1;
+    timestampRows = 1;
     program.timestampRows = 1;
   } else {
-    dataStartRow = parseInt(program.timestampRows); // rows 0-[1|2] are used for labels (timestamps)
+    timestampRows = parseInt(program.timestampRows); // rows 0-[1|2] are used for timestamps
   }
+  var hasPercentHeader = program.percentOfTotal;
+  var dataStartRow = timestampRows + (hasPercentHeader ? 1 : 0);
   var labelStopRow = dataStartRow - 1;
   var row = dataStartRow;
   var vals = [];
@@ -414,6 +416,11 @@ async function main() {
         // populate the header rows now
         // first two columns are metric source and type
         labels[0] = [];
+        for (var labelHeaderRow = 0; labelHeaderRow < dataStartRow; labelHeaderRow++) {
+          if (labels[labelHeaderRow] == null) {
+            labels[labelHeaderRow] = [];
+          }
+        }
         if (program.timestampRows == 2) {
           labels[1] = [];
           labels[0][0] = '';
@@ -450,15 +457,17 @@ async function main() {
       metric_data.values[key].forEach((element) => {
         if (row == dataStartRow) {
           if (col == 0) {
-            vals[0] = [];
+            for (var timestampRow = 0; timestampRow < timestampRows; timestampRow++) {
+              vals[timestampRow] = [];
+            }
+            if (hasPercentHeader) {
+              vals[timestampRows] = [];
+            }
           }
           var date = new Date(element.end);
           if (program.dateFormat == 'epoch_ms') {
             vals[0][col] = sprintf('%d', element.end);
           } else if (program.timestampRows == 2) {
-            if (col == 0) {
-              vals[1] = [];
-            }
             vals[0][col] =
               sprintf('%02d', date.getUTCDate()) +
               '-' +
@@ -484,6 +493,10 @@ async function main() {
               sprintf('%02d', date.getUTCMinutes()) +
               ':' +
               sprintf('%02d', date.getUTCSeconds());
+          }
+          if (hasPercentHeader) {
+            vals[timestampRows][col * 2] = 'value';
+            vals[timestampRows][col * 2 + 1] = 'percent-of-total';
           }
         }
         vals[row][col] = element.value.toFixed(program.decimalPlaces);
