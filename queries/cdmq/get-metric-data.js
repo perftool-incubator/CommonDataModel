@@ -234,6 +234,15 @@ async function main() {
     )
     .option('--sort-order <asc|desc>', '[optional] Sort table and CSV rows in ascending or descending order', 'asc')
     .option('--top <uint>', '[optional] Output only the first N table or CSV rows after sorting')
+    .option(
+      '--percent-of-total',
+      '[optional] Add a percent-of-total column after each value column. The total is calculated across all matching metrics before --top is applied'
+    )
+    .option(
+      '--percent-decimal-places [uint]',
+      '[optional] How many digits you want to the right of the decimal for percent-of-total columns',
+      2
+    )
     .parse(process.argv);
 
   if (program.run == null && program.period == null) {
@@ -251,6 +260,12 @@ async function main() {
   }
   if (program.top != null && (!/^\d+$/.test(program.top) || parseInt(program.top) < 1)) {
     console.log('Exiting because --top must be a positive integer, not ' + program.top);
+    process.exit(1);
+  }
+  if (program.percentDecimalPlaces != null && !/^\d+$/.test(program.percentDecimalPlaces)) {
+    console.log(
+      'Exiting because --percent-decimal-places must be a non-negative integer, not ' + program.percentDecimalPlaces
+    );
     process.exit(1);
   }
 
@@ -314,6 +329,18 @@ async function main() {
   if (program.sortOrder == 'desc') {
     metricKeys.reverse();
   }
+
+  var metricTotals = [];
+  if (program.percentOfTotal) {
+    metricKeys.forEach(function (key) {
+      metric_data.values[key].forEach(function (element, index) {
+        var value = Number(element.value);
+        if (isNaN(value)) value = 0;
+        metricTotals[index] = (metricTotals[index] || 0) + value;
+      });
+    });
+  }
+
   if (program.top != null) {
     metricKeys = metricKeys.slice(0, parseInt(program.top));
   }
@@ -323,6 +350,9 @@ async function main() {
     metric_data.values[metricKeys[0]].forEach(function (element, index) {
       csvHeaders.push('timestamp-' + (index + 1));
       csvHeaders.push('value-' + (index + 1));
+      if (program.percentOfTotal) {
+        csvHeaders.push('percent-of-total-' + (index + 1));
+      }
     });
 
     if (program.outputContent != 'values') {
@@ -335,9 +365,15 @@ async function main() {
           subKeys = [];
         }
         var csvRow = [program.source, program.type].concat(subKeys);
-        metric_data.values[key].forEach(function (element) {
+        metric_data.values[key].forEach(function (element, index) {
           csvRow.push(formatCsvTimestamp(element, program.dateFormat));
           csvRow.push(element.value.toFixed(program.decimalPlaces));
+          if (program.percentOfTotal) {
+            var value = Number(element.value);
+            if (isNaN(value)) value = 0;
+            var percent = metricTotals[index] ? (value / metricTotals[index]) * 100 : 0;
+            csvRow.push(percent.toFixed(program.percentDecimalPlaces));
+          }
         });
         console.log(csvRow.map(csvEscape).join(','));
       });
@@ -452,6 +488,13 @@ async function main() {
         }
         vals[row][col] = element.value.toFixed(program.decimalPlaces);
         col++;
+        if (program.percentOfTotal) {
+          var value = Number(element.value);
+          if (isNaN(value)) value = 0;
+          var percent = metricTotals[col - 1] ? (value / metricTotals[col - 1]) * 100 : 0;
+          vals[row][col] = percent.toFixed(program.percentDecimalPlaces);
+          col++;
+        }
       });
       row++;
     });
@@ -514,10 +557,11 @@ async function main() {
     // construct the values for the row
     for (col = 0; col < vals[row].length; col++) {
       if (row >= dataStartRow) {
+        var decimalPlaces = program.percentOfTotal && col % 2 == 1 ? program.percentDecimalPlaces : program.decimalPlaces;
         line =
           line +
           sprintf(
-            beginMarker + '%' + dataColumnLengths[col] + '.' + program.decimalPlaces + 'f' + endMarker,
+            beginMarker + '%' + dataColumnLengths[col] + '.' + decimalPlaces + 'f' + endMarker,
             vals[row][col]
           );
       } else {
