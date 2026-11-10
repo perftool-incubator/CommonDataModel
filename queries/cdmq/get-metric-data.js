@@ -82,6 +82,35 @@ function list_hosts(val) {
   return val.split(',');
 }
 
+function csvEscape(value) {
+  var str = String(value);
+  if (/[",\r\n]/.test(str)) {
+    return '"' + str.replace(/"/g, '""') + '"';
+  }
+  return str;
+}
+
+function formatCsvTimestamp(element, dateFormat) {
+  if (dateFormat == 'epoch_ms') {
+    return element.end;
+  }
+
+  var date = new Date(element.end);
+  return (
+    sprintf('%02d', date.getUTCDate()) +
+    '-' +
+    sprintf('%02d', date.getUTCMonth() + 1) +
+    '-' +
+    sprintf('%04d', date.getUTCFullYear()) +
+    ' ' +
+    sprintf('%02d', date.getUTCHours()) +
+    ':' +
+    sprintf('%02d', date.getUTCMinutes()) +
+    ':' +
+    sprintf('%02d', date.getUTCSeconds())
+  );
+}
+
 function save_host(host) {
   if (!program.instances) {
     program.instances = [];
@@ -198,10 +227,30 @@ async function main() {
       'Use one or two rows to display timestamp.  When using two rows with UTC date & time, date will be on the first row and time on the second row',
       2
     )
+    .option(
+      '--sort <label|value>',
+      '[optional] Sort table and CSV rows by metric label or by the first metric value',
+      'label'
+    )
+    .option('--sort-order <asc|desc>', '[optional] Sort table and CSV rows in ascending or descending order', 'asc')
+    .option('--top <uint>', '[optional] Output only the first N table or CSV rows after sorting')
     .parse(process.argv);
 
   if (program.run == null && program.period == null) {
     console.log('Exiting because neither a period nor a run ID were provided');
+    process.exit(1);
+  }
+
+  if (program.sort != 'label' && program.sort != 'value') {
+    console.log('Exiting because --sort must be label or value, not ' + program.sort);
+    process.exit(1);
+  }
+  if (program.sortOrder != 'asc' && program.sortOrder != 'desc') {
+    console.log('Exiting because --sort-order must be asc or desc, not ' + program.sortOrder);
+    process.exit(1);
+  }
+  if (program.top != null && (!/^\d+$/.test(program.top) || parseInt(program.top) < 1)) {
+    console.log('Exiting because --top must be a positive integer, not ' + program.top);
     process.exit(1);
   }
 
@@ -236,14 +285,67 @@ async function main() {
     process.exit(1);
   }
 
-  console.log('\nMetric data retrieved from API server: ' + program.serverUrl + '\n');
+  if (program.outputFormat != 'csv') {
+    console.log('\nMetric data retrieved from API server: ' + program.serverUrl + '\n');
+  }
 
   if (program.outputFormat == 'json') {
     console.log(JSON.stringify(metric_data, null, 2));
     process.exit(0);
   }
 
-  // Rest of the code is for non-JSON output formats
+  var metricKeys = Object.keys(metric_data.values);
+  if (program.sort == 'value') {
+    metricKeys.sort(function (a, b) {
+      var aValue = Number(metric_data.values[a][0].value);
+      var bValue = Number(metric_data.values[b][0].value);
+      if (isNaN(aValue)) aValue = 0;
+      if (isNaN(bValue)) bValue = 0;
+      return aValue - bValue;
+    });
+  } else {
+    metricKeys.sort(function (a, b) {
+      return a.localeCompare(b, undefined, {
+        numeric: true,
+        sensitivity: 'base'
+      });
+    });
+  }
+  if (program.sortOrder == 'desc') {
+    metricKeys.reverse();
+  }
+  if (program.top != null) {
+    metricKeys = metricKeys.slice(0, parseInt(program.top));
+  }
+
+  if (program.outputFormat == 'csv') {
+    var csvHeaders = ['source', 'type'].concat(metric_data.usedBreakouts);
+    metric_data.values[metricKeys[0]].forEach(function (element, index) {
+      csvHeaders.push('timestamp-' + (index + 1));
+      csvHeaders.push('value-' + (index + 1));
+    });
+
+    if (program.outputContent != 'values') {
+      console.log(csvHeaders.map(csvEscape).join(','));
+    }
+    if (program.outputContent != 'headers') {
+      metricKeys.forEach(function (key) {
+        var subKeys = key.replace(/^</, '').replace(/>$/, '').split('>-<');
+        if (subKeys.length == 1 && subKeys[0] == '') {
+          subKeys = [];
+        }
+        var csvRow = [program.source, program.type].concat(subKeys);
+        metric_data.values[key].forEach(function (element) {
+          csvRow.push(formatCsvTimestamp(element, program.dateFormat));
+          csvRow.push(element.value.toFixed(program.decimalPlaces));
+        });
+        console.log(csvRow.map(csvEscape).join(','));
+      });
+    }
+    process.exit(0);
+  }
+
+  // Rest of the code is for table output
   console.log('Available breakouts:  ' + metric_data.remainingBreakouts + '\n');
   var dataColumnLengths = [];
   var labelColumnLengths = [];
@@ -262,13 +364,7 @@ async function main() {
   beginMarker = ' ';
   endMarker = '';
 
-  Object.keys(metric_data.values)
-    .sort((a, b) => {
-      return a.localeCompare(b, undefined, {
-        numeric: true,
-        sensitivity: 'base'
-      });
-    })
+  metricKeys
     .forEach((key) => {
       labels[row] = [];
       labels[row][0] = program.source;

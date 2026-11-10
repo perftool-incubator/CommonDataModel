@@ -489,6 +489,26 @@ node ./get-metric-data.js --period <UUID> --source iostat --type kB-sec --breako
 
 **Performance Note**: Regex patterns are evaluated by OpenSearch and may be slower than exact value matches for very large datasets. Use them when the flexibility is needed.
 
+### Sorting and limiting table and CSV output
+
+Table and CSV rows can be sorted by metric label or by metric value. `--sort value` uses the first datapoint for each metric; at the default `resolution=1`, this is the value for the whole query period. Use `--sort-order desc` with `--sort value` to list the largest metrics first, and use `--top` to keep only the first N rows after sorting:
+
+```bash
+node ./get-metric-data.js \
+  --period <UUID> \
+  --source perf-record \
+  --type cpu-cycles-spent \
+  --breakout hostname,cmd,function,cpu=33 \
+  --filter gt:100000000 \
+  --resolution 1 \
+  --sort value \
+  --sort-order desc \
+  --top 10 \
+  --output-format csv
+```
+
+The CSV formatter quotes fields containing commas, quotation marks, or newlines. `--output-content` works the same way as it does for table output: `all` includes the header and rows, `values` omits the header, and `headers` omits the rows.
+
 So far all of the metrics have been represented as a single value for a specific time period. When `--period` is used, the script finds the begin and end times for this period, which in most cases, has a duration equal to the measurement time in the benchmark itself (around 90 seconds in these examples). One can also specify `--run`, `--begin`, and `--end` instead of `--period`, should they need to focus on a different period of time. However, for benchmark metrics (such as uperf), it is important to limit the begin and end to within the actual measurement period for that sample. Conversely, tool metrics can use a begin and end spanning any time period within the run, as the tool collection tends to run continuously for any particular run. Whatever time period is used, one can also use `--resolution` to divide this time period into multiple data-samples, in order to generate things like line graphs:
 
 The optional `--distribution-stats` option returns duration-weighted statistics over the native reconstructed timeline, independently of `--resolution`. For example:
