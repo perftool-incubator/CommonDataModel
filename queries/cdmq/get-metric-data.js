@@ -495,7 +495,7 @@ async function main() {
       var values_string = '';
       vals[row] = [];
       col = 0;
-      metric_data.values[key].forEach((element) => {
+      metric_data.values[key].forEach((element, elementIndex) => {
         if (row == dataStartRow) {
           if (col == 0) {
             for (var timestampRow = 0; timestampRow < timestampRows; timestampRow++) {
@@ -536,8 +536,11 @@ async function main() {
               sprintf('%02d', date.getUTCSeconds());
           }
           if (hasPercentHeader) {
-            vals[timestampRows][col * 2] = 'value';
-            vals[timestampRows][col * 2 + 1] = 'percent-of-total';
+            for (var timestampPaddingRow = 0; timestampPaddingRow < timestampRows; timestampPaddingRow++) {
+              vals[timestampPaddingRow][col + 1] = '';
+            }
+            vals[timestampRows][col] = 'value';
+            vals[timestampRows][col + 1] = 'percent-of-total';
           }
         }
         vals[row][col] = element.value.toFixed(program.decimalPlaces);
@@ -545,7 +548,7 @@ async function main() {
         if (program.percentOfTotal) {
           var value = Number(element.value);
           if (isNaN(value)) value = 0;
-          var percent = metricTotals[col - 1] ? (value / metricTotals[col - 1]) * 100 : 0;
+          var percent = metricTotals[elementIndex] ? (value / metricTotals[elementIndex]) * 100 : 0;
           vals[row][col] = percent.toFixed(program.percentDecimalPlaces);
           col++;
         }
