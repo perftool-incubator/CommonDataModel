@@ -90,6 +90,27 @@ function csvEscape(value) {
   return str;
 }
 
+function parseValueFilter(filter) {
+  if (filter == null) return null;
+  var match = /(\w+):([-+]?[0-9]*\.?[0-9]+)/.exec(filter);
+  if (!match) return null;
+  return { condition: match[1], value: Number(match[2]) };
+}
+
+function metricPassesValueFilter(metric, filter) {
+  var parsedFilter = parseValueFilter(filter);
+  if (!parsedFilter) return true;
+
+  var metricValue = Number(metric[0].value);
+  if (isNaN(metricValue)) return false;
+
+  if (parsedFilter.condition == 'gt') return metricValue > parsedFilter.value;
+  if (parsedFilter.condition == 'ge') return metricValue >= parsedFilter.value;
+  if (parsedFilter.condition == 'lt') return metricValue < parsedFilter.value;
+  if (parsedFilter.condition == 'le') return metricValue <= parsedFilter.value;
+  return false;
+}
+
 function formatCsvTimestamp(element, dateFormat) {
   if (dateFormat == 'epoch_ms') {
     return element.end;
@@ -279,7 +300,9 @@ async function main() {
     end: program.end,
     resolution: program.resolution,
     breakout: program.breakout, // Send as array to preserve complex breakout syntax
-    filter: program.filter,
+    // With percent-of-total, fetch all rows so the denominator includes metrics
+    // that the value filter would remove from the output.
+    filter: program.percentOfTotal ? undefined : program.filter,
     aggregation: program.aggregation,
     'distribution-stats': program.distributionStats,
     'allow-incompatible-aggregation': program.allowIncompatibleAggregation,
@@ -298,6 +321,29 @@ async function main() {
   if (Object.keys(metric_data.values).length == 0) {
     console.log('There were no metrics found, exiting');
     process.exit(1);
+  }
+
+  var metricTotals = [];
+  if (program.percentOfTotal) {
+    Object.keys(metric_data.values).forEach(function (key) {
+      metric_data.values[key].forEach(function (element, index) {
+        var value = Number(element.value);
+        if (isNaN(value)) value = 0;
+        metricTotals[index] = (metricTotals[index] || 0) + value;
+      });
+    });
+
+    if (program.filter != null) {
+      Object.keys(metric_data.values).forEach(function (key) {
+        if (!metricPassesValueFilter(metric_data.values[key], program.filter)) {
+          delete metric_data.values[key];
+        }
+      });
+      if (Object.keys(metric_data.values).length == 0) {
+        console.log('There were no metrics found, exiting');
+        process.exit(1);
+      }
+    }
   }
 
   if (program.outputFormat != 'csv') {
@@ -328,17 +374,6 @@ async function main() {
   }
   if (program.sortOrder == 'desc') {
     metricKeys.reverse();
-  }
-
-  var metricTotals = [];
-  if (program.percentOfTotal) {
-    metricKeys.forEach(function (key) {
-      metric_data.values[key].forEach(function (element, index) {
-        var value = Number(element.value);
-        if (isNaN(value)) value = 0;
-        metricTotals[index] = (metricTotals[index] || 0) + value;
-      });
-    });
   }
 
   if (program.top != null) {
