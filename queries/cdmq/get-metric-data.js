@@ -421,6 +421,12 @@ async function main() {
             labels[labelHeaderRow] = [];
           }
         }
+        if (hasPercentHeader) {
+          var percentLabelHeaderRow = timestampRows;
+          for (var percentLabelColumn = 0; percentLabelColumn < 2 + metric_data.usedBreakouts.length; percentLabelColumn++) {
+            labels[percentLabelHeaderRow][percentLabelColumn] = '';
+          }
+        }
         if (program.timestampRows == 2) {
           labels[1] = [];
           labels[0][0] = '';
