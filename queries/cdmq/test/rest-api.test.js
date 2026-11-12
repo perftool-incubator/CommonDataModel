@@ -26,6 +26,15 @@ test('metric-data rejects invalid distribution statistics', async () => {
   assert.equal(result.body.code, 'INVALID_DISTRIBUTION_STATS');
 });
 
+test('metric-data rejects client-side presentation fields without expanding the REST contract', async () => {
+  for (const field of ['sort', 'sort-order', 'top', 'percent-of-total', 'output-format']) {
+    const result = await postMetricData({ [field]: 'client-only' });
+    assert.equal(result.status, 400, field);
+    assert.equal(result.body.code, 'UNKNOWN_FIELDS', field);
+    assert.ok(result.body.error.includes(field));
+  }
+});
+
 const requiredQueryVariables = ['CDM_TEST_RUN', 'CDM_TEST_SOURCE', 'CDM_TEST_TYPE', 'CDM_TEST_BEGIN', 'CDM_TEST_END'];
 const hasQueryFixture = requiredQueryVariables.every((name) => process.env[name]);
 
