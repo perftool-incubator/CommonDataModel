@@ -176,7 +176,10 @@ function fakeOpenSearch(rows, overrides = {}) {
             }
           };
         }
-        if (overrides.error) return overrides.error(query);
+        if (overrides.error) {
+          const error = overrides.error(query);
+          if (error) return error;
+        }
         if (tooMany(query)) {
           return descriptorError(
             'too_many_buckets_exception',
@@ -231,6 +234,42 @@ test('partitions bucket-limited breakouts, recursively splits failures, and pres
     })
   );
   metricIdQueries(fake).forEach((query) => assert.equal(matchingRows(rows, query).length, 1));
+});
+
+test('recognizes a nested too_many_buckets_exception cause', async () => {
+  const rows = rowsForPartitions();
+  const fake = fakeOpenSearch(rows, {
+    error: (query) => {
+      if (nestedFields(query).length !== 1 || constraintsFromQuery(query).hostname !== undefined) return null;
+      return {
+        status: 503,
+        error: {
+          root_cause: [],
+          type: 'search_phase_execution_exception',
+          reason: '',
+          phase: 'fetch',
+          caused_by: {
+            type: 'too_many_buckets_exception',
+            reason: 'Trying to create too many buckets. Must be less than or equal to: [65535] but was [65536].'
+          }
+        }
+      };
+    }
+  });
+  const result = await cdm.getMetricGroupsFromBreakouts(
+    { host: 'opensearch.example' },
+    [querySet(['hostname', 'cmd'])],
+    '@2026.11',
+    { request: fake.request, maxQueries: 20, maxDepth: 4 }
+  );
+
+  assert.equal(result['ret-code'], 0, JSON.stringify(result));
+  assert.deepEqual(Object.keys(result['metric-id-sets'][0]).sort(), [
+    '<h1>-<f1>',
+    '<h1>-<f2>',
+    '<h2>-<f3>',
+    '<h2>-<f4>'
+  ]);
 });
 
 test('preserves value and regex filters and injects aggregate labels in original order', async () => {

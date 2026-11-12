@@ -3082,7 +3082,19 @@ function openSearchResponseProblem(response, requireAggregations) {
     };
   }
   if (isDefined(response.error) && response.error !== null) {
-    const source = response.error;
+    let source = response.error;
+    const seen = new Set();
+    while (source && typeof source === 'object' && !seen.has(source)) {
+      seen.add(source);
+      let next;
+      if (source.caused_by && typeof source.caused_by === 'object') {
+        next = Array.isArray(source.caused_by) ? source.caused_by[0] : source.caused_by;
+      } else if (Array.isArray(source.root_cause) && source.root_cause.length > 0) {
+        next = source.root_cause[0];
+      }
+      if (!next || typeof next !== 'object' || seen.has(next)) break;
+      source = next;
+    }
     return {
       type: typeof source === 'string' ? 'opensearch_error' : source.type || 'opensearch_error',
       reason: typeof source === 'string' ? source : source.reason || 'OpenSearch did not provide an error reason',
