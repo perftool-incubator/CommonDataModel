@@ -587,7 +587,8 @@ rendering. For example:
 ```bash
 node ./get-metric-data.js --period <UUID> --source sar-net --type L2-Gbps \
   --breakout host --resolution 10 --sort value --sort-order desc --top 5 \
-  --filter gt:0.01 --percent-of-total --output-format csv --date-format epoch_ms
+  --filter gt:0.01 --percent-of-total --percent-decimal-places 2 \
+  --output-format csv --date-format epoch_ms
 ```
 
 Direct API clients and tools can reuse the same CommonJS modules from this
@@ -656,9 +657,10 @@ Transformation semantics:
   `{ begin, end, value }` sums; `percentOfTotal` records whether percentage columns
   were requested, including for empty output. Use `rows` when order matters, especially for
   integer-like labels, whose object keys JavaScript enumerates numerically.
-- JSON renders `data`, keeping full precision. Table and CSV round values and
-  percentages using `decimalPlaces` (default 2), and retain one value column per
-  window, with an additional percentage column per window when requested. CSV
+- JSON renders `data`, keeping full precision. Table and CSV round values using
+  `decimalPlaces` and percentages using `percentDecimalPlaces` (both default to 2;
+  the helper defaults percentages to `decimalPlaces` when that option is omitted).
+  They retain one value column per window, with an additional percentage column per window when requested. CSV
   escapes commas, quotes, and newlines. `dateFormat`, `timestampRows`, and
   `outputContent` follow the CLI's formatting controls; `horizontalBreak` applies
   to tables. Distribution statistics remain in JSON and the table appendix;

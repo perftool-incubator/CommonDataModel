@@ -181,6 +181,11 @@ async function main() {
     .option('--sort-order <asc|desc>', '[optional] Sort direction', 'asc')
     .option('--top <uint>', '[optional] Keep at most N rows after sorting and filtering', Number)
     .option('--percent-of-total', '[optional] Add each value as a percentage of all metrics in its time window')
+    .option(
+      '--percent-decimal-places [uint]',
+      '[optional] How many digits you want to the right of the decimal for percent-of-total columns',
+      2
+    )
     .option('--output-format <json|table|csv>', '[optional] Client-side output format', 'table')
     .option(
       '--date-format <default|epoch_ms>',
@@ -262,6 +267,7 @@ async function main() {
       type: program.type,
       dateFormat: program.dateFormat,
       decimalPlaces: program.decimalPlaces,
+      percentDecimalPlaces: program.percentDecimalPlaces,
       outputContent: program.outputContent,
       horizontalBreak: program.horizontalBreak,
       timestampRows: program.timestampRows

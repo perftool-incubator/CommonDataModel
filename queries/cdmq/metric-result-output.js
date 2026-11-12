@@ -23,6 +23,7 @@ function renderMetricData(result, options = {}) {
     type = '',
     dateFormat = 'default',
     decimalPlaces = 2,
+    percentDecimalPlaces = decimalPlaces,
     outputContent = 'all',
     horizontalBreak = 'yes'
   } = options;
@@ -31,6 +32,10 @@ function renderMetricData(result, options = {}) {
   const digits = Number(decimalPlaces);
   if (!Number.isInteger(digits) || digits < 0 || digits > 100) {
     throw new Error('decimalPlaces must be an integer from 0 to 100');
+  }
+  const percentDigits = Number(percentDecimalPlaces);
+  if (!Number.isInteger(percentDigits) || percentDigits < 0 || percentDigits > 100) {
+    throw new Error('percentDecimalPlaces must be an integer from 0 to 100');
   }
   const timestampRows = dateFormat === 'epoch_ms' ? 1 : Number(options.timestampRows ?? 2);
   if (![1, 2].includes(timestampRows)) throw new Error('timestampRows must be 1 or 2');
@@ -55,7 +60,9 @@ function renderMetricData(result, options = {}) {
     for (const window of windows) {
       const point = points.get(windowKey(window));
       cells.push(point ? Number(point.value).toFixed(digits) : '');
-      if (percentages) cells.push(point?.percentOfTotal == null ? '' : point.percentOfTotal.toFixed(digits));
+      if (percentages) {
+        cells.push(point?.percentOfTotal == null ? '' : point.percentOfTotal.toFixed(percentDigits));
+      }
     }
     values.push(cells);
   }

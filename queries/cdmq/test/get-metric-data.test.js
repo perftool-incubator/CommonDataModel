@@ -157,6 +157,25 @@ test('CLI table, CSV, and JSON share sorting, filtering, top-N, and per-window p
   );
 });
 
+test('CLI uses independent precision for values and percent-of-total', async (t) => {
+  const client = await api(t);
+  const args = [
+    '--top',
+    '1',
+    '--percent-of-total',
+    '--decimal-places',
+    '0',
+    '--output-format',
+    'csv',
+    '--date-format',
+    'epoch_ms'
+  ];
+  const defaults = await client.run(...args);
+  assert.ok(defaults.endsWith('sar,busy,worker-1,30,30.00,70,35.00\n'));
+  const explicit = await client.run(...args, '--percent-decimal-places', '4');
+  assert.ok(explicit.endsWith('sar,busy,worker-1,30,30.0000,70,35.0000\n'));
+});
+
 test('CLI keeps presentation controls for values, headers, precision, and timestamps', async (t) => {
   const client = await api(t);
   const values = await client.run('--output-content', 'values', '--horizontal-break', 'no', '--decimal-places', '1');

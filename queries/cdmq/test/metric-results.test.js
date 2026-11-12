@@ -201,6 +201,8 @@ test('table and CSV honor headers/values and timestamp formatting', () => {
   assert.doesNotMatch(headers, /Distribution statistics/);
   const values = renderMetricData(result, { ...options, outputFormat: 'csv', outputContent: 'values' });
   assert.equal(values, 'sar,busy,host-1,30.000,30.000,70.000,35.000');
+  const precision = renderMetricData(result, { ...options, outputFormat: 'csv', percentDecimalPlaces: 5 });
+  assert.match(precision, /30\.000,30\.00000,70\.000,35\.00000/);
 });
 
 test('invalid presentation options and malformed responses fail clearly', () => {
@@ -227,6 +229,7 @@ test('invalid presentation options and malformed responses fail clearly', () => 
   const result = transformMetricData(fixture());
   assert.throws(() => renderMetricData(result, { outputFormat: 'xml' }), /outputFormat must/);
   assert.throws(() => renderMetricData(result, { decimalPlaces: 101 }), /decimalPlaces must/);
+  assert.throws(() => renderMetricData(result, { percentDecimalPlaces: -1 }), /percentDecimalPlaces must/);
   assert.throws(() => renderMetricData(result, { timestampRows: 3 }), /timestampRows must/);
 });
 
