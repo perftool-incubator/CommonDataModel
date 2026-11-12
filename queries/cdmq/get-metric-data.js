@@ -11,7 +11,8 @@
 
 var cdm = require('./cdm');
 var program = require('commander');
-var sprintf = require('sprintf-js').sprintf;
+const { transformMetricData } = require('./metric-results');
+const { renderMetricData } = require('./metric-result-output');
 const http = require('http');
 const https = require('https');
 
@@ -166,13 +167,26 @@ async function main() {
     .option(
       '--distribution-stats <stat1,stat2,...>',
       '[optional] Return duration-weighted native-timeline statistics (min,max,mean,median,stddev,pNN)',
-      (value) => value.split(',').map((stat) => stat.trim()).filter(Boolean)
+      (value) =>
+        value
+          .split(',')
+          .map((stat) => stat.trim())
+          .filter(Boolean)
     )
     .option(
       '--allow-incompatible-aggregation',
       '[optional] Allow an aggregation explicitly disallowed by the metric definition'
     )
-    .option('--output-format <json|table|csv>', 'table')
+    .option('--sort <label|value>', '[optional] Sort by label or first-window value', 'label')
+    .option('--sort-order <asc|desc>', '[optional] Sort direction', 'asc')
+    .option('--top <uint>', '[optional] Keep at most N rows after sorting and filtering', Number)
+    .option('--percent-of-total', '[optional] Add each value as a percentage of all metrics in its time window')
+    .option(
+      '--percent-decimal-places [uint]',
+      '[optional] How many digits you want to the right of the decimal for percent-of-total columns',
+      2
+    )
+    .option('--output-format <json|table|csv>', '[optional] Client-side output format', 'table')
     .option(
       '--date-format <default|epoch_ms>',
       '[optional] output date/time in DD-MM-YYYY HH:MM:SS (the default) or epoch time in milliseconds',
@@ -205,6 +219,9 @@ async function main() {
     process.exit(1);
   }
 
+  // Request the full query scope. Presentation options, including the output-only
+  // value filter, are applied locally so totals include rows hidden from output.
+  // The API's existing filter field remains supported for direct callers.
   // Prepare the request parameters for the API
   const apiParams = {
     run: program.run,
@@ -215,7 +232,6 @@ async function main() {
     end: program.end,
     resolution: program.resolution,
     breakout: program.breakout, // Send as array to preserve complex breakout syntax
-    filter: program.filter,
     aggregation: program.aggregation,
     'distribution-stats': program.distributionStats,
     'allow-incompatible-aggregation': program.allowIncompatibleAggregation,
@@ -236,213 +252,36 @@ async function main() {
     process.exit(1);
   }
 
-  console.log('\nMetric data retrieved from API server: ' + program.serverUrl + '\n');
-
-  if (program.outputFormat == 'json') {
-    console.log(JSON.stringify(metric_data, null, 2));
-    process.exit(0);
-  }
-
-  // Rest of the code is for non-JSON output formats
-  console.log('Available breakouts:  ' + metric_data.remainingBreakouts + '\n');
-  var dataColumnLengths = [];
-  var labelColumnLengths = [];
-  var dataStartRow;
-  if (program.dateFormat == 'epoch_ms') {
-    dataStartRow = 1;
-    program.timestampRows = 1;
-  } else {
-    dataStartRow = parseInt(program.timestampRows); // rows 0-[1|2] are used for labels (timestamps)
-  }
-  var labelStopRow = dataStartRow - 1;
-  var row = dataStartRow;
-  var vals = [];
-  vals[0] = [];
-  var labels = [];
-  beginMarker = ' ';
-  endMarker = '';
-
-  Object.keys(metric_data.values)
-    .sort((a, b) => {
-      return a.localeCompare(b, undefined, {
-        numeric: true,
-        sensitivity: 'base'
-      });
-    })
-    .forEach((key) => {
-      labels[row] = [];
-      labels[row][0] = program.source;
-      labels[row][1] = program.type;
-      var subKeys = key.replace(/^</, '').replace(/>$/, '').split('>-<'); // key is the string with breakouts, for example,  "client-2-10" for <cstype>-<csid>-<num> for source: mpstat type: Busy-CPU
-      if (subKeys.length == 1 && subKeys[0] == '') {
-        subKeys = [];
-      }
-      var col = 2; // colDataStart
-      if (row == dataStartRow) {
-        // populate the header rows now
-        // first two columns are metric source and type
-        labels[0] = [];
-        if (program.timestampRows == 2) {
-          labels[1] = [];
-          labels[0][0] = '';
-          labels[0][1] = '';
-          labels[1][0] = 'source';
-          labels[1][1] = 'type';
-          metric_data.usedBreakouts.forEach((subMetric) => {
-            labels[0][col] = '';
-            labels[1][col] = subMetric;
-            col++;
-          });
-        } else {
-          labels[0][0] = 'source';
-          labels[0][1] = 'type';
-          metric_data.usedBreakouts.forEach((subMetric) => {
-            labels[0][col] = subMetric;
-            col++;
-          });
-        }
-      }
-      // populate the label array with subMetrics
-      labels[row] = [];
-      labels[row][0] = program.source;
-      labels[row][1] = program.type;
-      var col = 2;
-      subKeys.forEach((subKey) => {
-        var subMetric = subKey.replace(/<(\w+)>/, '$1');
-        labels[row][col] = subMetric;
-        col++;
-      });
-      var values_string = '';
-      vals[row] = [];
-      col = 0;
-      metric_data.values[key].forEach((element) => {
-        if (row == dataStartRow) {
-          if (col == 0) {
-            vals[0] = [];
-          }
-          var date = new Date(element.end);
-          if (program.dateFormat == 'epoch_ms') {
-            vals[0][col] = sprintf('%d', element.end);
-          } else if (program.timestampRows == 2) {
-            if (col == 0) {
-              vals[1] = [];
-            }
-            vals[0][col] =
-              sprintf('%02d', date.getUTCDate()) +
-              '-' +
-              sprintf('%02d', date.getUTCMonth() + 1) +
-              '-' +
-              sprintf('%04d', date.getUTCFullYear());
-            vals[1][col] =
-              sprintf('%02d', date.getUTCHours()) +
-              ':' +
-              sprintf('%02d', date.getUTCMinutes()) +
-              ':' +
-              sprintf('%02d', date.getUTCSeconds());
-          } else {
-            vals[0][col] =
-              sprintf('%02d', date.getUTCDate()) +
-              '-' +
-              sprintf('%02d', date.getUTCMonth() + 1) +
-              '-' +
-              sprintf('%04d', date.getUTCFullYear()) +
-              '/' +
-              sprintf('%02d', date.getUTCHours()) +
-              ':' +
-              sprintf('%02d', date.getUTCMinutes()) +
-              ':' +
-              sprintf('%02d', date.getUTCSeconds());
-          }
-        }
-        vals[row][col] = element.value.toFixed(program.decimalPlaces);
-        col++;
-      });
-      row++;
+  let output;
+  try {
+    const result = transformMetricData(metric_data, {
+      sort: program.sort,
+      sortOrder: program.sortOrder,
+      top: program.top,
+      percentOfTotal: Boolean(program.percentOfTotal),
+      filter: program.filter
     });
-
-  // Adjust column widths according to longest string per column
-  // (this should become a function)
-  for (row = 0; row < vals.length; row++) {
-    for (col = 0; col < vals[row].length; col++) {
-      var length = vals[row][col].length;
-      if (dataColumnLengths[col] == null || dataColumnLengths[col] < length) {
-        dataColumnLengths[col] = length;
-      }
-    }
-  }
-  for (row = 0; row < labels.length; row++) {
-    for (col = 0; col < labels[row].length; col++) {
-      var length = labels[row][col].length;
-      if (labelColumnLengths[col] == null || labelColumnLengths[col] < length) {
-        labelColumnLengths[col] = length;
-      }
-    }
+    output = renderMetricData(result, {
+      outputFormat: program.outputFormat,
+      source: program.source,
+      type: program.type,
+      dateFormat: program.dateFormat,
+      decimalPlaces: program.decimalPlaces,
+      percentDecimalPlaces: program.percentDecimalPlaces,
+      outputContent: program.outputContent,
+      horizontalBreak: program.horizontalBreak,
+      timestampRows: program.timestampRows
+    });
+  } catch (error) {
+    console.log('Error transforming metric data: ' + error.message);
+    process.exit(1);
   }
 
-  rowStart = 0;
-  rowEnd = vals.length;
-  if (program.outputContent == 'values') {
-    // skip past the headers
-    rowStart = dataStartRow;
-  } else if (program.outputContent == 'headers') {
-    // stop early to ensure we don't print the values
-    rowEnd = dataStartRow;
+  console.log('\nMetric data retrieved from API server: ' + program.serverUrl + '\n');
+  if (program.outputFormat !== 'json') {
+    console.log('Available breakouts:  ' + metric_data.remainingBreakouts + '\n');
   }
-
-  for (row = rowStart; row < rowEnd; row++) {
-    // add a horizontal break
-    if (program.horizontalBreak == 'yes' && row == dataStartRow) {
-      line = '';
-      // construct the labels (left columns) for the row
-      for (col = 0; col < labels[row].length; col++) {
-        for (letter = 0; letter < labelColumnLengths[col] + 1; letter++) {
-          line = line + sprintf('-');
-        }
-      }
-
-      // construct the values for the row
-      for (col = 0; col < vals[row].length; col++) {
-        for (letter = 0; letter < dataColumnLengths[col] + 1; letter++) {
-          line = line + sprintf('-');
-        }
-      }
-      console.log(line);
-    }
-
-    line = '';
-    // construct the labels (left columns) for the row
-    for (col = 0; col < labels[row].length; col++) {
-      line = line + sprintf(beginMarker + '%' + labelColumnLengths[col] + 's' + endMarker, labels[row][col]);
-    }
-
-    // construct the values for the row
-    for (col = 0; col < vals[row].length; col++) {
-      if (row >= dataStartRow) {
-        line =
-          line +
-          sprintf(
-            beginMarker + '%' + dataColumnLengths[col] + '.' + program.decimalPlaces + 'f' + endMarker,
-            vals[row][col]
-          );
-      } else {
-        line = line + sprintf(beginMarker + '%' + dataColumnLengths[col] + 's' + endMarker, vals[row][col]);
-      }
-    }
-    console.log(line);
-  }
-
-  if (metric_data.distributionStats && program.outputContent != 'headers') {
-    console.log('\nDistribution statistics (native timeline):');
-    Object.keys(metric_data.distributionStats)
-      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
-      .forEach((label) => {
-        const stats = metric_data.distributionStats[label];
-        const formatted = Object.keys(stats)
-          .map((stat) => stat + '=' + Number(stats[stat]).toFixed(program.decimalPlaces))
-          .join(' ');
-        console.log('  ' + (label || '<all>') + ': ' + formatted);
-      });
-  }
+  if (output) console.log(output);
 }
 
 main();

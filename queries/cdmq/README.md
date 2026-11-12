@@ -564,6 +564,112 @@ This describes variation in the underlying metric over time rather than variatio
       "breakouts": []
     }
 
+#### Raw metric API and client-side presentation
+
+`POST /api/v1/metric-data` returns raw metric data. Its JSON request fields are
+`run`, `period`, `begin`, `end`, `source`, `type`, `resolution`, `breakout`, `filter`,
+`aggregation`, `distribution-stats`, `allow-incompatible-aggregation`, and `instances`.
+Supply a run or period and the metric source/type. The response includes `values`
+keyed by metric label, with an array of `{ begin, end, value }` time windows per
+label, plus `usedBreakouts`, `remainingBreakouts`, `valueSeriesLabelDecoder`, and
+optional `distributionStats`.
+
+Sorting, top-N, percentages, and rendering are client-side operations. Sending
+`sort`, `sort-order`, `top`, `percent-of-total`, or `output-format` in the REST
+request body returns HTTP 400 with code `UNKNOWN_FIELDS`. Formatting controls
+such as `decimal-places`, `date-format`, and `output-content` also belong to the
+client. They do not change aggregation or the raw API response.
+
+The CLI uses [metric-results.js](./metric-results.js) for transformations and
+[metric-result-output.js](./metric-result-output.js) for table, CSV, and JSON
+rendering. For example:
+
+```bash
+node ./get-metric-data.js --period <UUID> --source sar-net --type L2-Gbps \
+  --breakout host --resolution 10 --sort value --sort-order desc --top 5 \
+  --filter gt:0.01 --percent-of-total --percent-decimal-places 2 \
+  --output-format csv --date-format epoch_ms
+```
+
+Direct API clients and tools can reuse the same CommonJS modules from this
+directory (Node.js 20.7 or later). Fetch the complete query scope, then transform
+and render locally:
+
+```javascript
+const { transformMetricData } = require('./metric-results');
+const { renderMetricData } = require('./metric-result-output');
+
+async function reportMetricData(serverUrl, period) {
+  const response = await fetch(serverUrl + '/api/v1/metric-data', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      period,
+      source: 'sar-net',
+      type: 'L2-Gbps',
+      breakout: ['host'],
+      resolution: 10
+    })
+  });
+  if (!response.ok) throw new Error(await response.text());
+  const raw = await response.json();
+  const result = transformMetricData(raw, {
+    sort: 'value',
+    sortOrder: 'desc',
+    top: 5,
+    filter: 'gt:0.01',
+    percentOfTotal: true
+  });
+  // Ordered structured data for custom clients (all time windows retained).
+  console.log(result.rows);
+  // Use outputFormat: 'table' or 'json' for the other shared renderers.
+  console.log(renderMetricData(result, {
+    source: 'sar-net', type: 'L2-Gbps', outputFormat: 'csv', dateFormat: 'epoch_ms'
+  }));
+}
+```
+
+Transformation semantics:
+
+- `sort` defaults to `label`, using natural, case-insensitive comparison (e.g.,
+  `host-2` precedes `host-10`). `value` compares the raw first-window value.
+  `sortOrder` defaults to `asc`; `desc` reverses the selected comparison. Equal
+  values use ascending label order. Empty series sort last by value.
+- `filter` supports `gt`, `ge`, `lt`, and `le` against the raw first-window
+  value. It hides entire rows and preserves all windows of retained rows.
+  Filtering and sorting precede `top`, a non-negative integer limit; `top: 0`
+  returns no rows. Omit `top` for all rows.
+- `percentOfTotal: true` adds a numeric `percentOfTotal` to each window without
+  replacing `value`. Each denominator is the sum of raw values across **all
+  input labels in that same begin/end window**, before output filtering and
+  top-N. A zero denominator produces `null` (an empty table/CSV cell). For
+  example, values `[30, 70]` with full-scope totals `[100, 200]` yield percentages
+  `[30, 35]`, even when top-N leaves only that row. These are presentation
+  percentages; native distribution statistics and query aggregation are unchanged.
+- The API still accepts its existing `filter` field, which removes rows before
+  responding. To compute percentages over the full scope, omit that request
+  field and supply `filter` to the helper instead. The CLI does this automatically.
+  Breakout constraints still define the query scope on the server.
+- The helper does not mutate the input. It returns `{ data, rows, totals, percentOfTotal }`:
+  `data` retains the API response shape and metadata with selected values and
+  matching distribution-statistic entries; `rows` contains ordered
+  `{ label, breakoutValues, values }` objects; `totals` contains full-scope
+  `{ begin, end, value }` sums; `percentOfTotal` records whether percentage columns
+  were requested, including for empty output. Use `rows` when order matters, especially for
+  integer-like labels, whose object keys JavaScript enumerates numerically.
+- JSON renders `data`, keeping full precision. Table and CSV round values using
+  `decimalPlaces` and percentages using `percentDecimalPlaces` (both default to 2;
+  the helper defaults percentages to `decimalPlaces` when that option is omitted).
+  They retain one value column per window, with an additional percentage column per window when requested. CSV
+  escapes commas, quotes, and newlines. `dateFormat`, `timestampRows`, and
+  `outputContent` follow the CLI's formatting controls; `horizontalBreak` applies
+  to tables. Distribution statistics remain in JSON and the table appendix;
+  CSV contains the window values. The renderer returns only the formatted text;
+  the CLI retains its existing server and available-breakout messages.
+
+Run the transformation and CLI fixture tests with `npm run test:metric-results`.
+These tests also run as part of `npm test` and need no OpenSearch instance.
+
 ### compare-results.js
 
 This script is used to generate comparisons across one or more runs and provides to the ability to tailor how iterations are grouped when comparing them. This script is particularly useful when you run a benchmark with different settings in your test-bed. For example, if you were to test a MTU of 1500 and then 9000, you could use this script to generate output that compares the two runs. You are, however, not limited to two runs, and you are not actually required to specify the run IDs at all.
