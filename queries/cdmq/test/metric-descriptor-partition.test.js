@@ -358,6 +358,50 @@ test('handles multiple requested sets independently and within one shared budget
   assert.equal(fake.records[0].length, 2);
 });
 
+test('does not charge ordinary descriptor queries against the partition budget', async () => {
+  const requestedSets = Array.from({ length: 129 }, (_, index) => querySet([], { run: 'run-' + index }));
+  const records = [];
+  const request = async (instance, docType, action, jsonArr) => {
+    const queries = [];
+    for (let index = 1; index < jsonArr.length; index += 2) queries.push(JSON.parse(jsonArr[index]));
+    records.push(queries);
+    return queries.map((query, index) => {
+      if (query._source === 'metric_desc.metric_desc-uuid') {
+        return {
+          hits: {
+            total: { value: 1 },
+            hits: [{ _source: { metric_desc: { 'metric_desc-uuid': 'metric-' + index } } }]
+          }
+        };
+      }
+      return {
+        aggregations: {
+          'metric_desc.source': {
+            buckets: [
+              {
+                key: source,
+                'metric_desc.type': { buckets: [{ key: type, doc_count: 1 }] },
+                doc_count: 1
+              }
+            ]
+          }
+        }
+      };
+    });
+  };
+
+  const result = await cdm.getMetricGroupsFromBreakouts({ host: 'opensearch.example' }, requestedSets, '@2026.11', {
+    request: request,
+    maxQueries: 128
+  });
+
+  assert.equal(result['ret-code'], 0, JSON.stringify(result));
+  assert.equal(result['metric-id-sets'].length, 129);
+  assert.equal(records[0].length, 129);
+  assert.equal(records[1].length, 129);
+  assert.equal(records.flat().length, 258);
+});
+
 test('propagates non-bucket OpenSearch errors with type and reason', async () => {
   const fake = fakeOpenSearch(rowsForPartitions(), {
     error: () => descriptorError('illegal_argument_exception', 'unknown aggregation field')

@@ -3233,8 +3233,16 @@ function takeDescriptorRequestBudget(budget, count, set) {
   budget.remaining -= count;
 }
 
-async function requestMetricDescriptorQueries(instance, queries, yearDotMonth, budget, options, set) {
-  takeDescriptorRequestBudget(budget, queries.length, set);
+async function requestMetricDescriptorQueries(
+  instance,
+  queries,
+  yearDotMonth,
+  budget,
+  options,
+  set,
+  chargeBudget = true
+) {
+  if (chargeBudget) takeDescriptorRequestBudget(budget, queries.length, set);
   const jsonArr = [];
   queries.forEach((query) => {
     jsonArr.push('{}');
@@ -3425,7 +3433,8 @@ async function collectMetricGroupTermsForSets(instance, sets, yearDotMonth, opti
     yearDotMonth,
     budget,
     descriptorOptions,
-    representativeSet
+    representativeSet,
+    false
   );
   const metricGroupTermsSets = [];
   for (let index = 0; index < sets.length; index++) {
