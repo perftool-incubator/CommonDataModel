@@ -44,8 +44,6 @@ if (instances.length == 0) {
   save_host('localhost:9200');
 }
 
-getInstancesInfo(instances);
-
 async function main() {
   var allDocTypes = ['run', 'iteration', 'sample', 'period', 'param', 'tag', 'metric_desc', 'metric_data'];
 
@@ -53,6 +51,8 @@ async function main() {
     console.log('You must provide at least one --host <host>');
     process.exit(1);
   }
+
+  await getInstancesInfo(instances);
 
   if (program.run) {
     // When deleting, you must use exactly one instance, so we use the last provided.

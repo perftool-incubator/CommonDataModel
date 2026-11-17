@@ -127,7 +127,7 @@ async function main() {
     save_host('localhost:9200');
   }
 
-  getInstancesInfo(instances);
+  await getInstancesInfo(instances);
 
   // Always use the last instance (last --host) provided by the user
   const instance = instances[instances.length - 1];

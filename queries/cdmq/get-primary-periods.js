@@ -62,7 +62,7 @@ async function main() {
     save_host('localhost:9200');
   }
 
-  getInstancesInfo(instances);
+  await getInstancesInfo(instances);
   cdm.debuglog(JSON.stringify(instances, null, 2));
 
   // Since this query is looking for run ids (and may not inlcude run-uuid as a search term), we
