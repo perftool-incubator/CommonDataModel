@@ -1035,6 +1035,9 @@ app.post('/api/v1/iterations/metric-values', async (req, res) => {
       // Fetch metric values
       if (metricSets.length > 0) {
         var resp = await cdm.getMetricDataSets(inst, metricSets, ydm);
+        if (resp['ret-code'] != 0) {
+          return res.status(metricDataSetFailureStatus(resp.code)).json(metricDataSetFailureBody(resp));
+        }
         if (resp['ret-code'] === 0 && resp['data-sets']) {
           var dataSets = resp['data-sets'];
           var valuesByIdx = {};
@@ -1441,6 +1444,9 @@ app.post('/api/v1/iterations/supplemental-metric', async (req, res) => {
 
       if (metricSets.length > 0) {
         var resp = await cdm.getMetricDataSets(inst, metricSets, ydm);
+        if (resp['ret-code'] != 0) {
+          return res.status(metricDataSetFailureStatus(resp.code)).json(metricDataSetFailureBody(resp));
+        }
         if (resp['ret-code'] === 0 && resp['data-sets']) {
           var dataSets = resp['data-sets'];
           var allRemainingBreakouts = null;
@@ -1647,6 +1653,28 @@ app.get('/api/v1/fields/primary-metrics', async (req, res) => {
 // --------------------------------------------------------------------------------------------------------------
 // POST /api/v1/metric-data — get metric data (existing endpoint, supports run or period)
 // --------------------------------------------------------------------------------------------------------------
+function metricDataSetFailureStatus(code) {
+  if (code === 'INCOMPATIBLE_AGGREGATION') return 400;
+  if (code === 'METRIC_DESCRIPTOR_LIMIT' || code === 'METRIC_ID_LIMIT') return 413;
+  if (
+    code === 'OPENSEARCH_QUERY_FAILED' ||
+    code === 'METRIC_DESCRIPTOR_INVALID_RESPONSE' ||
+    code === 'METRIC_DESCRIPTOR_CONFIG'
+  ) {
+    return 502;
+  }
+  return 500;
+}
+
+function metricDataSetFailureBody(resp) {
+  return {
+    code: resp.code || 'METRIC_QUERY_FAILED',
+    error: resp['ret-msg'],
+    details: resp.details,
+    recoveryHint: resp.recoveryHint
+  };
+}
+
 app.post('/api/v1/metric-data', async (req, res) => {
   try {
     var knownFields = [
@@ -1818,10 +1846,7 @@ app.post('/api/v1/metric-data', async (req, res) => {
     };
     var resp = await cdm.getMetricDataSets(instance, [set], yearDotMonth);
     if (resp['ret-code'] != 0) {
-      return res.status(resp.code === 'INCOMPATIBLE_AGGREGATION' ? 400 : 500).json({
-        code: resp.code || 'METRIC_QUERY_FAILED',
-        error: resp['ret-msg']
-      });
+      return res.status(metricDataSetFailureStatus(resp.code)).json(metricDataSetFailureBody(resp));
     }
     var metric_data = resp['data-sets'][0];
 
@@ -1840,21 +1865,20 @@ app.post('/api/v1/metric-data', async (req, res) => {
       error.code === 'NATIVE_STATS_LIMIT'
         ? 413
         : error.code === 'NATIVE_STATS_DATA_QUALITY'
-          ? 422
-          : error.code === 'NATIVE_STATS_PIT_UNSUPPORTED'
-            ? 501
-            : 500;
+        ? 422
+        : error.code === 'NATIVE_STATS_PIT_UNSUPPORTED'
+        ? 501
+        : 500;
     res.status(status).json({
       code: error.code || 'INTERNAL_ERROR',
-      error:
-        [
-          'NATIVE_STATS_CONFIG',
-          'NATIVE_STATS_DATA_QUALITY',
-          'NATIVE_STATS_LIMIT',
-          'NATIVE_STATS_PIT_UNSUPPORTED'
-        ].includes(error.code)
-          ? error.message
-          : 'Internal server error while fetching metric data',
+      error: [
+        'NATIVE_STATS_CONFIG',
+        'NATIVE_STATS_DATA_QUALITY',
+        'NATIVE_STATS_LIMIT',
+        'NATIVE_STATS_PIT_UNSUPPORTED'
+      ].includes(error.code)
+        ? error.message
+        : 'Internal server error while fetching metric data',
       details: error.message
     });
   }

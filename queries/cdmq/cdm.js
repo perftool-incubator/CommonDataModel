@@ -1,7 +1,12 @@
 //# vim: autoindent tabstop=2 shiftwidth=2 expandtab softtabstop=2 filetype=javascript
 var request = require('sync-request');
 var thenRequest = require('then-request');
-const { calculateDistributionStats, reconstructTimeline, resampleTimeline, validateRequestedStats } = require('./native-stats');
+const {
+  calculateDistributionStats,
+  reconstructTimeline,
+  resampleTimeline,
+  validateRequestedStats
+} = require('./native-stats');
 const { periodScopedMetricDescriptorFilter } = require('./metric-desc-selection');
 var bigQuerySize = 262144;
 
@@ -837,6 +842,16 @@ async function fetchBatchedData(instance, reqs, batchSize = 16) {
     const batchResults = await Promise.all(promises);
     //debuglog('fetchBatchedData() batchResults.length:' + batchResults.length);
     for (const batchResult of batchResults) {
+      if (batchResult === null || batchResult === undefined) {
+        responses.push({
+          error: {
+            type: 'cdm_transport_error',
+            reason: 'OpenSearch request failed without returning a response'
+          },
+          status: 502
+        });
+        continue;
+      }
       const keys = Object.keys(batchResult);
       // items present if this is document creation
       if (keys.includes('items')) {
@@ -1207,9 +1222,7 @@ exports.getSamples = getSamples;
 // found metric docs.  These names are what can be
 // used for "breakouts".
 mgetMetricNames = async function (instance, runIds, sources, types, yearDotMonth, periodIds) {
-  var periodFilters = Array.isArray(periodIds)
-    ? periodIds.map(periodScopedMetricDescriptorFilter)
-    : undefined;
+  var periodFilters = Array.isArray(periodIds) ? periodIds.map(periodScopedMetricDescriptorFilter) : undefined;
   return await mSearch(
     instance,
     'metric_desc',
@@ -2885,6 +2898,9 @@ exports.getDocCount = getDocCount;
 // for each metric group.
 getMetricGroupTermsFromAgg = function (agg, terms) {
   var value;
+  if (agg === null || typeof agg !== 'object') {
+    throw new Error('metric descriptor aggregation is missing or malformed');
+  }
   if (isUndefined(terms)) {
     terms = '';
   }
@@ -2896,8 +2912,14 @@ getMetricGroupTermsFromAgg = function (agg, terms) {
   var metricGroupTerms = new Array();
   Object.keys(agg).forEach((field) => {
     if (/^metric_desc/.exec(field)) {
+      if (agg[field] === null || typeof agg[field] !== 'object') {
+        throw new Error('metric descriptor aggregation for ' + field + ' is malformed');
+      }
       count++;
       if (isDefined(agg[field].buckets)) {
+        if (!Array.isArray(agg[field].buckets)) {
+          throw new Error('metric descriptor bucket list for ' + field + ' is malformed');
+        }
         agg[field].buckets.forEach((bucket) => {
           metricGroupTerms = metricGroupTerms.concat(
             getMetricGroupTermsFromAgg(bucket, terms + ',' + '{"term": {"' + field + '": ')
@@ -3022,130 +3044,583 @@ getBreakoutAggregation = function (source, type, breakout) {
 };
 exports.getBreakoutAggregation = getBreakoutAggregation;
 
+const METRIC_DESCRIPTOR_LIMIT = 'METRIC_DESCRIPTOR_LIMIT';
+const METRIC_DESCRIPTOR_INVALID_RESPONSE = 'METRIC_DESCRIPTOR_INVALID_RESPONSE';
+const OPENSEARCH_QUERY_FAILED = 'OPENSEARCH_QUERY_FAILED';
+const metricDescriptorLimitHint =
+  'Reduce the number of breakout dimensions, or constrain a high-cardinality dimension with a value or regex filter. The descriptor partition budget can be raised with CDM_METRIC_DESCRIPTOR_MAX_QUERIES, but larger fan-out can overload OpenSearch.';
+
+function createMetricDescriptorError(code, type, reason, recoveryHint, details) {
+  const error = new Error(type + ': ' + reason);
+  error.code = code;
+  error.details = details || { type: type, reason: reason };
+  error.recoveryHint = recoveryHint;
+  return error;
+}
+
+function metricDescriptorOption(options, key, envName, fallback) {
+  const configured = options && isDefined(options[key]) ? options[key] : process.env[envName];
+  if (isUndefined(configured)) return fallback;
+  const value = Number(configured);
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw createMetricDescriptorError(
+      'METRIC_DESCRIPTOR_CONFIG',
+      'invalid_descriptor_config',
+      envName + ' must be a positive integer',
+      'Correct the descriptor query limit and retry.'
+    );
+  }
+  return value;
+}
+
+function openSearchResponseProblem(response, requireAggregations) {
+  if (response === null || isUndefined(response) || typeof response !== 'object') {
+    return {
+      type: 'missing_response',
+      reason: 'OpenSearch returned no response for a descriptor query',
+      status: 502
+    };
+  }
+  if (isDefined(response.error) && response.error !== null) {
+    let source = response.error;
+    const seen = new Set();
+    while (source && typeof source === 'object' && !seen.has(source)) {
+      seen.add(source);
+      let next;
+      if (source.caused_by && typeof source.caused_by === 'object') {
+        next = Array.isArray(source.caused_by) ? source.caused_by[0] : source.caused_by;
+      } else if (Array.isArray(source.root_cause) && source.root_cause.length > 0) {
+        next = source.root_cause[0];
+      }
+      if (!next || typeof next !== 'object' || seen.has(next)) break;
+      source = next;
+    }
+    return {
+      type: typeof source === 'string' ? 'opensearch_error' : source.type || 'opensearch_error',
+      reason: typeof source === 'string' ? source : source.reason || 'OpenSearch did not provide an error reason',
+      status: response.status
+    };
+  }
+  if (Number.isFinite(Number(response.status)) && Number(response.status) >= 400) {
+    return {
+      type: 'opensearch_http_error',
+      reason: 'OpenSearch returned HTTP status ' + response.status,
+      status: response.status
+    };
+  }
+  if (response.timed_out === true) {
+    return { type: 'search_timeout', reason: 'OpenSearch descriptor query timed out', status: 504 };
+  }
+  if (
+    requireAggregations &&
+    (response.aggregations === null || isUndefined(response.aggregations) || typeof response.aggregations !== 'object')
+  ) {
+    return {
+      type: 'missing_aggregations',
+      reason: 'OpenSearch descriptor response did not contain aggregations',
+      status: 502
+    };
+  }
+  return null;
+}
+
+function descriptorTarget(set) {
+  return set && set.source && set.type ? set.source + '::' + set.type : 'metric descriptor';
+}
+
+function metricDescriptorProblemError(problem, set) {
+  if (problem.type.includes('too_many_buckets')) {
+    return createMetricDescriptorError(
+      METRIC_DESCRIPTOR_LIMIT,
+      problem.type,
+      descriptorTarget(set) + ': ' + problem.reason,
+      metricDescriptorLimitHint,
+      { type: problem.type, reason: problem.reason, status: problem.status }
+    );
+  }
+  const code =
+    problem.type === 'missing_aggregations' || problem.type === 'missing_response'
+      ? METRIC_DESCRIPTOR_INVALID_RESPONSE
+      : OPENSEARCH_QUERY_FAILED;
+  return createMetricDescriptorError(
+    code,
+    problem.type,
+    descriptorTarget(set) + ': ' + problem.reason,
+    'Check OpenSearch health and the reported error, then retry. If it recurs, reduce the requested breakout scope.',
+    { type: problem.type, reason: problem.reason, status: problem.status }
+  );
+}
+
+function metricDescriptorFailureResponse(error, set) {
+  const normalized =
+    error && error.code
+      ? error
+      : createMetricDescriptorError(
+          OPENSEARCH_QUERY_FAILED,
+          'metric_descriptor_query_error',
+          descriptorTarget(set) + ': ' + (error && error.message ? error.message : String(error)),
+          'Check OpenSearch health and the reported error, then retry.',
+          { type: 'metric_descriptor_query_error', reason: String(error) }
+        );
+  return {
+    'ret-code': 4,
+    'ret-msg': 'ERROR: ' + normalized.message,
+    code: normalized.code,
+    details: normalized.details,
+    recoveryHint: normalized.recoveryHint
+  };
+}
+
+function descriptorLimitError(type, reason, message, context) {
+  const cause = context && context.cause;
+  const causeText = cause ? ' OpenSearch reported ' + cause.type + ': ' + cause.reason + '.' : '';
+  return createMetricDescriptorError(METRIC_DESCRIPTOR_LIMIT, type, message + causeText, metricDescriptorLimitHint, {
+    type: type,
+    reason: reason,
+    causeType: cause && cause.type,
+    causeReason: cause && cause.reason,
+    status: cause && cause.status
+  });
+}
+
+function buildMetricDescriptorFilter(set, extraFilters) {
+  const filters = [{ term: { 'metric_desc.source': set.source } }, { term: { 'metric_desc.type': set.type } }];
+  const periodFilter = periodScopedMetricDescriptorFilter(set.period);
+  if (periodFilter) filters.push(periodFilter);
+  if (set.run != null) filters.push({ term: { 'run.run-uuid': set.run } });
+  (set.breakout || []).forEach((entry) => {
+    const bp = parseBreakoutEntry(entry);
+    const field = 'metric_desc.names.' + bp.name;
+    if (bp.regex) {
+      filters.push({ regexp: { [field]: bp.regex } });
+    } else if (bp.values) {
+      if (bp.values.length > 1) {
+        filters.push({ terms: { [field]: bp.values } });
+      } else if (bp.values.length === 1) {
+        filters.push({ term: { [field]: bp.values[0] } });
+      }
+    }
+  });
+  if (Array.isArray(extraFilters)) filters.push(...extraFilters);
+  return filters;
+}
+
+function buildMetricDescriptorQuery(set, extraFilters) {
+  return {
+    query: { bool: { filter: buildMetricDescriptorFilter(set, extraFilters) } },
+    size: 0,
+    aggs: JSON.parse(getBreakoutAggregation(set.source, set.type, set.breakout))
+  };
+}
+
+function buildDescriptorTermsQuery(set, field, extraFilters, size) {
+  return {
+    query: { bool: { filter: buildMetricDescriptorFilter(set, extraFilters) } },
+    size: 0,
+    aggs: { source: { terms: { field: field, size: size } } }
+  };
+}
+
+function takeDescriptorRequestBudget(budget, count, set) {
+  if (count > budget.remaining) {
+    throw descriptorLimitError(
+      'descriptor_query_budget_exhausted',
+      'partition query budget exhausted',
+      descriptorTarget(set) + ': descriptor partitioning would require more than ' + budget.maxQueries + ' queries',
+      { cause: budget.cause }
+    );
+  }
+  budget.remaining -= count;
+}
+
+async function requestMetricDescriptorQueries(
+  instance,
+  queries,
+  yearDotMonth,
+  budget,
+  options,
+  set,
+  chargeBudget = true
+) {
+  if (chargeBudget) takeDescriptorRequestBudget(budget, queries.length, set);
+  const jsonArr = [];
+  queries.forEach((query) => {
+    jsonArr.push('{}');
+    jsonArr.push(JSON.stringify(query));
+  });
+  let responses;
+  try {
+    responses = await options.request(instance, 'metric_desc', '/_msearch', jsonArr, yearDotMonth);
+  } catch (error) {
+    if (error && error.code) throw error;
+    throw createMetricDescriptorError(
+      OPENSEARCH_QUERY_FAILED,
+      'descriptor_transport_error',
+      descriptorTarget(set) + ': ' + (error && error.message ? error.message : String(error)),
+      'Check connectivity to OpenSearch and retry the descriptor query.',
+      { type: 'descriptor_transport_error', reason: error && error.message ? error.message : String(error) }
+    );
+  }
+  if (!Array.isArray(responses) || responses.length !== queries.length) {
+    const count = Array.isArray(responses) ? responses.length : 0;
+    throw createMetricDescriptorError(
+      METRIC_DESCRIPTOR_INVALID_RESPONSE,
+      'response_count_mismatch',
+      descriptorTarget(set) + ': expected ' + queries.length + ' descriptor responses but received ' + count,
+      'Retry the query. If it recurs, inspect the OpenSearch _msearch response and server logs.',
+      { type: 'response_count_mismatch', reason: 'response count did not match request count' }
+    );
+  }
+  return responses;
+}
+
+function getPartitionCandidates(set, partitionedFields) {
+  const seen = new Set(partitionedFields || []);
+  const candidates = [];
+  (set.breakout || []).forEach((entry, order) => {
+    const bp = parseBreakoutEntry(entry);
+    if (bp.aggregate || seen.has(bp.name)) return;
+    seen.add(bp.name);
+    candidates.push({ name: bp.name, field: 'metric_desc.names.' + bp.name, order: order });
+  });
+  return candidates;
+}
+
+async function enumeratePartitionCandidates(instance, set, yearDotMonth, candidates, extraFilters, budget, options) {
+  const queries = candidates.map((candidate) =>
+    buildDescriptorTermsQuery(set, candidate.field, extraFilters, budget.maxQueries + 1)
+  );
+  const responses = await requestMetricDescriptorQueries(instance, queries, yearDotMonth, budget, options, set);
+  return candidates.map((candidate, index) => {
+    const response = responses[index];
+    const problem = openSearchResponseProblem(response, true);
+    if (problem) throw metricDescriptorProblemError(problem, set);
+    const termsAgg = response.aggregations.source;
+    if (!termsAgg || !Array.isArray(termsAgg.buckets)) {
+      throw createMetricDescriptorError(
+        METRIC_DESCRIPTOR_INVALID_RESPONSE,
+        'missing_terms_aggregation',
+        descriptorTarget(set) + ': partition-value response for ' + candidate.name + ' did not contain buckets',
+        'Retry the query. If it recurs, inspect the OpenSearch descriptor response.',
+        { type: 'missing_terms_aggregation', reason: 'partition-value aggregation had no bucket list' }
+      );
+    }
+    return {
+      name: candidate.name,
+      field: candidate.field,
+      order: candidate.order,
+      values: termsAgg.buckets.map((bucket) => bucket.key),
+      complete: Number(termsAgg.sum_other_doc_count || 0) === 0
+    };
+  });
+}
+
+function mergeMetricGroupTerms(mergedTerms, terms) {
+  terms.forEach((term) => {
+    const label = metricGroupTermLabel(term);
+    if (!mergedTerms.has(label)) mergedTerms.set(label, term);
+  });
+}
+
+async function partitionMetricDescriptorSet(instance, set, yearDotMonth, context) {
+  if (context.depth > context.budget.maxDepth) {
+    throw descriptorLimitError(
+      'descriptor_partition_depth_exhausted',
+      'partition recursion limit exhausted',
+      descriptorTarget(set) + ': descriptor partitioning exceeded ' + context.budget.maxDepth + ' levels',
+      context
+    );
+  }
+  const candidates = getPartitionCandidates(set, context.partitionedFields);
+  if (candidates.length === 0) {
+    throw descriptorLimitError(
+      'no_partition_candidates',
+      'no unpartitioned breakout dimensions remain',
+      descriptorTarget(set) +
+        ': OpenSearch bucket limit was reached and no breakout dimension remains available to partition',
+      context
+    );
+  }
+  const enumerated = await enumeratePartitionCandidates(
+    instance,
+    set,
+    yearDotMonth,
+    candidates,
+    context.extraFilters,
+    context.budget,
+    context.options
+  );
+  const affordable = enumerated
+    .filter(
+      (candidate) =>
+        candidate.complete && candidate.values.length > 1 && candidate.values.length <= context.budget.remaining
+    )
+    .sort((left, right) => left.values.length - right.values.length || left.order - right.order);
+  if (affordable.length === 0) {
+    const summary = enumerated
+      .map(
+        (candidate) =>
+          candidate.name + ':' + (candidate.complete ? candidate.values.length : '>' + candidate.values.length)
+      )
+      .join(', ');
+    throw descriptorLimitError(
+      'no_affordable_partition',
+      'candidate value cardinality exceeded the remaining query budget',
+      descriptorTarget(set) +
+        ': no breakout dimension fits the remaining descriptor query budget (' +
+        context.budget.remaining +
+        '); candidates: ' +
+        summary,
+      context
+    );
+  }
+
+  const selected = affordable[0];
+  const partitionQueries = selected.values.map((value) =>
+    buildMetricDescriptorQuery(set, context.extraFilters.concat([{ term: { [selected.field]: value } }]))
+  );
+  const responses = await requestMetricDescriptorQueries(
+    instance,
+    partitionQueries,
+    yearDotMonth,
+    context.budget,
+    context.options,
+    set
+  );
+  const partitionedFields = new Set(context.partitionedFields || []);
+  partitionedFields.add(selected.name);
+  const mergedTerms = new Map();
+  for (let index = 0; index < responses.length; index++) {
+    const problem = openSearchResponseProblem(responses[index], true);
+    if (problem) {
+      if (!problem.type.includes('too_many_buckets')) throw metricDescriptorProblemError(problem, set);
+      const nestedTerms = await partitionMetricDescriptorSet(instance, set, yearDotMonth, {
+        ...context,
+        depth: context.depth + 1,
+        partitionedFields: partitionedFields,
+        extraFilters: context.extraFilters.concat([{ term: { [selected.field]: selected.values[index] } }])
+      });
+      mergeMetricGroupTerms(mergedTerms, nestedTerms);
+      continue;
+    }
+    mergeMetricGroupTerms(mergedTerms, getMetricGroupTermsFromAgg(responses[index].aggregations));
+  }
+  return Array.from(mergedTerms.values());
+}
+
+async function collectMetricGroupTermsForSets(instance, sets, yearDotMonth, options) {
+  const budget = {
+    maxQueries: metricDescriptorOption(options, 'maxQueries', 'CDM_METRIC_DESCRIPTOR_MAX_QUERIES', 128),
+    maxDepth: metricDescriptorOption(options, 'maxDepth', 'CDM_METRIC_DESCRIPTOR_MAX_DEPTH', 8),
+    remaining: 0
+  };
+  budget.remaining = budget.maxQueries;
+  const request = options && options.request ? options.request : esJsonArrRequest;
+  if (typeof request !== 'function') {
+    throw createMetricDescriptorError(
+      'METRIC_DESCRIPTOR_CONFIG',
+      'invalid_descriptor_request',
+      'descriptor request implementation must be a function',
+      'Correct the descriptor query configuration and retry.'
+    );
+  }
+  const descriptorOptions = { request: request };
+  const representativeSet = sets[0];
+  const initialQueries = sets.map((set) => buildMetricDescriptorQuery(set, []));
+  const initialResponses = await requestMetricDescriptorQueries(
+    instance,
+    initialQueries,
+    yearDotMonth,
+    budget,
+    descriptorOptions,
+    representativeSet,
+    false
+  );
+  const metricGroupTermsSets = [];
+  for (let index = 0; index < sets.length; index++) {
+    const set = sets[index];
+    const problem = openSearchResponseProblem(initialResponses[index], true);
+    if (!problem) {
+      metricGroupTermsSets.push(getMetricGroupTermsFromAgg(initialResponses[index].aggregations));
+      continue;
+    }
+    if (!problem.type.includes('too_many_buckets')) throw metricDescriptorProblemError(problem, set);
+    budget.cause = problem;
+    const terms = await partitionMetricDescriptorSet(instance, set, yearDotMonth, {
+      depth: 1,
+      partitionedFields: new Set(),
+      extraFilters: [],
+      budget: budget,
+      options: descriptorOptions,
+      cause: problem
+    });
+    metricGroupTermsSets.push(terms);
+  }
+  return metricGroupTermsSets;
+}
+
 // --------------------------------------------------------------------------------------------------------------
+function metricGroupTermLabel(term) {
+  const terms = JSON.parse('[' + term + ']');
+  let label = '';
+  terms.forEach((thisTerm) => {
+    Object.keys(thisTerm.term).forEach((field) => {
+      // Source and type are query filters, not part of the displayed label.
+      if (field === 'metric_desc.source' || field === 'metric_desc.type') return;
+      label += '-' + '<' + thisTerm.term[field] + '>';
+    });
+  });
+  return label.replace(/^-/, '');
+}
+
 getMetricGroupTermsByLabel = function (metricGroupTerms) {
   var metricGroupTermsByLabel = {};
   metricGroupTerms.forEach((term) => {
-    var terms = JSON.parse('[' + term + ']');
-    var label = '';
-    terms.forEach((thisTerm) => {
-      Object.keys(thisTerm.term).forEach((field) => {
-        // The true label does not actually include the source/type
-        // but the query does have those in the filter terms, so we
-        // need to excluse it when forming the label.
-        if (field == 'metric_desc.source' || field == 'metric_desc.type') {
-          return;
-        }
-        label += '-' + '<' + thisTerm.term[field] + '>';
-      });
-    });
-    label = label.replace(/^-/, '');
-    metricGroupTermsByLabel[label] = term;
+    metricGroupTermsByLabel[metricGroupTermLabel(term)] = term;
   });
   return metricGroupTermsByLabel;
 };
 
-// --------------------------------------------------------------------------------------------------------------
-mgetMetricIdsFromTerms = async function (instance, termsSets, yearDotMonth) {
-  var retCode = 0;
-  var retMsg = '';
-  var metricIdsSets = []; // eventual length = termsSets
-
-  // termsSets is an array of:
-  // { 'period': x, 'run': y, 'termsByLabel': {} }
-  // termsByLabel is a dict/hash of:
-  // { <label>: sring }
-
-  var jsonArr = [];
-  var totalReqs = 0;
-  for (i = 0; i < termsSets.length; i++) {
-    var periId = termsSets[i].period;
-    var runId = termsSets[i].run;
-    var regexpFilters = termsSets[i].regexpFilters || [];
-    Object.keys(termsSets[i].termsByLabel)
-      .sort()
-      .forEach((label) => {
-        var terms_string = termsSets[i].termsByLabel[label];
-        var q = {
-          query: { bool: { filter: JSON.parse('[' + terms_string + ']') } },
-          _source: 'metric_desc.metric_desc-uuid',
-          size: bigQuerySize
-        };
-        if (periId == null && runId == null) {
-          retMsg = 'ERROR: mgetMetricIdsFromTerms(), terms[' + i + ']  must have either a period-id or run-id';
-          retCode = 1;
-          return createResponse(retCode, retMsg, { 'metric-id-sets': metricIdsSets });
-        }
-        var periodFilter = periodScopedMetricDescriptorFilter(periId);
-        if (periodFilter) q.query.bool.filter.push(periodFilter);
-        if (runId != null) {
-          q.query.bool.filter.push(JSON.parse('{"term": {"run.run-uuid": "' + runId + '"}}'));
-        }
-        // Apply any regexp filters that were excluded from aggregation
-        regexpFilters.forEach((rf) => {
-          q.query.bool.filter.push(
-            JSON.parse('{"regexp": {"metric_desc.names.' + rf.field + '": ' + JSON.stringify(rf.pattern) + '}}')
-          );
+function buildMetricGroupTermsSet(set, metricGroupTerms) {
+  let metricGroupTermsByLabel = getMetricGroupTermsByLabel(metricGroupTerms);
+  const regexpFilters = [];
+  const aggregatedPositions = [];
+  (set.breakout || []).forEach((entry, bpIdx) => {
+    const bp = parseBreakoutEntry(entry);
+    if (!bp.aggregate) return;
+    if (bp.regex) regexpFilters.push({ field: bp.name, pattern: bp.regex });
+    aggregatedPositions.push({ position: bpIdx, segment: '<' + buildAggregateLabel(bp) + '>' });
+  });
+  if (aggregatedPositions.length > 0) {
+    const oldLabels = Object.keys(metricGroupTermsByLabel);
+    if (oldLabels.length === 0) {
+      const syntheticLabel = aggregatedPositions.map((aggregate) => aggregate.segment).join('-');
+      metricGroupTermsByLabel[syntheticLabel] = '';
+    } else {
+      const updated = {};
+      oldLabels.forEach((oldLabel) => {
+        const segments = oldLabel.match(/<[^>]*>/g) || [];
+        aggregatedPositions.forEach((aggregate) => {
+          segments.splice(aggregate.position, 0, aggregate.segment);
         });
-        jsonArr.push('{}');
-        jsonArr.push(JSON.stringify(q));
-        totalReqs++;
+        updated[segments.join('-')] = metricGroupTermsByLabel[oldLabel];
       });
+      metricGroupTermsByLabel = updated;
+    }
   }
-  var responses = await esJsonArrRequest(instance, 'metric_desc', '/_msearch', jsonArr, yearDotMonth);
-  if (totalReqs != responses.length) {
-    retMsg =
-      'mgetMetricIdsFromTerms(): ERROR, number of _msearch responses (' +
-      responses.length +
-      ') did not match number of requests (' +
-      totalReqs +
-      ')';
-    retCode = 2;
-    return { 'metric-id-sets': metricIdsSets, 'ret-code': retCode, 'ret-msg': retMsg };
+  return {
+    run: set.run,
+    period: set.period,
+    termsByLabel: metricGroupTermsByLabel,
+    regexpFilters: regexpFilters
+  };
+}
+
+// --------------------------------------------------------------------------------------------------------------
+mgetMetricIdsFromTerms = async function (instance, termsSets, yearDotMonth, requestImpl) {
+  requestImpl = requestImpl || esJsonArrRequest;
+  const jsonArr = [];
+  const responseTerms = [];
+  for (let setIndex = 0; setIndex < termsSets.length; setIndex++) {
+    const termsSet = termsSets[setIndex];
+    if (termsSet.period == null && termsSet.run == null) {
+      return {
+        'metric-id-sets': [],
+        'ret-code': 1,
+        'ret-msg': 'ERROR: mgetMetricIdsFromTerms(), terms[' + setIndex + '] must have either a period-id or run-id'
+      };
+    }
+    const periodFilter = periodScopedMetricDescriptorFilter(termsSet.period);
+    for (const label of Object.keys(termsSet.termsByLabel).sort()) {
+      const q = {
+        query: { bool: { filter: JSON.parse('[' + termsSet.termsByLabel[label] + ']') } },
+        _source: 'metric_desc.metric_desc-uuid',
+        size: bigQuerySize
+      };
+      if (periodFilter) q.query.bool.filter.push(periodFilter);
+      if (termsSet.run != null) q.query.bool.filter.push({ term: { 'run.run-uuid': termsSet.run } });
+      (termsSet.regexpFilters || []).forEach((regexpFilter) => {
+        q.query.bool.filter.push({
+          regexp: { ['metric_desc.names.' + regexpFilter.field]: regexpFilter.pattern }
+        });
+      });
+      jsonArr.push('{}');
+      jsonArr.push(JSON.stringify(q));
+      responseTerms.push({ setIndex: setIndex, label: label });
+    }
   }
+  var responses = await requestImpl(instance, 'metric_desc', '/_msearch', jsonArr, yearDotMonth);
   if (responses == null) {
-    retMsg = 'ERROR: responses is null';
-    retCode = 3;
-    return { 'metric-id-sets': metricIdsSets, 'ret-code': retCode, 'ret-msg': retMsg };
+    return {
+      'metric-id-sets': [],
+      'ret-code': 3,
+      'ret-msg': 'ERROR: mgetMetricIdsFromTerms() received no response from OpenSearch',
+      code: OPENSEARCH_QUERY_FAILED,
+      recoveryHint: 'Check connectivity to OpenSearch and retry.'
+    };
+  }
+  if (responseTerms.length !== responses.length) {
+    return {
+      'metric-id-sets': [],
+      'ret-code': 2,
+      'ret-msg':
+        'ERROR: mgetMetricIdsFromTerms(): number of _msearch responses (' +
+        responses.length +
+        ') did not match number of requests (' +
+        responseTerms.length +
+        ')',
+      code: METRIC_DESCRIPTOR_INVALID_RESPONSE
+    };
+  }
+  for (let responseIndex = 0; responseIndex < responses.length; responseIndex++) {
+    const problem = openSearchResponseProblem(responses[responseIndex], false);
+    if (problem) {
+      const failure = metricDescriptorProblemError(problem, {});
+      return {
+        'metric-id-sets': [],
+        'ret-code': 4,
+        'ret-msg': 'ERROR: mgetMetricIdsFromTerms(): ' + failure.message,
+        code: failure.code,
+        details: failure.details,
+        recoveryHint: failure.recoveryHint
+      };
+    }
+    if (responses[responseIndex].hits == null || !Array.isArray(responses[responseIndex].hits.hits)) {
+      return {
+        'metric-id-sets': [],
+        'ret-code': 4,
+        'ret-msg': 'ERROR: mgetMetricIdsFromTerms(): OpenSearch response did not contain hits',
+        code: METRIC_DESCRIPTOR_INVALID_RESPONSE,
+        details: { type: 'missing_hits', reason: 'metric ID response did not contain hits' }
+      };
+    }
+    const totalHits = responses[responseIndex].hits.total && Number(responses[responseIndex].hits.total.value);
+    if (totalHits >= bigQuerySize || responses[responseIndex].hits.hits.length >= bigQuerySize) {
+      return {
+        'metric-id-sets': [],
+        'ret-code': 4,
+        'ret-msg': 'ERROR: mgetMetricIdsFromTerms(): hits exceeded max size of ' + bigQuerySize,
+        code: 'METRIC_ID_LIMIT',
+        details: { type: 'metric_id_limit', reason: 'metric descriptor hit limit exceeded' },
+        recoveryHint: 'Add a value or regex filter to reduce matching metric descriptors.'
+      };
+    }
   }
 
-  // Process the responses and assemble metric IDs into array
-  var count = 0;
-  for (i = 0; i < termsSets.length; i++) {
-    var thisMetricIds = {};
-    Object.keys(termsSets[i].termsByLabel)
-      .sort()
-      .forEach((label) => {
-        thisMetricIds[label] = [];
-        if (responses[i] == null) {
-          console.log('ERROR: responses[' + i + '] is null');
-          console.log('responses.length:' + responses.length);
-          console.log('responses:\n' + JSON.stringify(responses, null, 2));
-          console.log('termsSets.length: ' + termsSets.length);
-          console.log('totalReqs: ' + totalReqs);
-          console.log('query:\n' + jsonArr);
-          process.exit(1);
-        }
-        if (responses[i].hits == null) {
-          console.log('ERROR: responses[' + i + '].hits is null');
-          console.log('responses[' + i + ']:\n' + JSON.stringify(responses[i], null, 2));
-          console.log('termsSets.length: ' + termsSets.length);
-          console.log('totalReqs: ' + totalReqs);
-          console.log('query:\n' + jsonArr);
-          process.exit(1);
-        }
-        if (responses[i].hits.total.value >= bigQuerySize || responses[i].hits.hits.length >= bigQuerySize) {
-          console.log('ERROR: hits from returned query exceeded max size of ' + bigQuerySize);
-          process.exit(1);
-        }
-        for (j = 0; j < responses[count].hits.hits.length; j++) {
-          thisMetricIds[label].push(responses[count].hits.hits[j]._source.metric_desc['metric_desc-uuid']);
-        }
-        count++;
-      });
-    metricIdsSets.push(thisMetricIds);
-  }
-  return { 'metric-id-sets': metricIdsSets, 'ret-code': retCode, 'ret-msg': retMsg };
+  const metricIdsSets = termsSets.map((termsSet) => {
+    const thisMetricIds = {};
+    Object.keys(termsSet.termsByLabel).forEach((label) => {
+      thisMetricIds[label] = [];
+    });
+    return thisMetricIds;
+  });
+  responseTerms.forEach((entry, responseIndex) => {
+    const hits = responses[responseIndex].hits.hits;
+    hits.forEach((hit) => {
+      metricIdsSets[entry.setIndex][entry.label].push(hit._source.metric_desc['metric_desc-uuid']);
+    });
+  });
+  return { 'metric-id-sets': metricIdsSets, 'ret-code': 0, 'ret-msg': '' };
 };
 exports.mgetMetricIdsFromTerms = mgetMetricIdsFromTerms;
 
@@ -3155,128 +3630,37 @@ exports.mgetMetricIdsFromTerms = mgetMetricIdsFromTerms;
 // wants to "break-out" the metric (by some metadatam like cpu-id, devtype, etc).
 // Find the number of groups needed based on the --breakout options, then find out
 // what metric IDs belong in each group.
-getMetricGroupsFromBreakouts = async function (instance, sets, yearDotMonth) {
-  var retMsg = '';
-  var retCode = 0;
-  var metricGroupIdsByLabel = [];
-  var indexjson = '{}\n';
-  var index = JSON.parse(indexjson);
-  var jsonArr = [];
-
-  sets.forEach((set) => {
-    var result = getBreakoutAggregation(set.source, set.type, set.breakout);
-    var aggs = JSON.parse(result);
-    var q = {
-      query: {
-        bool: {
-          filter: [{ term: { 'metric_desc.source': set.source } }, { term: { 'metric_desc.type': set.type } }]
-        }
-      },
-      size: 0
-    };
-
-    var periodFilter = periodScopedMetricDescriptorFilter(set.period);
-    if (periodFilter) q.query.bool.filter.push(periodFilter);
-    if (set.run != null) {
-      q.query.bool.filter.push(JSON.parse('{"term": {"run.run-uuid": "' + set.run + '"}}'));
-    }
-    // Add filters for breakout entries that specify values or regex patterns
-    set.breakout.forEach((entry) => {
-      var bp = parseBreakoutEntry(entry);
-      if (bp.regex) {
-        q.query.bool.filter.push(
-          JSON.parse('{"regexp": {"metric_desc.names.' + bp.name + '": ' + JSON.stringify(bp.regex) + '}}')
-        );
-      } else if (bp.values) {
-        if (bp.values.length > 1) {
-          q.query.bool.filter.push(
-            JSON.parse('{"terms": {"metric_desc.names.' + bp.name + '": ' + JSON.stringify(bp.values) + '}}')
-          );
-        } else {
-          q.query.bool.filter.push(
-            JSON.parse('{"term": {"metric_desc.names.' + bp.name + '": "' + bp.values[0] + '"}}')
-          );
-        }
-      }
-    });
-    q.aggs = aggs;
-    jsonArr.push(JSON.stringify(index));
-    jsonArr.push(JSON.stringify(q));
-    // Log the metric_desc query as curl for debugging
-    var indexName = getIndexName('metric_desc', instance, yearDotMonth);
-    //console.log -s -X POST "http://' + instance['host'] + '/' + indexName + '/_search" -H "Content-Type: application/json" -d \'' + JSON.stringify(q) + '\'');
-  });
+getMetricGroupsFromBreakouts = async function (instance, sets, yearDotMonth, options = {}) {
   var mdStart = Date.now();
-  var responses = await esJsonArrRequest(instance, 'metric_desc', '/_msearch', jsonArr, yearDotMonth);
+  let metricGroupTermsSets;
+  try {
+    metricGroupTermsSets = await collectMetricGroupTermsForSets(instance, sets, yearDotMonth, options);
+  } catch (error) {
+    return metricDescriptorFailureResponse(error, sets[0]);
+  }
   console.log(
     '[' +
       new Date().toISOString() +
       '] [OS-METRIC-DESC] ' +
-      jsonArr.length / 2 +
-      ' query(ies) completed in ' +
+      sets.length +
+      ' set(s) completed in ' +
       (Date.now() - mdStart) +
       'ms'
   );
 
-  var metricGroupIdsByLabelSets = [];
-  var metricGroupTermsSets = [];
-  var metricGroupTermsByLabelSets = [];
-  var termsSets = [];
-  for (var idx = 0; idx < sets.length; idx++) {
-    // The response includes a result from a nested aggregation, which will be parsed to produce
-    // query terms for each of the metric groups
-    var metricGroupTerms = getMetricGroupTermsFromAgg(responses[idx].aggregations);
-    // Derive the label from each group and organize into a dict, key = label, value = the filter terms
-    var metricGroupTermsByLabel = getMetricGroupTermsByLabel(metricGroupTerms);
-
-    // For aggregated breakouts, insert a synthetic label segment at the correct position
-    var regexpFilters = [];
-    var aggregatedPositions = [];
-    sets[idx].breakout.forEach((entry, bpIdx) => {
-      var bp = parseBreakoutEntry(entry);
-      if (!bp.aggregate) return;
-      if (bp.regex) {
-        regexpFilters.push({ field: bp.name, pattern: bp.regex });
-      }
-      aggregatedPositions.push({ position: bpIdx, segment: '<' + buildAggregateLabel(bp) + '>' });
-    });
-    if (aggregatedPositions.length > 0) {
-      var oldLabels = Object.keys(metricGroupTermsByLabel);
-      if (oldLabels.length === 0) {
-        var synLabel = aggregatedPositions
-          .map(function (ap) {
-            return ap.segment;
-          })
-          .join('-');
-        metricGroupTermsByLabel[synLabel] = '';
-      } else {
-        var updated = {};
-        oldLabels.forEach(function (oldLabel) {
-          var segments = oldLabel.match(/<[^>]*>/g) || [];
-          aggregatedPositions.forEach(function (ap) {
-            segments.splice(ap.position, 0, ap.segment);
-          });
-          updated[segments.join('-')] = metricGroupTermsByLabel[oldLabel];
-        });
-        metricGroupTermsByLabel = updated;
-      }
-    }
-
-    var thisLabelSet = {
-      run: sets[idx].run,
-      period: sets[idx].period,
-      termsByLabel: metricGroupTermsByLabel,
-      regexpFilters: regexpFilters
-    };
-    termsSets.push(thisLabelSet);
-  }
-  var resp = await mgetMetricIdsFromTerms(instance, termsSets, yearDotMonth);
+  const termsSets = sets.map((set, index) => buildMetricGroupTermsSet(set, metricGroupTermsSets[index]));
+  var resp = await mgetMetricIdsFromTerms(instance, termsSets, yearDotMonth, options && options.request);
   if (resp['ret-code'] == 0) {
-    return { 'ret-code': retCode, 'ret-msg': retMsg, 'metric-id-sets': resp['metric-id-sets'] };
+    return { 'ret-code': 0, 'ret-msg': '', 'metric-id-sets': resp['metric-id-sets'] };
   }
-  retMsg = 'ERROR: ' + resp['ret-msg'];
-  retCode = resp['ret-code'];
-  return { 'ret-code': retCode, 'ret-msg': retMsg, 'metric-id-sets': resp['metric-id-sets'] };
+  return {
+    'ret-code': resp['ret-code'],
+    'ret-msg': resp['ret-msg'],
+    'metric-id-sets': resp['metric-id-sets'] || [],
+    code: resp.code,
+    details: resp.details,
+    recoveryHint: resp.recoveryHint
+  };
 };
 exports.getMetricGroupsFromBreakouts = getMetricGroupsFromBreakouts;
 
@@ -3979,7 +4363,8 @@ async function getNativeMetricStats(
       pit = await send('POST', baseUrl + '/' + indexName + '/_search/point_in_time?keep_alive=1m', {});
     } catch (error) {
       error.code = 'NATIVE_STATS_PIT_UNSUPPORTED';
-      error.message = 'native distribution statistics require OpenSearch Point-in-Time search support: ' + error.message;
+      error.message =
+        'native distribution statistics require OpenSearch Point-in-Time search support: ' + error.message;
       throw error;
     }
     pitId = pit.pit_id || pit.id;
@@ -4003,11 +4388,7 @@ async function getNativeMetricStats(
         size: pageSize,
         track_total_hits: firstPage ? maxDocuments + 1 : false,
         pit: { id: pitId, keep_alive: '1m' },
-        sort: [
-          { 'metric_data.begin': 'asc' },
-          { 'metric_data.end': 'asc' },
-          { 'metric_desc.metric_desc-uuid': 'asc' }
-        ],
+        sort: [{ 'metric_data.begin': 'asc' }, { 'metric_data.end': 'asc' }, { 'metric_desc.metric_desc-uuid': 'asc' }],
         docvalue_fields: [
           { field: 'metric_desc.metric_desc-uuid' },
           { field: 'metric_data.begin', format: 'epoch_millis' },
@@ -4189,14 +4570,7 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
   }
 
   var periodIds = sets.map((set) => set.period);
-  var setBreakouts = await mgetMetricNames(
-    instance,
-    runIds,
-    sources,
-    types,
-    yearDotMonth,
-    periodIds
-  );
+  var setBreakouts = await mgetMetricNames(instance, runIds, sources, types, yearDotMonth, periodIds);
 
   // Ensure that any breakouts are available for each set
   for (var i = 0; i < sets.length; i++) {
@@ -4230,7 +4604,13 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
   if (resp['ret-code'] != 0) {
     retMsg = 'ERROR: getMetricDataSets(): ' + resp['ret-msg'];
     retCode = resp['ret-code'];
-    return { 'ret-code': retCode, 'ret-msg': retMsg };
+    return {
+      'ret-code': retCode,
+      'ret-msg': retMsg,
+      code: resp.code,
+      details: resp.details,
+      recoveryHint: resp.recoveryHint
+    };
   }
   var metricGroupIdsByLabelSets = resp['metric-id-sets'];
 
@@ -4336,11 +4716,11 @@ getMetricDataSets = async function (instance, sets, yearDotMonth) {
     Object.keys(dataSets[i])
       .filter((label) => label !== 'distributionStats')
       .forEach((label) => {
-      if (isUndefined(dataSets[i].values)) {
-        dataSets[i].values = {};
-      }
-      dataSets[i].values[label] = dataSets[i][label];
-      delete dataSets[i][label];
+        if (isUndefined(dataSets[i].values)) {
+          dataSets[i].values = {};
+        }
+        dataSets[i].values[label] = dataSets[i][label];
+        delete dataSets[i][label];
       });
     // Build the label-decoder and the remaining breakouts
     dataSets[i].usedBreakouts = sets[i].breakout;

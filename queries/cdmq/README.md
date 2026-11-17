@@ -16,6 +16,8 @@ Native distribution statistics use OpenSearch Point-in-Time search with `search_
 
 Resource limits are configurable on the CDM server with positive-integer environment variables. Defaults are `CDM_NATIVE_STATS_MAX_DOCUMENTS=250000`, `CDM_NATIVE_STATS_MAX_INTERVALS=500000`, `CDM_NATIVE_STATS_MAX_RUNTIME_MS=300000`, and `CDM_NATIVE_STATS_PAGE_SIZE=1000`. Exceeding a limit returns an error; the server never silently falls back to statistics over resolution buckets.
 
+High-cardinality breakout discovery is partitioned when OpenSearch reports a bucket limit. `CDM_METRIC_DESCRIPTOR_MAX_QUERIES` (default `128`) bounds descriptor partition subqueries per API call, and `CDM_METRIC_DESCRIPTOR_MAX_DEPTH` (default `8`) bounds recursive splits. Exhausting either limit returns HTTP 413 with `METRIC_DESCRIPTOR_LIMIT`, the OpenSearch cause in `details`, and an actionable `recoveryHint`.
+
 In order to generate this data, you must run a benchmark via automation framework which uses the Common Data Format and index that data into OpenSearch. One of those automation frameworks is the [crucible](https://github.com/perftool-incubator/crucible) project. A subproject of crucible, [crucible-examples](https://github.com/perftool-incubator/crucible-examples), includes scenarios to run some of these benchmarks.
 
 ## Terms
