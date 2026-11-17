@@ -1532,13 +1532,13 @@ exports.getRunFromPeriod = getRunFromPeriod;
 
 // --------------------------------------------------------------------------------------------------------------
 // For each opensearch instance, get the cdm versions they contain and their indices
-getInstancesInfo = function (instances) {
+getInstancesInfo = async function (instances) {
   for (inst_idx = 0; inst_idx < instances.length; inst_idx++) {
     var url = 'http://' + instances[inst_idx]['host'] + '/_cat/indices?format=json';
     var resp;
     instances[inst_idx]['online'] = true;
     try {
-      resp = request('GET', url, { headers: instances[inst_idx]['header'] });
+      resp = await thenRequest('GET', url, { headers: instances[inst_idx]['header'] });
     } catch (error) {
       console.log(
         'getInstancesInfo(): Failed to reach the host ' + instances[inst_idx]['host'] + ', so not including it'
@@ -1547,7 +1547,12 @@ getInstancesInfo = function (instances) {
       continue;
     }
     if (isDefined(resp)) {
-      var indices = JSON.parse(resp.getBody());
+      if (resp.statusCode < 200 || resp.statusCode >= 300) {
+        console.log('getInstancesInfo(): Host ' + instances[inst_idx]['host'] + ' returned HTTP ' + resp.statusCode);
+        instances[inst_idx]['online'] = false;
+        continue;
+      }
+      var indices = JSON.parse(resp.getBody('utf8'));
       instances[inst_idx]['indices'] = {};
       for (const index of indices) {
         var name = index['index'];
@@ -1580,6 +1585,7 @@ getInstancesInfo = function (instances) {
     instances[inst_idx]['ver'] = 'v9dev';
   }
 };
+exports.getInstancesInfo = getInstancesInfo;
 
 // --------------------------------------------------------------------------------------------------------------
 invalidInstance = function (instance) {

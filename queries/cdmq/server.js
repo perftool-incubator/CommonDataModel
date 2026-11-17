@@ -112,10 +112,6 @@ serverLog(
 );
 serverLog('Log file: ' + logFile);
 
-getInstancesInfo(instances);
-
-serverLog('Instance info after discovery: ' + JSON.stringify(instances, null, 2));
-
 app.use(cors());
 app.use(express.json());
 
@@ -147,7 +143,7 @@ async function resolveRun(req, res, next) {
     }
 
     // Refresh instance index info before querying
-    getInstancesInfo(instances);
+    await getInstancesInfo(instances);
 
     const instance = await findInstanceFromRun(instances, runId);
     if (instance == null) {
@@ -216,7 +212,7 @@ app.get('/api/v1/runs', async (req, res) => {
     }
 
     // Refresh instance index info before querying
-    getInstancesInfo(instances);
+    await getInstancesInfo(instances);
 
     var allInstanceRunIds = [];
     for (const instance of instances) {
@@ -774,7 +770,7 @@ app.post('/api/v1/iterations/details', async (req, res) => {
       });
     }
 
-    getInstancesInfo(instances);
+    await getInstancesInfo(instances);
 
     var allIterations = [];
 
@@ -942,7 +938,7 @@ app.post('/api/v1/iterations/metric-values', async (req, res) => {
       });
     }
 
-    getInstancesInfo(instances);
+    await getInstancesInfo(instances);
 
     var result = {};
 
@@ -1092,7 +1088,7 @@ app.post('/api/v1/iterations/metric-sources', async (req, res) => {
     if (!Array.isArray(runIds) || runIds.length === 0) {
       return res.status(400).json({ code: 'MISSING_RUN_IDS', error: 'An array of run IDs is required' });
     }
-    getInstancesInfo(instances);
+    await getInstancesInfo(instances);
     var allSources = new Set();
     for (const inst of instances) {
       if (invalidInstance(inst)) continue;
@@ -1127,7 +1123,7 @@ app.post('/api/v1/iterations/metric-types', async (req, res) => {
     if (!Array.isArray(runIds) || runIds.length === 0 || !source) {
       return res.status(400).json({ code: 'MISSING_PARAMS', error: 'runIds and source are required' });
     }
-    getInstancesInfo(instances);
+    await getInstancesInfo(instances);
     var allTypes = new Set();
     for (const inst of instances) {
       if (invalidInstance(inst)) continue;
@@ -1173,7 +1169,7 @@ app.post('/api/v1/iterations/breakout-values', async (req, res) => {
         .status(400)
         .json({ code: 'MISSING_PARAMS', error: 'runIds, source, type, and breakouts are required' });
     }
-    getInstancesInfo(instances);
+    await getInstancesInfo(instances);
     var merged = {};
     for (const inst of instances) {
       if (invalidInstance(inst)) continue;
@@ -1231,7 +1227,7 @@ app.post('/api/v1/iterations/period-info', async (req, res) => {
     var perIterSampleIdx =
       typeof sampleIndex === 'object' && sampleIndex !== null && !Array.isArray(sampleIndex) ? sampleIndex : null;
 
-    getInstancesInfo(instances);
+    await getInstancesInfo(instances);
     var result = {};
 
     for (const inst of instances) {
@@ -1338,7 +1334,7 @@ app.post('/api/v1/iterations/supplemental-metric', async (req, res) => {
     ) {
       return res.status(400).json({ code: 'MISSING_PARAMS', error: 'iterations or runIds are required' });
     }
-    getInstancesInfo(instances);
+    await getInstancesInfo(instances);
     var result = {};
     var remainingBreakouts = [];
     var sampleInfo = {};
@@ -1509,7 +1505,7 @@ function getYdm(instance, docType, req) {
 }
 
 async function getDistinctValues(instances, fetchFn) {
-  getInstancesInfo(instances);
+  await getInstancesInfo(instances);
   var allValues = [];
   for (const instance of instances) {
     if (invalidInstance(instance)) continue;
@@ -1523,7 +1519,7 @@ async function getDistinctValues(instances, fetchFn) {
 // Return available YYYY.MM values from index names (for date range selectors)
 app.get('/api/v1/fields/months', async (req, res) => {
   try {
-    getInstancesInfo(instances);
+    await getInstancesInfo(instances);
     var allMonths = new Set();
     for (const instance of instances) {
       if (invalidInstance(instance)) continue;
@@ -1786,7 +1782,7 @@ app.post('/api/v1/metric-data', async (req, res) => {
     }
 
     // Refresh instance index info before querying
-    getInstancesInfo(instancesToUse);
+    await getInstancesInfo(instancesToUse);
 
     var yearDotMonth;
     var instance;
@@ -1920,10 +1916,21 @@ if (fs.existsSync(webUiDist)) {
 }
 
 // Start server
-app.listen(PORT, () => {
-  serverLog('CDM Query Server running on port ' + PORT);
-  serverLog('API endpoints: http://localhost:' + PORT + '/api/v1/');
-  serverLog('Health check: http://localhost:' + PORT + '/health');
-});
+async function startServer() {
+  try {
+    await getInstancesInfo(instances);
+    serverLog('Instance info after discovery: ' + JSON.stringify(instances, null, 2));
+  } catch (error) {
+    serverError('Error during initial OpenSearch instance discovery:', error);
+  }
+
+  app.listen(PORT, () => {
+    serverLog('CDM Query Server running on port ' + PORT);
+    serverLog('API endpoints: http://localhost:' + PORT + '/api/v1/');
+    serverLog('Health check: http://localhost:' + PORT + '/health');
+  });
+}
+
+startServer();
 
 module.exports = app;
