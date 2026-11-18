@@ -1535,10 +1535,15 @@ exports.getRunFromPeriod = getRunFromPeriod;
 getInstancesInfo = async function (instances) {
   for (inst_idx = 0; inst_idx < instances.length; inst_idx++) {
     var url = 'http://' + instances[inst_idx]['host'] + '/_cat/indices?format=json';
-    var resp;
     instances[inst_idx]['online'] = true;
     try {
-      resp = await thenRequest('GET', url, { headers: instances[inst_idx]['header'] });
+      const response = await fetch(url, { headers: instances[inst_idx]['header'] });
+      if (response.status < 200 || response.status >= 300) {
+        console.log('getInstancesInfo(): Host ' + instances[inst_idx]['host'] + ' returned HTTP ' + response.status);
+        instances[inst_idx]['online'] = false;
+        continue;
+      }
+      var indices = await response.json();
     } catch (error) {
       console.log(
         'getInstancesInfo(): Failed to reach the host ' + instances[inst_idx]['host'] + ', so not including it'
@@ -1546,25 +1551,17 @@ getInstancesInfo = async function (instances) {
       instances[inst_idx]['online'] = false;
       continue;
     }
-    if (isDefined(resp)) {
-      if (resp.statusCode < 200 || resp.statusCode >= 300) {
-        console.log('getInstancesInfo(): Host ' + instances[inst_idx]['host'] + ' returned HTTP ' + resp.statusCode);
-        instances[inst_idx]['online'] = false;
-        continue;
-      }
-      var indices = JSON.parse(resp.getBody('utf8'));
-      instances[inst_idx]['indices'] = {};
-      for (const index of indices) {
-        var name = index['index'];
-        if (/^cdm/.exec(name)) {
-          debuglog('index:\n' + JSON.stringify(index, null, 2));
-          const match = name.match(/^cdm-?(v\d+dev)/);
-          const cdmver = match[1];
-          if (!Object.keys(instances[inst_idx]['indices']).includes(cdmver)) {
-            instances[inst_idx]['indices'][cdmver] = [];
-          }
-          instances[inst_idx]['indices'][cdmver].push(name);
+    instances[inst_idx]['indices'] = {};
+    for (const index of indices) {
+      var name = index['index'];
+      if (/^cdm/.exec(name)) {
+        debuglog('index:\n' + JSON.stringify(index, null, 2));
+        const match = name.match(/^cdm-?(v\d+dev)/);
+        const cdmver = match[1];
+        if (!Object.keys(instances[inst_idx]['indices']).includes(cdmver)) {
+          instances[inst_idx]['indices'][cdmver] = [];
         }
+        instances[inst_idx]['indices'][cdmver].push(name);
       }
     }
     if (Object.keys(instances[inst_idx]).includes('ver')) {
