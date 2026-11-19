@@ -1533,7 +1533,7 @@ exports.getRunFromPeriod = getRunFromPeriod;
 // --------------------------------------------------------------------------------------------------------------
 // For each opensearch instance, get the cdm versions they contain and their indices
 getInstancesInfo = async function (instances) {
-  for (inst_idx = 0; inst_idx < instances.length; inst_idx++) {
+  for (let inst_idx = 0; inst_idx < instances.length; inst_idx++) {
     var url = 'http://' + instances[inst_idx]['host'] + '/_cat/indices?format=json';
     instances[inst_idx]['online'] = true;
     try {
