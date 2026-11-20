@@ -72,3 +72,53 @@ test('getInstancesInfo marks an OpenSearch error response offline', async () => 
     await close(server);
   }
 });
+
+test('getInstancesInfo supports overlapping discovery calls', async () => {
+  const originalFetch = globalThis.fetch;
+  const pendingRequests = [];
+
+  globalThis.fetch = (url) =>
+    new Promise((resolve) => {
+      pendingRequests.push({ url: String(url), resolve });
+    });
+
+  const firstInstances = [
+    { host: 'first-a', header: {} },
+    { host: 'first-b', header: {} }
+  ];
+  const secondInstances = [
+    { host: 'second-a', header: {} },
+    { host: 'second-b', header: {} }
+  ];
+  const respond = (request, index) => {
+    request.resolve({
+      status: 200,
+      json: async () => [{ index }]
+    });
+  };
+
+  try {
+    const firstDiscovery = cdm.getInstancesInfo(firstInstances);
+    const secondDiscovery = cdm.getInstancesInfo(secondInstances);
+
+    assert.equal(pendingRequests.length, 2);
+    respond(pendingRequests[1], 'cdm-v9dev-second-a@2026.01');
+    await delay(0);
+    assert.equal(pendingRequests.length, 3);
+
+    respond(pendingRequests[0], 'cdm-v9dev-first-a@2026.01');
+    await delay(0);
+    assert.equal(pendingRequests.length, 4);
+    respond(pendingRequests[2], 'cdm-v9dev-second-b@2026.01');
+    respond(pendingRequests[3], 'cdm-v9dev-first-b@2026.01');
+
+    await Promise.all([firstDiscovery, secondDiscovery]);
+
+    assert.deepEqual(firstInstances[0].indices, { v9dev: ['cdm-v9dev-first-a@2026.01'] });
+    assert.deepEqual(firstInstances[1].indices, { v9dev: ['cdm-v9dev-first-b@2026.01'] });
+    assert.deepEqual(secondInstances[0].indices, { v9dev: ['cdm-v9dev-second-a@2026.01'] });
+    assert.deepEqual(secondInstances[1].indices, { v9dev: ['cdm-v9dev-second-b@2026.01'] });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
